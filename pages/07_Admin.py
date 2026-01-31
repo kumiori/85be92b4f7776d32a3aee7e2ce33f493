@@ -7,9 +7,15 @@ from typing import Any, Dict, List
 import streamlit as st
 import yaml
 
-from infra.app_context import get_notion_repo
-from infra.app_state import ensure_session_state, require_login
-from ui import apply_theme, heading, microcopy, set_page
+from infra.app_context import get_authenticator, get_notion_repo
+from infra.app_state import (
+    ensure_auth,
+    ensure_session_context,
+    ensure_session_state,
+    remember_access,
+    require_login,
+)
+from ui import apply_theme, heading, microcopy, set_page, sidebar_debug_state
 
 
 def _is_admin(role: str) -> bool:
@@ -35,14 +41,20 @@ def main() -> None:
     set_page()
     apply_theme()
     ensure_session_state()
+    repo = get_notion_repo()
+    authenticator = get_authenticator(repo)
+    ensure_auth(authenticator, callback=remember_access, key="admin-login")
+    ensure_session_context(repo)
     require_login()
+    sidebar_debug_state()
 
     role = st.session_state.get("player_role", "Contributor")
     if not _is_admin(role):
         st.error("Admin access only.")
         return
 
-    repo = get_notion_repo()
+    if st.session_state.get("authentication_status"):
+        authenticator.logout(button_name="Logout", location="sidebar")
     session_id = st.session_state.get("session_id")
 
     heading("Admin Console")
