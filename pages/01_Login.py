@@ -53,6 +53,7 @@ def main() -> None:
                 st.write("Emoji suffix 6:", payload.get("emoji", "")[-6:])
 
     if authentication_status:
+        st.info("We baked a cookie for you for 30 minutes. This keeps you signed in while you navigate.")
         session = get_active_session(repo)
         if session:
             set_session(session.get("id", ""), session.get("session_code", "Session"))

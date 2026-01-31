@@ -37,7 +37,7 @@ def main() -> None:
     role = st.session_state.get("player_role", "Contributor")
 
     heading("Question Harvest")
-    microcopy("Submit a bite-sized question for the session.")
+    microcopy("Submit a bite-sized question for the session. Admins can list items in the queue.")
 
     if not repo or not session_id or not player_page_id:
         st.error("Missing session or player context.")
@@ -45,48 +45,58 @@ def main() -> None:
 
     with st.form("question-form"):
         question = st.text_area("Question", max_chars=240)
-        domain = st.selectbox("Domain", DOMAINS)
+        domains = st.pills("Domain", DOMAINS, selection_mode="multi")
         submitted = st.form_submit_button("Submit question")
     if submitted and question:
+        if isinstance(domains, str):
+            domains = [domains]
+        domain_value = domains or "other"
         repo.create_question(
             session_id=session_id,
             text=question,
-            domain=domain,
+            domain=domain_value,
             submitted_by=player_page_id,
         )
         st.success("Thanks, your input is saved.")
 
-    st.subheader("Approved questions")
-    approved = repo.list_questions(session_id, status="approved")
-    if not approved:
-        st.caption("No approved questions yet.")
-    for q in approved:
+    st.subheader("Listed questions")
+    listed = repo.list_listed_questions(session_id)
+    if not listed:
+        st.caption("No questions yet.")
+    for q in listed:
         cols = st.columns([5, 1])
         cols[0].write(f"{q['text']}  \nDomain: {q['domain']}")
-        if cols[1].button("Upvote", key=f"upvote-{q['id']}"):
-            repo.increment_question_upvote(q["id"])
-            st.toast("Upvoted.")
+        if cols[1].button("Responded", key=f"responded-{q['id']}"):
+            repo.update_question_status(q["id"], "responded")
+            st.toast("Marked responded.")
 
     if _is_admin(role):
-        st.subheader("Moderation queue")
+        st.subheader("Queue")
         pending = repo.list_questions(session_id, status="pending")
         if not pending:
-            st.caption("No pending questions.")
+            st.caption("No items in the queue.")
         for q in pending:
             st.write(f"**{q['text']}**  \nDomain: {q['domain']}")
             vote = st.selectbox(
-                "Vote",
-                ["approve", "park", "rewrite"],
+                "Action",
+                ["respond", "reword", "park"],
                 key=f"vote-{q['id']}",
             )
-            if st.button("Submit vote", key=f"vote-btn-{q['id']}"):
+            if st.button("Submit action", key=f"vote-btn-{q['id']}"):
+                status_map = {
+                    "respond": "responded",
+                    "reword": "rewritten",
+                    "park": "parked",
+                }
+                vote_map = {"respond": "approve", "reword": "rewrite", "park": "park"}
                 repo.create_moderation_vote(
                     session_id=session_id,
                     question_id=q["id"],
                     voter_id=player_page_id,
-                    vote=vote,
+                    vote=vote_map[vote],
                 )
-                st.success("Vote recorded.")
+                repo.update_question_status(q["id"], status_map[vote])
+                st.success("Action recorded.")
 
 
 if __name__ == "__main__":

@@ -1172,7 +1172,7 @@ class NotionRepo:
         self,
         session_id: str,
         text: str,
-        domain: Optional[str],
+        domain: Optional[List[str]] | Optional[str],
         submitted_by: str,
         status: str = "pending",
         questions_db_id: Optional[str] = None,
@@ -1181,16 +1181,47 @@ class NotionRepo:
         session_prop = self._prop_name(db_id, "session", "relation")
         submitted_prop = self._prop_name(db_id, "submitted_by", "relation")
         domain_prop = self._prop_name(db_id, "domain", "select")
+        domain_meta = self._db_props(db_id).get(domain_prop, {})
+        domain_type = domain_meta.get("type")
         status_prop = self._prop_name(db_id, "status", "select")
         title_prop = self._prop_name(db_id, "Name", "title")
         created_prop = "created_at" if self._prop_exists(db_id, "created_at") else None
 
+        domains: List[str] = []
+        if isinstance(domain, list):
+            flat: List[str] = []
+            for item in domain:
+                if isinstance(item, list):
+                    flat.extend([str(d) for d in item if d])
+                elif item:
+                    flat.append(str(item))
+            domains = flat
+        elif isinstance(domain, str) and domain:
+            domains = [domain]
+
+        title_text = text
+        if len(domains) > 1:
+            title_text = f"{text} [{', '.join(domains)}]"
+
         props: Dict[str, Any] = {}
         props.update(self._build_relation(session_prop, [session_id]))
         props.update(self._build_relation(submitted_prop, [submitted_by]))
-        props.update(self._build_select(domain_prop, domain))
+        # Defensive: ensure we never pass a list into a select field.
+        if domain_type == "multi_select":
+            props.update(self._build_multi_select(domain_prop, domains))
+        else:
+            primary = domains[0] if domains else None
+            props.update(self._build_select(domain_prop, primary))
+            if len(domains) > 1:
+                multi_prop = None
+                if self._prop_exists(db_id, "domains"):
+                    multi_prop = "domains"
+                elif self._prop_exists(db_id, "domain_multi"):
+                    multi_prop = "domain_multi"
+                if multi_prop:
+                    props.update(self._build_multi_select(multi_prop, domains))
         props.update(self._build_select(status_prop, status))
-        props.update(self._build_title(title_prop, text))
+        props.update(self._build_title(title_prop, title_text))
         if created_prop:
             now_iso = datetime.now(timezone.utc).isoformat()
             props[created_prop] = {"date": {"start": now_iso}}
@@ -1235,6 +1266,13 @@ class NotionRepo:
             for page in response.get("results", [])
         ]
 
+    def list_listed_questions(
+        self, session_id: str, questions_db_id: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        return self.list_questions(
+            session_id, status="responded", questions_db_id=questions_db_id
+        )
+
     def get_question_by_id(
         self, question_id: str, questions_db_id: Optional[str] = None
     ) -> Optional[Dict[str, Any]]:
@@ -1263,25 +1301,21 @@ class NotionRepo:
         _clear_query_cache()
         return self._normalize_question(page, questions_db_id=db_id)
 
+    def increment_question_list(
+        self,
+        question_id: str,
+        questions_db_id: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        return self.update_question_status(
+            question_id, "responded", questions_db_id=questions_db_id
+        )
+
     def increment_question_upvote(
         self,
         question_id: str,
         questions_db_id: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
-        db_id = self._questions_db_id(questions_db_id)
-        if not self._prop_exists(db_id, "park_count"):
-            return self.get_question_by_id(question_id, questions_db_id=db_id)
-        question = self.get_question_by_id(question_id, questions_db_id=db_id)
-        if not question:
-            return None
-        count = question.get("park_count", 0) + 1
-        page = _execute_with_retry(
-            self.client.pages.update,
-            page_id=question_id,
-            properties=self._build_number("park_count", count),
-        )
-        _clear_query_cache()
-        return self._normalize_question(page, questions_db_id=db_id)
+        return self.increment_question_list(question_id, questions_db_id=questions_db_id)
 
     def _normalize_question(
         self, page: Dict[str, Any], questions_db_id: Optional[str] = None

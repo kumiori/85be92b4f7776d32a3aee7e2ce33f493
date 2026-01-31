@@ -84,11 +84,11 @@ def main() -> None:
                     )
             st.success("Statements imported.")
 
-    st.subheader("Export approved questions")
-    approved = repo.list_questions(session_id, status="approved")
-    if approved:
+    st.subheader("Export listed questions")
+    listed = repo.list_listed_questions(session_id)
+    if listed:
         csv_lines = ["text,domain,approve_count,park_count,rewrite_count"]
-        for q in approved:
+        for q in listed:
             row = [
                 q["text"].replace(",", " "),
                 q["domain"],
@@ -105,7 +105,7 @@ def main() -> None:
             mime="text/csv",
         )
     else:
-        st.caption("No approved questions yet.")
+        st.caption("No listed questions yet.")
 
 
 if __name__ == "__main__":

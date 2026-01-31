@@ -42,7 +42,7 @@ def main() -> None:
     player_page_id = st.session_state.get("player_page_id")
 
     heading("Resonance Probe")
-    microcopy("Respond to the statements below.")
+    microcopy("Resonate or Dissonate to the statements below.")
 
     if not repo or not session_id or not player_page_id:
         st.error("Missing session or player context.")
