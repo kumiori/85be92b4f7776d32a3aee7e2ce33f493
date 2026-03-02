@@ -58,7 +58,7 @@ def main() -> None:
         questions = repo.list_questions(
             st.session_state["session_id"], status="approved"
         )
-        st.caption(f"Approved questions: {len(questions)}")
+        st.caption(f"Posted questions: {len(questions)}")
 
 
 if __name__ == "__main__":
