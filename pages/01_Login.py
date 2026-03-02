@@ -80,7 +80,7 @@ This is a live orientation layer before entering the session lobby.
         auth_cfg["cookie_key"].encode("utf-8")
     ).hexdigest()[:12]
 
-    with st.expander("Debug: Auth cookie", expanded=False):
+    with st.sidebar.expander("Debug: Auth cookie", expanded=False):
         st.code(
             (
                 f"cookie_source={auth_cfg['source']}\n"
