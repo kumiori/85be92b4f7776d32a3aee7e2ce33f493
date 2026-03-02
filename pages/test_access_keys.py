@@ -2,8 +2,7 @@ from __future__ import annotations
 
 import inspect
 from pathlib import Path
-import os
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple
 
 import streamlit as st
 import yaml
@@ -32,8 +31,21 @@ def _pkg_version(name: str) -> str:
 
 @st.cache_data(show_spinner=False)
 def load_config(path: str) -> Dict:
+    if not Path(path).exists():
+        return {}
     with open(path, "r", encoding="utf-8") as file:
-        return yaml.load(file, Loader=SafeLoader)
+        return yaml.load(file, Loader=SafeLoader) or {}
+
+
+def _resolve_id_with_source(
+    notion_keys: list[str]
+) -> Tuple[str, str]:
+    notion_secrets = st.secrets.get("notion", {})
+    for key in notion_keys:
+        value = notion_secrets.get(key)
+        if value:
+            return str(value), f"st.secrets['notion']['{key}']"
+    return "", "<missing>"
 
 
 def ensure_shared_state() -> None:
@@ -47,33 +59,13 @@ def ensure_shared_state() -> None:
 
 ensure_shared_state()
 
-try:
-    config = load_config(str(CONFIG_PATH))
-except FileNotFoundError:
-    st.error("config.yaml missing. Add it to the repo root and reload.")
-    st.stop()
+config = load_config(str(CONFIG_PATH))
 
-resolved_session_db_id = (
-    st.secrets.get("ICE_SESSIONS_DB_ID")
-    or st.secrets.get("notion", {}).get("ICE_SESSIONS_DB_ID")
-    or st.secrets.get("notion", {}).get("ice_sessions_db_id")
-    or st.secrets.get("notion", {}).get("sessions_db_id")
-    or st.secrets.get("notion", {}).get("sessions")
-    or os.getenv("ICE_SESSIONS_DB_ID", "")
-    or config.get("notion", {}).get("ice_sessions_db_id")
-    or config.get("notion", {}).get("sessions_db_id")
-    or config.get("notion", {}).get("sessions")
+resolved_session_db_id, session_source = _resolve_id_with_source(
+    notion_keys=["ice_sessions_db_id", "sessions_db_id", "sessions"],
 )
-resolved_players_db_id = (
-    st.secrets.get("ICE_PLAYERS_DB_ID")
-    or st.secrets.get("notion", {}).get("ICE_PLAYERS_DB_ID")
-    or st.secrets.get("notion", {}).get("ice_players_db_id")
-    or st.secrets.get("notion", {}).get("players_db_id")
-    or st.secrets.get("notion", {}).get("players")
-    or os.getenv("ICE_PLAYERS_DB_ID", "")
-    or config.get("notion", {}).get("ice_players_db_id")
-    or config.get("notion", {}).get("players_db_id")
-    or config.get("notion", {}).get("players")
+resolved_players_db_id, players_source = _resolve_id_with_source(
+    notion_keys=["ice_players_db_id", "players_db_id", "players"],
 )
 
 notion_repo = init_notion_repo(
@@ -102,8 +94,10 @@ with st.expander("Debug: Notion connection", expanded=True):
     st.write("Resolved IDs")
     st.code(
         (
-            f"ICE_SESSIONS_DB_ID={resolved_session_db_id or '<missing>'}\n"
-            f"ICE_PLAYERS_DB_ID={resolved_players_db_id or '<missing>'}"
+            f"ice_sessions_db_id={resolved_session_db_id or '<missing>'}\n"
+            f"ice_sessions_db_id source={session_source}\n"
+            f"ice_players_db_id={resolved_players_db_id or '<missing>'}\n"
+            f"ice_players_db_id source={players_source}"
         )
     )
     st.write("Python package versions")
@@ -119,16 +113,25 @@ with st.expander("Debug: Notion connection", expanded=True):
         client = notion_repo.client
         databases_endpoint = getattr(client, "databases", None)
         query_method = getattr(databases_endpoint, "query", None)
+        data_sources_endpoint = getattr(client, "data_sources", None)
+        ds_query_method = getattr(data_sources_endpoint, "query", None)
         st.code(
             (
                 f"client_type={type(client).__module__}.{type(client).__name__}\n"
                 f"databases_endpoint_type={type(databases_endpoint).__module__}.{type(databases_endpoint).__name__ if databases_endpoint else 'None'}\n"
                 f"has_databases_query={bool(query_method)}\n"
-                f"query_signature={inspect.signature(query_method) if query_method else '<missing>'}"
+                f"query_signature={inspect.signature(query_method) if query_method else '<missing>'}\n"
+                f"data_sources_endpoint_type={type(data_sources_endpoint).__module__}.{type(data_sources_endpoint).__name__ if data_sources_endpoint else 'None'}\n"
+                f"has_data_sources_query={bool(ds_query_method)}\n"
+                f"data_sources_query_signature={inspect.signature(ds_query_method) if ds_query_method else '<missing>'}"
             )
         )
     else:
         st.error("Notion repo could not be initialized.")
+
+if not resolved_session_db_id or not resolved_players_db_id:
+    st.error("Missing required Notion IDs. Set notion.ice_sessions_db_id and notion.ice_players_db_id in secrets.")
+    st.stop()
 
 try:
     authenticator = AuthenticateWithKey(

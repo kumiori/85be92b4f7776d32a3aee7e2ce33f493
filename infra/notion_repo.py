@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import inspect
-import os
+import re
 import time
 from datetime import datetime, timezone
 from functools import lru_cache
@@ -32,9 +32,13 @@ if isinstance(Client, type):
 
 
 SESSIONS_DB_ID = ""
-ICE_PLAYERS_DB_ID = ""
+PLAYERS_DB_ID = ""
 
-DEBUG_NOTION = os.getenv("NOTION_DEBUG", "").lower() in {"1", "true", "yes"}
+DEBUG_NOTION = str(st.secrets.get("notion", {}).get("debug", "")).lower() in {
+    "1",
+    "true",
+    "yes",
+}
 
 try:
     from config import settings
@@ -50,13 +54,13 @@ def _debug_client(label: str, client: Client) -> None:
         return
     st.write(f"{label}: client={client!r}")
     st.write(f"{label}: client_type={type(client)} module={type(client).__module__}")
-    databases = getattr(client, "databases", None)
-    st.write(f"{label}: client.databases={databases!r}")
+    data_sources = getattr(client, "data_sources", None)
+    st.write(f"{label}: client.data_sources={data_sources!r}")
     st.write(
-        f"{label}: client.databases_type={type(databases)} module={type(databases).__module__}"
+        f"{label}: client.data_sources_type={type(data_sources)} module={type(data_sources).__module__}"
     )
-    query = getattr(databases, "query", None) if databases is not None else None
-    st.write(f"{label}: client.databases.query={query!r}")
+    query = getattr(data_sources, "query", None) if data_sources is not None else None
+    st.write(f"{label}: client.data_sources.query={query!r}")
     query_func = getattr(query, "__func__", query)
     st.write(
         f"{label}: query_type={type(query)} module={getattr(query_func, '__module__', None)}"
@@ -88,6 +92,28 @@ def _ensure_base_url(client: Client) -> str:
     return str(base_url) if base_url else ""
 
 
+def _clean_notion_id(value: Optional[str]) -> str:
+    raw = (value or "").strip()
+    if not raw:
+        return ""
+    # Accept direct IDs, UUIDs inside URLs, and quoted values.
+    raw = raw.strip("\"'")
+    dashed = re.search(
+        r"([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})",
+        raw,
+    )
+    if dashed:
+        return dashed.group(1).lower()
+    compact = re.search(r"([0-9a-fA-F]{32})", raw)
+    if compact:
+        token = compact.group(1).lower()
+        return (
+            f"{token[0:8]}-{token[8:12]}-{token[12:16]}-"
+            f"{token[16:20]}-{token[20:32]}"
+        )
+    return raw
+
+
 def _execute_with_retry(func, *args, **kwargs):
     last_error: Optional[Exception] = None
     for attempt in range(3):
@@ -105,8 +131,48 @@ def _execute_with_retry(func, *args, **kwargs):
     raise RuntimeError("Request failed without APIResponseError.")
 
 
+@lru_cache(maxsize=128)
+def _resolve_data_source_id(client: Client, database_or_source_id: str) -> str:
+    clean_id = _clean_notion_id(database_or_source_id)
+    if not clean_id:
+        return ""
+
+    data_sources_endpoint = getattr(client, "data_sources", None)
+    ds_retrieve = (
+        getattr(data_sources_endpoint, "retrieve", None)
+        if data_sources_endpoint
+        else None
+    )
+    if callable(ds_retrieve):
+        try:
+            _execute_with_retry(ds_retrieve, clean_id)
+            return clean_id
+        except Exception:
+            pass
+
+    databases_endpoint = getattr(client, "databases", None)
+    db_retrieve = (
+        getattr(databases_endpoint, "retrieve", None) if databases_endpoint else None
+    )
+    if callable(db_retrieve):
+        try:
+            db = _execute_with_retry(db_retrieve, clean_id)
+            data_sources = db.get("data_sources", []) if isinstance(db, dict) else []
+            if data_sources and isinstance(data_sources[0], dict):
+                ds_id = _clean_notion_id(data_sources[0].get("id"))
+                if ds_id:
+                    return ds_id
+        except Exception:
+            pass
+
+    return clean_id
+
+
 @st.cache_data(ttl=5, show_spinner=False, hash_funcs=HASH_FUNCS)
 def _cached_query(client: Client, database_id: str, **kwargs) -> Dict[str, Any]:
+    db_id = _resolve_data_source_id(client, database_id)
+    if not db_id:
+        raise ValueError("Missing Notion database/data source id for query.")
     _debug_client("notion.query", client)
     # if settings and getattr(settings, "show_debug", False):
     #     st.write(
@@ -114,14 +180,32 @@ def _cached_query(client: Client, database_id: str, **kwargs) -> Dict[str, Any]:
     #     )
     #     st.write(f"NotionRepo: querying database {database_id} with {kwargs}")
 
-    return _execute_with_retry(
-        client.databases.query, database_id=database_id, **kwargs
+    data_sources_endpoint = getattr(client, "data_sources", None)
+    ds_query = (
+        getattr(data_sources_endpoint, "query", None) if data_sources_endpoint else None
     )
+    if callable(ds_query):
+        return _execute_with_retry(ds_query, data_source_id=db_id, **kwargs)
+
+    raise AttributeError("Notion client has no data_sources.query (requires notion-client 3.x)")
 
 
 @st.cache_data(ttl=5, show_spinner=False, hash_funcs=HASH_FUNCS)
 def _cached_retrieve(client: Client, database_id: str) -> Dict[str, Any]:
-    return _execute_with_retry(client.databases.retrieve, database_id)
+    db_id = _resolve_data_source_id(client, database_id)
+    if not db_id:
+        raise ValueError("Missing Notion database/data source id for retrieve.")
+
+    data_sources_endpoint = getattr(client, "data_sources", None)
+    ds_retrieve = (
+        getattr(data_sources_endpoint, "retrieve", None)
+        if data_sources_endpoint
+        else None
+    )
+    if callable(ds_retrieve):
+        return _execute_with_retry(ds_retrieve, db_id)
+
+    raise AttributeError("Notion client has no data_sources.retrieve (requires notion-client 3.x)")
 
 
 def _clear_query_cache():
@@ -1795,23 +1879,15 @@ def init_notion_repo(
     def _resolve_db_id(
         explicit_value: Optional[str],
         notion_keys: List[str],
-        top_level_secret_key: str,
-        env_key: str,
         default_value: str = "",
     ) -> str:
         if explicit_value:
-            return explicit_value
+            return _clean_notion_id(explicit_value)
         for key in notion_keys:
             value = notion_secrets.get(key)
             if value:
-                return str(value)
-        top_secret = st.secrets.get(top_level_secret_key)
-        if top_secret:
-            return str(top_secret)
-        env_value = os.getenv(env_key, "")
-        if env_value:
-            return env_value
-        return default_value
+                return _clean_notion_id(str(value))
+        return _clean_notion_id(default_value)
 
     try:
         api_key = st.secrets["notion"]["api_key"]  # type: ignore[index]
@@ -1823,7 +1899,7 @@ def init_notion_repo(
     try:
         from notion_client import Client
 
-        notion_version = os.getenv("NOTION_VERSION", "").strip() or None
+        notion_version = str(notion_secrets.get("notion_version", "")).strip() or None
         if notion_version:
             client = Client(auth=api_key, notion_version=notion_version)
         else:
@@ -1851,52 +1927,36 @@ def init_notion_repo(
     resolved_session_db_id = _resolve_db_id(
         session_db_id,
         ["ice_sessions_db_id", "sessions_db_id", "sessions"],
-        "ICE_SESSIONS_DB_ID",
-        "ICE_SESSIONS_DB_ID",
         SESSIONS_DB_ID,
     )
     resolved_players_db_id = _resolve_db_id(
         players_db_id,
         ["ice_players_db_id", "players_db_id", "players"],
-        "ICE_PLAYERS_DB_ID",
-        "ICE_PLAYERS_DB_ID",
-        ICE_PLAYERS_DB_ID,
+        PLAYERS_DB_ID,
     )
     resolved_statements_db_id = _resolve_db_id(
         statements_db_id,
         ["ice_statements_db_id", "statements_db_id", "statements"],
-        "ICE_STATEMENTS_DB_ID",
-        "ICE_STATEMENTS_DB_ID",
     )
     resolved_responses_db_id = _resolve_db_id(
         responses_db_id,
         ["ice_responses_db_id", "responses_db_id", "responses"],
-        "ICE_RESPONSES_DB_ID",
-        "ICE_RESPONSES_DB_ID",
     )
     resolved_questions_db_id = _resolve_db_id(
         questions_db_id,
         ["ice_questions_db_id", "questions_db_id", "questions"],
-        "ICE_QUESTIONS_DB_ID",
-        "ICE_QUESTIONS_DB_ID",
     )
     resolved_moderation_votes_db_id = _resolve_db_id(
         moderation_votes_db_id,
         ["ice_moderation_votes_db_id", "moderation_votes_db_id", "moderation_votes"],
-        "ICE_VOTES_DB_ID",
-        "ICE_VOTES_DB_ID",
     )
     resolved_decisions_db_id = _resolve_db_id(
         decisions_db_id,
         ["ice_decisions_db_id", "decisions_db_id", "decisions"],
-        "ICE_DECISIONS_DB_ID",
-        "ICE_DECISIONS_DB_ID",
     )
     resolved_highlights_db_id = _resolve_db_id(
         highlights_db_id,
         ["ice_highlights_db_id", "highlights_db_id", "highlights"],
-        "ICE_HIGHLIGHTS_DB_ID",
-        "ICE_HIGHLIGHTS_DB_ID",
     )
 
     return NotionRepo(
