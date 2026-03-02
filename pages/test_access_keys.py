@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import os
 from typing import Dict, Optional
 
 import streamlit as st
@@ -42,8 +43,28 @@ except FileNotFoundError:
     st.stop()
 
 notion_repo = init_notion_repo(
-    session_db_id=config["notion"]["sessions"],
-    players_db_id=config["notion"]["players"],
+    session_db_id=(
+        st.secrets.get("ICE_SESSIONS_DB_ID")
+        or st.secrets.get("notion", {}).get("ICE_SESSIONS_DB_ID")
+        or st.secrets.get("notion", {}).get("ice_sessions_db_id")
+        or st.secrets.get("notion", {}).get("sessions_db_id")
+        or st.secrets.get("notion", {}).get("sessions")
+        or os.getenv("ICE_SESSIONS_DB_ID", "")
+        or config.get("notion", {}).get("ice_sessions_db_id")
+        or config.get("notion", {}).get("sessions_db_id")
+        or config.get("notion", {}).get("sessions")
+    ),
+    players_db_id=(
+        st.secrets.get("ICE_PLAYERS_DB_ID")
+        or st.secrets.get("notion", {}).get("ICE_PLAYERS_DB_ID")
+        or st.secrets.get("notion", {}).get("ice_players_db_id")
+        or st.secrets.get("notion", {}).get("players_db_id")
+        or st.secrets.get("notion", {}).get("players")
+        or os.getenv("ICE_PLAYERS_DB_ID", "")
+        or config.get("notion", {}).get("ice_players_db_id")
+        or config.get("notion", {}).get("players_db_id")
+        or config.get("notion", {}).get("players")
+    ),
 )
 
 authenticator = AuthenticateWithKey(
@@ -89,7 +110,6 @@ if authentication_status:
         " · Phrase:",
         (st.session_state.access_payload or {}).get("phrase", "—"),
     )
-    st.page_link("pages/test_ideas.py", label="Open the multiplayer round ↗")
 elif authentication_status is False:
     st.error("Key invalid. Double-check spelling or mint a new key below.")
 else:
