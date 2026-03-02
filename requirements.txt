@@ -51,4 +51,4 @@ tzdata==2025.1
 urllib3==2.3.0
 wheel==0.45.1
 streamlit-authenticator
-streamlit_notion==2.5.0
+streamlit_notion==2.7.0
