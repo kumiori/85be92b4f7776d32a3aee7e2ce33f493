@@ -16,7 +16,7 @@ markdown-it-py==3.0.0
 MarkupSafe==3.0.2
 mdurl==0.1.2
 narwhals==1.28.0
-notion-client==2.7.0
+notion-client==3.0.0
 numpy==2.2.3
 oauthlib==3.2.2
 packaging==24.2
@@ -51,3 +51,4 @@ tzdata==2025.1
 urllib3==2.3.0
 wheel==0.45.1
 streamlit-authenticator==0.4.2
+streamlit_notion
