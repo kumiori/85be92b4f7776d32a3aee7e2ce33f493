@@ -8,7 +8,7 @@ def main() -> None:
     apply_theme()
     heading("IceIceBaby v0")
     microcopy("Use the sidebar or jump to the login page to start.")
-    if st.button("Go to Login", type="primary", use_container_width=True):
+    if st.button("Go to Login", type="secondary", use_container_width=True):
         st.switch_page("pages/01_Login.py")
 
 

@@ -31,10 +31,15 @@ if isinstance(Client, type):
     HASH_FUNCS[Client] = lambda _: 0
 
 
-SESSIONS_DB_ID = "2f954516-e9e1-8019-bd48-e923c6cf50db"
-ICE_PLAYERS_DB_ID = "2f954516-e9e1-8002-9edd-eda3cb7aad4c"
+SESSIONS_DB_ID = ""
+ICE_PLAYERS_DB_ID = ""
 
 DEBUG_NOTION = os.getenv("NOTION_DEBUG", "").lower() in {"1", "true", "yes"}
+
+try:
+    from config import settings
+except Exception:  # pragma: no cover
+    settings = None
 
 
 def _debug_client(label: str, client: Client) -> None:
@@ -103,7 +108,11 @@ def _execute_with_retry(func, *args, **kwargs):
 @st.cache_data(ttl=5, show_spinner=False, hash_funcs=HASH_FUNCS)
 def _cached_query(client: Client, database_id: str, **kwargs) -> Dict[str, Any]:
     _debug_client("notion.query", client)
-    st.write(f"NotionRepo: querying database {database_id} with {kwargs}")
+    # if settings and getattr(settings, "show_debug", False):
+    #     st.write(
+    #         f"Debug {settings.show_debug}: NotionRepo querying database {database_id}"
+    #     )
+    #     st.write(f"NotionRepo: querying database {database_id} with {kwargs}")
 
     return _execute_with_retry(
         client.databases.query, database_id=database_id, **kwargs
@@ -136,6 +145,7 @@ class NotionRepo:
         questions_db_id: str = "",
         moderation_votes_db_id: str = "",
         decisions_db_id: str = "",
+        highlights_db_id: str = "",
     ):
         self.client = client
         self.session_db_id = session_db_id
@@ -149,6 +159,7 @@ class NotionRepo:
         self.questions_db_id = questions_db_id
         self.moderation_votes_db_id = moderation_votes_db_id
         self.decisions_db_id = decisions_db_id
+        self.highlights_db_id = highlights_db_id
 
     # ---- helpers -----------------------------------------------------
     def _db_props(self, database_id: str) -> Dict[str, Any]:
@@ -177,6 +188,15 @@ class NotionRepo:
         return {
             name: {
                 "rich_text": [{"type": "text", "text": {"content": value or ""}}],
+            }
+        }
+
+    def _build_rich_text_chunks(self, name: str, value: str, chunk_size: int = 2000) -> Dict[str, Any]:
+        text = value or ""
+        chunks = [text[i : i + chunk_size] for i in range(0, len(text), chunk_size)] or [""]
+        return {
+            name: {
+                "rich_text": [{"type": "text", "text": {"content": chunk}} for chunk in chunks],
             }
         }
 
@@ -283,6 +303,9 @@ class NotionRepo:
 
     def _decisions_db_id(self, decisions_db_id: Optional[str]) -> str:
         return decisions_db_id or self.decisions_db_id
+
+    def _highlights_db_id(self, highlights_db_id: Optional[str]) -> str:
+        return highlights_db_id or self.highlights_db_id
 
     def create_session(
         self, session_code: str, mode: str, session_db_id: Optional[str] = None
@@ -401,7 +424,9 @@ class NotionRepo:
         sessions = self.list_active_sessions(session_db_id=session_db_id)
         return sessions[0] if sessions else None
 
-    def _safe_date_prop(self, props: Dict[str, Any], name: Optional[str]) -> Optional[str]:
+    def _safe_date_prop(
+        self, props: Dict[str, Any], name: Optional[str]
+    ) -> Optional[str]:
         if not name or not isinstance(props, dict):
             return None
         value = props.get(name)
@@ -1315,7 +1340,9 @@ class NotionRepo:
         question_id: str,
         questions_db_id: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
-        return self.increment_question_list(question_id, questions_db_id=questions_db_id)
+        return self.increment_question_list(
+            question_id, questions_db_id=questions_db_id
+        )
 
     def _normalize_question(
         self, page: Dict[str, Any], questions_db_id: Optional[str] = None
@@ -1490,7 +1517,7 @@ class NotionRepo:
         props.update(self._build_relation(session_prop, [session_id]))
         props.update(self._build_relation(player_prop, [player_id]))
         props.update(self._build_select(type_prop, decision_type))
-        props.update(self._build_rich_text(payload_prop, payload))
+        props.update(self._build_rich_text_chunks(payload_prop, payload))
         props.update(self._build_title(title_prop, decision_type.title()))
         if created_prop:
             now_iso = datetime.now(timezone.utc).isoformat()
@@ -1509,6 +1536,245 @@ class NotionRepo:
             "created_at": page.get("created_time"),
         }
 
+    def list_decisions(
+        self,
+        session_id: str,
+        decision_type: Optional[str] = None,
+        decisions_db_id: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        db_id = self._decisions_db_id(decisions_db_id)
+        session_prop = self._prop_name(db_id, "session", "relation")
+        filters: List[Dict[str, Any]] = [
+            {"property": session_prop, "relation": {"contains": session_id}}
+        ]
+        if decision_type:
+            type_prop = self._prop_name(db_id, "type", "select")
+            filters.append({"property": type_prop, "select": {"equals": decision_type}})
+        response = _cached_query(
+            self.client,
+            db_id,
+            filter={"and": filters} if len(filters) > 1 else filters[0],
+            page_size=200,
+            sorts=[{"timestamp": "created_time", "direction": "ascending"}],
+        )
+        return [
+            self._normalize_decision(page, decisions_db_id=db_id)
+            for page in response.get("results", [])
+        ]
+
+    def _normalize_decision(
+        self, page: Dict[str, Any], decisions_db_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        db_id = self._decisions_db_id(decisions_db_id)
+        props = page.get("properties", {})
+        type_prop = self._prop_name(db_id, "type", "select")
+        payload_prop = self._prop_name(db_id, "payload", "rich_text")
+        player_prop = self._prop_name(db_id, "player", "relation")
+        session_prop = self._prop_name(db_id, "session", "relation")
+        payload_val = props.get(payload_prop) if isinstance(props, dict) else None
+        payload_text = ""
+        if isinstance(payload_val, dict) and payload_val.get("type") == "rich_text":
+            parts = payload_val.get("rich_text", [])
+            payload_text = "".join(part.get("plain_text", "") for part in parts)
+        return {
+            "id": page.get("id"),
+            "type": self._normalize_select(props, type_prop) or "",
+            "payload": payload_text,
+            "player_id": self._normalize_relation_ids(props, player_prop),
+            "session_id": self._normalize_relation_ids(props, session_prop),
+            "created_at": page.get("created_time"),
+        }
+
+    # ---- Highlights ------------------------------------------------
+    def upsert_highlight(
+        self,
+        session_id: str,
+        player_id: str,
+        text_id: str,
+        selected_text: str,
+        start_char: int,
+        end_char: int,
+        anchor_prefix: str = "",
+        anchor_suffix: str = "",
+        note: str = "",
+        emotion: Optional[str] = None,
+        reason: Optional[str] = None,
+        highlights_db_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        db_id = self._highlights_db_id(highlights_db_id)
+        if not db_id:
+            raise ValueError("Highlights database id is not configured.")
+
+        existing = self._find_highlight(
+            text_id=text_id,
+            start_char=start_char,
+            end_char=end_char,
+            player_id=player_id,
+            highlights_db_id=db_id,
+        )
+
+        title_prop = self._prop_name(db_id, "Name", "title")
+        text_id_prop = self._prop_name(db_id, "text_id", "rich_text")
+        selected_prop = self._prop_name(db_id, "selected_text", "rich_text")
+        start_prop = self._prop_name(db_id, "start_char", "number")
+        end_prop = self._prop_name(db_id, "end_char", "number")
+        props: Dict[str, Any] = {}
+
+        props.update(self._build_title(title_prop, f"{text_id}:{start_char}-{end_char}"))
+        props.update(self._build_rich_text(text_id_prop, text_id))
+        props.update(self._build_rich_text(selected_prop, selected_text))
+        props.update(self._build_number(start_prop, start_char))
+        props.update(self._build_number(end_prop, end_char))
+
+        if self._prop_exists(db_id, "anchor_prefix"):
+            props.update(self._build_rich_text("anchor_prefix", anchor_prefix))
+        if self._prop_exists(db_id, "anchor_suffix"):
+            props.update(self._build_rich_text("anchor_suffix", anchor_suffix))
+        if self._prop_exists(db_id, "note"):
+            props.update(self._build_rich_text("note", note))
+        if self._prop_exists(db_id, "emotion"):
+            props.update(self._build_select("emotion", emotion))
+        if self._prop_exists(db_id, "reason"):
+            props.update(self._build_select("reason", reason))
+        if self._prop_exists(db_id, "session"):
+            props.update(self._build_relation("session", [session_id]))
+        if self._prop_exists(db_id, "player"):
+            props.update(self._build_relation("player", [player_id]))
+        if self._prop_exists(db_id, "created_at") and not existing:
+            now_iso = datetime.now(timezone.utc).isoformat()
+            props["created_at"] = {"date": {"start": now_iso}}
+        if self._prop_exists(db_id, "updated_at"):
+            now_iso = datetime.now(timezone.utc).isoformat()
+            props["updated_at"] = {"date": {"start": now_iso}}
+
+        if existing:
+            page = _execute_with_retry(
+                self.client.pages.update, page_id=existing["id"], properties=props
+            )
+        else:
+            page = _execute_with_retry(
+                self.client.pages.create,
+                parent={"database_id": db_id},
+                properties=props,
+            )
+        _clear_query_cache()
+        return self._normalize_highlight(page, highlights_db_id=db_id)
+
+    def _find_highlight(
+        self,
+        text_id: str,
+        start_char: int,
+        end_char: int,
+        player_id: str,
+        highlights_db_id: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        db_id = self._highlights_db_id(highlights_db_id)
+        text_id_prop = self._prop_name(db_id, "text_id", "rich_text")
+        start_prop = self._prop_name(db_id, "start_char", "number")
+        end_prop = self._prop_name(db_id, "end_char", "number")
+        filters: list[Dict[str, Any]] = [
+            {"property": text_id_prop, "rich_text": {"equals": text_id}},
+            {"property": start_prop, "number": {"equals": int(start_char)}},
+            {"property": end_prop, "number": {"equals": int(end_char)}},
+        ]
+        if player_id:
+            if self._prop_exists(db_id, "player"):
+                filters.append({"property": "player", "relation": {"contains": player_id}})
+            elif self._prop_exists(db_id, "player_id"):
+                filters.append({"property": "player_id", "rich_text": {"equals": player_id}})
+
+        response = _cached_query(
+            self.client,
+            db_id,
+            filter={"and": filters},
+            page_size=1,
+        )
+        results = response.get("results", [])
+        if not results:
+            return None
+        return self._normalize_highlight(results[0], highlights_db_id=db_id)
+
+    def list_highlights(
+        self,
+        session_id: Optional[str] = None,
+        text_id: Optional[str] = None,
+        highlights_db_id: Optional[str] = None,
+        limit: int = 200,
+    ) -> List[Dict[str, Any]]:
+        db_id = self._highlights_db_id(highlights_db_id)
+        if not db_id:
+            return []
+        filters: list[Dict[str, Any]] = []
+        if text_id:
+            text_prop = self._prop_name(db_id, "text_id", "rich_text")
+            filters.append({"property": text_prop, "rich_text": {"equals": text_id}})
+        if session_id and self._prop_exists(db_id, "session"):
+            filters.append({"property": "session", "relation": {"contains": session_id}})
+
+        filter_payload: Optional[Dict[str, Any]] = None
+        if len(filters) == 1:
+            filter_payload = filters[0]
+        elif len(filters) > 1:
+            filter_payload = {"and": filters}
+
+        query_kwargs: Dict[str, Any] = {
+            "page_size": limit,
+            "sorts": [{"timestamp": "created_time", "direction": "descending"}],
+        }
+        if filter_payload:
+            query_kwargs["filter"] = filter_payload
+
+        response = _cached_query(self.client, db_id, **query_kwargs)
+        return [
+            self._normalize_highlight(page, highlights_db_id=db_id)
+            for page in response.get("results", [])
+        ]
+
+    def _normalize_highlight(
+        self, page: Dict[str, Any], highlights_db_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        db_id = self._highlights_db_id(highlights_db_id)
+        props = page.get("properties", {})
+        text_id_prop = self._prop_name(db_id, "text_id", "rich_text")
+        selected_prop = self._prop_name(db_id, "selected_text", "rich_text")
+        start_prop = self._prop_name(db_id, "start_char", "number")
+        end_prop = self._prop_name(db_id, "end_char", "number")
+        session_ids = (
+            self._normalize_relation_ids(props, "session")
+            if self._prop_exists(db_id, "session")
+            else []
+        )
+        player_ids = (
+            self._normalize_relation_ids(props, "player")
+            if self._prop_exists(db_id, "player")
+            else []
+        )
+        return {
+            "id": page.get("id"),
+            "text_id": self._normalize_rich_text(props, text_id_prop),
+            "selected_text": self._normalize_rich_text(props, selected_prop),
+            "start_char": int(self._normalize_number(props, start_prop, 0) or 0),
+            "end_char": int(self._normalize_number(props, end_prop, 0) or 0),
+            "anchor_prefix": self._normalize_rich_text(props, "anchor_prefix")
+            if self._prop_exists(db_id, "anchor_prefix")
+            else "",
+            "anchor_suffix": self._normalize_rich_text(props, "anchor_suffix")
+            if self._prop_exists(db_id, "anchor_suffix")
+            else "",
+            "note": self._normalize_rich_text(props, "note")
+            if self._prop_exists(db_id, "note")
+            else "",
+            "emotion": self._normalize_select(props, "emotion")
+            if self._prop_exists(db_id, "emotion")
+            else "",
+            "reason": self._normalize_select(props, "reason")
+            if self._prop_exists(db_id, "reason")
+            else "",
+            "session_id": session_ids,
+            "player_id": player_ids,
+            "created_at": page.get("created_time"),
+        }
+
 
 def init_notion_repo(
     session_db_id: Optional[str] = None,
@@ -1522,7 +1788,31 @@ def init_notion_repo(
     questions_db_id: Optional[str] = None,
     moderation_votes_db_id: Optional[str] = None,
     decisions_db_id: Optional[str] = None,
+    highlights_db_id: Optional[str] = None,
 ) -> Optional[NotionRepo]:
+    notion_secrets = st.secrets.get("notion", {})
+
+    def _resolve_db_id(
+        explicit_value: Optional[str],
+        notion_keys: List[str],
+        top_level_secret_key: str,
+        env_key: str,
+        default_value: str = "",
+    ) -> str:
+        if explicit_value:
+            return explicit_value
+        for key in notion_keys:
+            value = notion_secrets.get(key)
+            if value:
+                return str(value)
+        top_secret = st.secrets.get(top_level_secret_key)
+        if top_secret:
+            return str(top_secret)
+        env_value = os.getenv(env_key, "")
+        if env_value:
+            return env_value
+        return default_value
+
     try:
         api_key = st.secrets["notion"]["api_key"]  # type: ignore[index]
     except Exception:
@@ -1557,17 +1847,70 @@ def init_notion_repo(
         return None
     _ensure_base_url(client)
     _debug_client("notion.init", client)
+
+    resolved_session_db_id = _resolve_db_id(
+        session_db_id,
+        ["ice_sessions_db_id", "sessions_db_id", "sessions"],
+        "ICE_SESSIONS_DB_ID",
+        "ICE_SESSIONS_DB_ID",
+        SESSIONS_DB_ID,
+    )
+    resolved_players_db_id = _resolve_db_id(
+        players_db_id,
+        ["ice_players_db_id", "players_db_id", "players"],
+        "ICE_PLAYERS_DB_ID",
+        "ICE_PLAYERS_DB_ID",
+        ICE_PLAYERS_DB_ID,
+    )
+    resolved_statements_db_id = _resolve_db_id(
+        statements_db_id,
+        ["ice_statements_db_id", "statements_db_id", "statements"],
+        "ICE_STATEMENTS_DB_ID",
+        "ICE_STATEMENTS_DB_ID",
+    )
+    resolved_responses_db_id = _resolve_db_id(
+        responses_db_id,
+        ["ice_responses_db_id", "responses_db_id", "responses"],
+        "ICE_RESPONSES_DB_ID",
+        "ICE_RESPONSES_DB_ID",
+    )
+    resolved_questions_db_id = _resolve_db_id(
+        questions_db_id,
+        ["ice_questions_db_id", "questions_db_id", "questions"],
+        "ICE_QUESTIONS_DB_ID",
+        "ICE_QUESTIONS_DB_ID",
+    )
+    resolved_moderation_votes_db_id = _resolve_db_id(
+        moderation_votes_db_id,
+        ["ice_moderation_votes_db_id", "moderation_votes_db_id", "moderation_votes"],
+        "ICE_VOTES_DB_ID",
+        "ICE_VOTES_DB_ID",
+    )
+    resolved_decisions_db_id = _resolve_db_id(
+        decisions_db_id,
+        ["ice_decisions_db_id", "decisions_db_id", "decisions"],
+        "ICE_DECISIONS_DB_ID",
+        "ICE_DECISIONS_DB_ID",
+    )
+    resolved_highlights_db_id = _resolve_db_id(
+        highlights_db_id,
+        ["ice_highlights_db_id", "highlights_db_id", "highlights"],
+        "ICE_HIGHLIGHTS_DB_ID",
+        "ICE_HIGHLIGHTS_DB_ID",
+    )
+
     return NotionRepo(
         client,
-        session_db_id=session_db_id or SESSIONS_DB_ID,
-        players_db_id=players_db_id or "",
+        session_db_id=resolved_session_db_id,
+        players_db_id=resolved_players_db_id,
         ideas_db_id=ideas_db_id or "",
         links_db_id=links_db_id or "",
         outcomes_db_id=outcomes_db_id or "",
         resonance_db_id=resonance_db_id or "",
-        statements_db_id=statements_db_id or "",
-        responses_db_id=responses_db_id or "",
-        questions_db_id=questions_db_id or "",
-        moderation_votes_db_id=moderation_votes_db_id or "",
-        decisions_db_id=decisions_db_id or "",
+        statements_db_id=resolved_statements_db_id,
+        responses_db_id=resolved_responses_db_id,
+        questions_db_id=resolved_questions_db_id,
+        moderation_votes_db_id=resolved_moderation_votes_db_id,
+        decisions_db_id=resolved_decisions_db_id,
+        highlights_db_id=resolved_highlights_db_id,
     )

@@ -30,6 +30,15 @@ def _pick_id(config: Dict[str, Any], key: str, env_key: Optional[str] = None) ->
     if key in secrets_cfg and secrets_cfg[key]:
         return secrets_cfg[key]
     if env_key:
+        # Support deploy secrets that mirror env-style names, e.g. ICE_SESSIONS_DB_ID.
+        top_level_secret = st.secrets.get(env_key)
+        if top_level_secret:
+            return str(top_level_secret)
+        if env_key in secrets_cfg and secrets_cfg[env_key]:
+            return str(secrets_cfg[env_key])
+        lowered_env_key = env_key.lower()
+        if lowered_env_key in secrets_cfg and secrets_cfg[lowered_env_key]:
+            return str(secrets_cfg[lowered_env_key])
         return os.getenv(env_key, "") or ""
     return ""
 
@@ -37,23 +46,60 @@ def _pick_id(config: Dict[str, Any], key: str, env_key: Optional[str] = None) ->
 @st.cache_resource(show_spinner=False)
 def get_notion_repo() -> Optional[NotionRepo]:
     config = load_config()
-    return init_notion_repo(
-        session_db_id=_pick_id(config, "ice_sessions_db_id")
+    repo = init_notion_repo(
+        session_db_id=_pick_id(config, "ice_sessions_db_id", "ICE_SESSIONS_DB_ID")
         or _pick_id(config, "sessions_db_id")
         or _pick_id(config, "sessions"),
-        players_db_id=_pick_id(config, "ice_players_db_id")
+        players_db_id=_pick_id(config, "ice_players_db_id", "ICE_PLAYERS_DB_ID")
         or _pick_id(config, "players"),
-        statements_db_id=_pick_id(config, "ice_statements_db_id")
+        statements_db_id=_pick_id(config, "ice_statements_db_id", "ICE_STATEMENTS_DB_ID")
         or _pick_id(config, "statements"),
-        responses_db_id=_pick_id(config, "ice_responses_db_id")
+        responses_db_id=_pick_id(config, "ice_responses_db_id", "ICE_RESPONSES_DB_ID")
         or _pick_id(config, "responses"),
-        questions_db_id=_pick_id(config, "ice_questions_db_id")
+        questions_db_id=_pick_id(config, "ice_questions_db_id", "ICE_QUESTIONS_DB_ID")
         or _pick_id(config, "questions"),
-        moderation_votes_db_id=_pick_id(config, "ice_moderation_votes_db_id")
+        moderation_votes_db_id=_pick_id(
+            config, "ice_moderation_votes_db_id", "ICE_VOTES_DB_ID"
+        )
         or _pick_id(config, "moderation_votes"),
-        decisions_db_id=_pick_id(config, "ice_decisions_db_id")
+        decisions_db_id=_pick_id(config, "ice_decisions_db_id", "ICE_DECISIONS_DB_ID")
         or _pick_id(config, "decisions"),
+        highlights_db_id=_pick_id(config, "ice_highlights_db_id", "ICE_HIGHLIGHTS_DB_ID")
+        or _pick_id(config, "highlights"),
     )
+    if repo and (not hasattr(repo, "list_decisions") or not hasattr(repo, "upsert_highlight")):
+        reset_notion_repo_cache()
+        repo = init_notion_repo(
+            session_db_id=_pick_id(config, "ice_sessions_db_id", "ICE_SESSIONS_DB_ID")
+            or _pick_id(config, "sessions_db_id")
+            or _pick_id(config, "sessions"),
+            players_db_id=_pick_id(config, "ice_players_db_id", "ICE_PLAYERS_DB_ID")
+            or _pick_id(config, "players"),
+            statements_db_id=_pick_id(config, "ice_statements_db_id", "ICE_STATEMENTS_DB_ID")
+            or _pick_id(config, "statements"),
+            responses_db_id=_pick_id(config, "ice_responses_db_id", "ICE_RESPONSES_DB_ID")
+            or _pick_id(config, "responses"),
+            questions_db_id=_pick_id(config, "ice_questions_db_id", "ICE_QUESTIONS_DB_ID")
+            or _pick_id(config, "questions"),
+            moderation_votes_db_id=_pick_id(
+                config, "ice_moderation_votes_db_id", "ICE_VOTES_DB_ID"
+            )
+            or _pick_id(config, "moderation_votes"),
+            decisions_db_id=_pick_id(config, "ice_decisions_db_id", "ICE_DECISIONS_DB_ID")
+            or _pick_id(config, "decisions"),
+            highlights_db_id=_pick_id(
+                config, "ice_highlights_db_id", "ICE_HIGHLIGHTS_DB_ID"
+            )
+            or _pick_id(config, "highlights"),
+        )
+    return repo
+
+
+def reset_notion_repo_cache() -> None:
+    try:
+        get_notion_repo.clear()
+    except Exception:
+        pass
 
 
 def get_authenticator(repo: Optional[NotionRepo]) -> AuthenticateWithKey:

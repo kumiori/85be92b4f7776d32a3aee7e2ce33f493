@@ -10,7 +10,18 @@ from infra.app_state import (
     set_session,
     mint_anon_token,
 )
-from ui import apply_theme, heading, microcopy, set_page, sidebar_debug_state
+from infra.cryosphere_cracks import CRYOSPHERE_CRACKS, cryosphere_crack_points
+
+from ui import (
+    apply_theme,
+    heading,
+    microcopy,
+    set_page,
+    sidebar_debug_state,
+    cracks_globe_block,
+    display_centered_prompt,
+    render_info_block,
+)
 
 
 def main() -> None:
@@ -20,7 +31,40 @@ def main() -> None:
     sidebar_debug_state()
 
     heading("Welcome")
+    cracks_globe_block(
+        cryosphere_crack_points(),
+        height=600,
+        key="home-header-cracks",
+        auto_rotate_speed=1.8,
+    )
     microcopy("Enter your access token, emoji tail, or passphrase.")
+
+    display_centered_prompt("Subject to change.")
+    st.markdown(
+        """
+We map where fracture signals concentrate, where flow accelerates, and where instability becomes visible.
+This is a live orientation layer before entering the session lobby.
+        """
+    )
+
+    locations_md = []
+    for category, entries in CRYOSPHERE_CRACKS.items():
+        regions = ", ".join(entry["Region"] for entry in entries)
+        locations_md.append(f"- **{category}**: {regions}")
+
+    render_info_block(
+        left_title="Cryosphere",
+        left_subtitle="major crack zones",
+        right_content="\n".join(
+            [
+                "### Major Cryosphere Crack Locations",
+                "",
+                "Below are the principal regions currently tracked in this prototype:",
+                "",
+                *locations_md,
+            ]
+        ),
+    )
 
     repo = get_notion_repo()
     authenticator = get_authenticator(repo)
@@ -34,7 +78,7 @@ def main() -> None:
     with st.expander("Mint access token"):
         st.caption("Create a single access token for a new collaborator.")
         mint_role = st.selectbox(
-            "Role", ["Contributor", "Admin"], index=0, key="mint-role"
+            "Role", ["Player", "Organiser"], index=0, key="mint-role"
         )
         mint_name = st.text_input("Display name (optional)", key="mint-name")
         if st.button("Mint token", type="secondary", use_container_width=True):
@@ -53,7 +97,9 @@ def main() -> None:
                 st.write("Emoji suffix 6:", payload.get("emoji", "")[-6:])
 
     if authentication_status:
-        st.info("We baked a cookie for you for 30 minutes. This keeps you signed in while you navigate.")
+        st.info(
+            "We baked a cookie for you for 30 minutes. This keeps you signed in while you navigate."
+        )
         session = get_active_session(repo)
         if session:
             set_session(session.get("id", ""), session.get("session_code", "Session"))
@@ -65,7 +111,7 @@ def main() -> None:
         )
         st.session_state["anon_token"] = anon_token
         st.success(f"Access granted for {name or 'collaborator'}.")
-        if st.button("Enter lobby", type="primary", use_container_width=True):
+        if st.button("Enter lobby", type="secondary", use_container_width=True):
             st.switch_page("pages/02_Home.py")
     elif authentication_status is False:
         st.error("Key invalid or ambiguous. Try full hash or more emoji.")

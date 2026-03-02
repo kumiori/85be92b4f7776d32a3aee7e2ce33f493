@@ -3,6 +3,7 @@ from __future__ import annotations
 import streamlit as st
 
 from infra.app_context import get_authenticator, get_notion_repo
+from infra.cryosphere_cracks import cryosphere_crack_points
 from infra.app_state import (
     ensure_auth,
     ensure_session_context,
@@ -10,7 +11,15 @@ from infra.app_state import (
     remember_access,
     require_login,
 )
-from ui import apply_theme, heading, microcopy, set_page, sidebar_debug_state
+from ui import (
+    apply_theme,
+    heading,
+    microcopy,
+    set_page,
+    sidebar_debug_state,
+    display_centered_prompt,
+    cracks_globe_block,
+)
 
 
 def main() -> None:
@@ -27,16 +36,32 @@ def main() -> None:
     heading("Session Lobby")
     session_title = st.session_state.get("session_title") or "Active session"
     microcopy(session_title)
+    cracks_globe_block(
+        cryosphere_crack_points(),
+        height=260,
+        key="home-header-cracks",
+        auto_rotate_speed=1.8,
+    )
 
+    display_centered_prompt("One key concept. With a <em>twist</em>.")
+
+    st.markdown(
+        """
+    ### irreversibility <br /> <small>/ˌɪr.ɪˌvɜː.səˈbɪ.lɪ.ti/</small>, <br /> <small>/ir-ih-ver-suh-BIL-ih-tee/</small> <br /> _ 
+    ### _(property.)_ Anchors action in the present, where choice _still_ exists. 
+    ### This space is where traces & decisions are made visible. _Then_ action follows. 
+    """,
+        unsafe_allow_html=True,
+    )
     st.write("Quick actions")
-    st.button("Ask a scientist", disabled=True, use_container_width=True)
-    if st.button("Decision experiment", use_container_width=True):
+    if st.button("Let's Decide", use_container_width=True):
         st.switch_page("pages/05_Decisions.py")
     if st.button("Coordination board", use_container_width=True):
         st.switch_page("pages/06_Coordination.py")
     if st.button("Live map", use_container_width=True):
         st.switch_page("pages/03_Resonance.py")
 
+    st.button("Ask a scientist", disabled=True, use_container_width=True)
     if st.session_state.get("authentication_status"):
         authenticator.logout(button_name="Logout", location="sidebar")
     if repo and st.session_state.get("session_id"):

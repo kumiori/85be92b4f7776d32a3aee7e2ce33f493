@@ -14,7 +14,7 @@ def set_page() -> None:
         page_title=settings.app_title,
         page_icon="🪶",
         layout="centered",
-        # initial_sidebar_state="collapsed",
+        initial_sidebar_state="collapsed",
     )
 
 
@@ -290,6 +290,8 @@ def viz_block(
 def sidebar_debug_state() -> None:
     from infra.app_context import reset_notion_repo_cache
 
+    if not settings.show_debug:
+        return
     with st.sidebar.expander("Debug · Session state", expanded=False):
         st.json({key: str(val) for key, val in st.session_state.items()})
         if st.button("Reset Notion cache"):
@@ -663,6 +665,106 @@ def morph3_block(
     )
 
 
+def cracks_globe_block(
+    points: list[dict[str, float | str]],
+    *,
+    height: int = 520,
+    key: str = "cracks-globe",
+    auto_rotate_speed: float = 2.6,
+) -> None:
+    safe_key = "".join(ch if ch.isalnum() else "-" for ch in key).strip("-") or "cracks"
+    globe_id = f"globe-{safe_key}"
+    tooltip_id = f"tooltip-{safe_key}"
+    points_json = json.dumps(points)
+    html = f"""
+<head>
+<style>
+  html, body {{
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: white;
+  }}
+  #{globe_id} {{
+    width: 100%;
+    height: 100%;
+    margin: 0 auto;
+  }}
+  #{tooltip_id} {{
+    position: absolute;
+    background: rgba(255, 255, 255, 0.94);
+    color: #111;
+    padding: 6px 8px;
+    border: 1px solid #d0d0d0;
+    border-radius: 4px;
+    display: none;
+    pointer-events: none;
+    font-size: 12px;
+    z-index: 5;
+  }}
+</style>
+<script src="https://unpkg.com/globe.gl"></script>
+<script src="https://unpkg.com/three"></script>
+<script src="https://unpkg.com/solar-calculator"></script>
+</head>
+<body>
+<div id="{globe_id}"></div>
+<div id="{tooltip_id}"></div>
+<script>
+  const cryosphereCracksData = {points_json};
+  const globeContainer = document.getElementById("{globe_id}");
+  const tooltip = document.getElementById("{tooltip_id}");
+
+  const globe = Globe()(globeContainer)
+    .globeImageUrl("https://unpkg.com/three-globe/example/img/earth-night.jpg")
+    .backgroundColor("rgb(255, 255, 255)")
+    .heatmapPointLat("lat")
+    .heatmapPointLng("lng")
+    .heatmapPointWeight("energy")
+    .heatmapBandwidth(1.9)
+    .heatmapColorSaturation(1.8)
+    .enablePointerInteraction(true)
+    .pointsData(cryosphereCracksData)
+    .pointLat(d => d.lat)
+    .pointLng(d => d.lng)
+    .pointAltitude(d => d.energy * 0.001)
+    .pointColor(() => "orange")
+    .pointRadius(0.5)
+    .onPointHover(d => {{
+      if (!tooltip) return;
+      if (d) {{
+        tooltip.style.display = "block";
+        tooltip.innerHTML = `<b>${{d.name}}</b><br>Energy: ${{d.energy}}`;
+      }} else {{
+        tooltip.style.display = "none";
+      }}
+    }});
+
+  globe.heatmapsData([cryosphereCracksData]);
+
+  const resizeGlobe = () => {{
+    globe.width(globeContainer.clientWidth);
+    globe.height(globeContainer.clientHeight);
+  }};
+  resizeGlobe();
+
+  window.addEventListener("resize", resizeGlobe);
+  window.addEventListener("mousemove", (e) => {{
+    if (!tooltip || tooltip.style.display === "none") return;
+    tooltip.style.left = (e.clientX + 12) + "px";
+    tooltip.style.top = (e.clientY + 12) + "px";
+  }});
+
+  globe.controls().autoRotate = true;
+  globe.controls().autoRotateSpeed = {auto_rotate_speed};
+</script>
+</body>
+    """
+    st.components.v1.html(html, height=height, scrolling=False)
+
+
 def render_info_block(left_title: str, left_subtitle: str, right_content: str):
     """
     Displays a two-column section with:
@@ -686,9 +788,9 @@ def display_centered_prompt(prompt: str = "What would you like to see?"):
     st.markdown(
         f""" 
         <div style="display: flex; align-items: center; justify-content: center; margin: 2em 0;">
-        <hr style="flex: 1; border: none; height: 1px; background-color: #fff;">
+        <hr style="flex: 1; border: none; height: 1px; background-color: #000;">
         <span style="margin: 0 1rem; font-family: 'Georgia', serif; font-size: 2.5rem;">{prompt}</span>
-        <hr style="flex: 1; border: none; height: 1px; background-color: #fff;">
+        <hr style="flex: 1; border: none; height: 1px; background-color: #000;">
         </div>
         """,
         unsafe_allow_html=True,
