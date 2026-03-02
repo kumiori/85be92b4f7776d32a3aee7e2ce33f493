@@ -1,8 +1,15 @@
 from __future__ import annotations
 
+import hashlib
+
 import streamlit as st
 
-from infra.app_context import get_active_session, get_authenticator, get_notion_repo
+from infra.app_context import (
+    get_active_session,
+    get_authenticator,
+    get_auth_runtime_config,
+    get_notion_repo,
+)
 from infra.app_state import (
     ensure_auth,
     ensure_session_state,
@@ -68,6 +75,22 @@ This is a live orientation layer before entering the session lobby.
 
     repo = get_notion_repo()
     authenticator = get_authenticator(repo)
+    auth_cfg = get_auth_runtime_config()
+    key_hash_prefix = hashlib.sha256(
+        auth_cfg["cookie_key"].encode("utf-8")
+    ).hexdigest()[:12]
+
+    with st.expander("Debug: Auth cookie", expanded=False):
+        st.code(
+            (
+                f"cookie_source={auth_cfg['source']}\n"
+                f"cookie_name={auth_cfg['cookie_name']}\n"
+                f"cookie_expiry_days={auth_cfg['cookie_expiry_days']}\n"
+                f"cookie_key_len={len(auth_cfg['cookie_key'])}\n"
+                f"cookie_key_sha256_prefix={key_hash_prefix}\n"
+                f"default_session_code={auth_cfg['default_session_code']}"
+            )
+        )
 
     name, authentication_status, _ = ensure_auth(
         authenticator, callback=remember_access, key="access-key-login", location="main"

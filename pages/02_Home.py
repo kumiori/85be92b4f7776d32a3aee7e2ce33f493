@@ -43,16 +43,6 @@ def main() -> None:
         auto_rotate_speed=1.8,
     )
 
-    display_centered_prompt("One key. And a <em>twist</em>.")
-
-    st.markdown(
-        """
-    ### irreversibility <br /> <small>/ˌɪr.ɪˌvɜː.səˈbɪ.lɪ.ti/</small>, <br /> <small>/ir-ih-ver-suh-BIL-ih-tee/</small> <br /> _ 
-    ### _(property.)_ Anchors action in the present, where choice _still_ exists. 
-    ### This space is where traces & decisions are made visible. _Then_ action follows. 
-    """,
-        unsafe_allow_html=True,
-    )
     st.write("Quick actions")
     if st.button("Let's Decide", use_container_width=True):
         st.switch_page("pages/05_Decisions.py")

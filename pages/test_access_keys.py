@@ -13,6 +13,7 @@ from yaml.loader import SafeLoader
 from infra.key_auth import AuthenticateWithKey
 from infra.key_codec import hex_to_emoji, hex_to_phrase, normalize_access_key
 from infra.notion_repo import NotionRepo, init_notion_repo
+from infra.app_context import get_auth_runtime_config
 
 CONFIG_PATH = Path(__file__).resolve().parents[1] / "config.yaml"
 DEFAULT_SESSION_CODE = st.secrets.get("notion", {}).get(
@@ -134,13 +135,14 @@ if not resolved_session_db_id or not resolved_players_db_id:
     st.stop()
 
 try:
+    auth_cfg = get_auth_runtime_config()
     authenticator = AuthenticateWithKey(
         config["credentials"],
-        config["cookie"]["name"],
-        config["cookie"]["key"],
-        config["cookie"]["expiry_days"],
+        auth_cfg["cookie_name"],
+        auth_cfg["cookie_key"],
+        auth_cfg["cookie_expiry_days"],
         notion_repo=notion_repo,
-        default_session_code=DEFAULT_SESSION_CODE,
+        default_session_code=auth_cfg["default_session_code"],
     )
 except Exception as exc:
     st.error(f"Authenticator init failed: {type(exc).__name__}: {exc}")

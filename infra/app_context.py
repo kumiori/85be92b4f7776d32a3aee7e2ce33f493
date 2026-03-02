@@ -69,22 +69,16 @@ def reset_notion_repo_cache() -> None:
 
 
 def get_authenticator(repo: Optional[NotionRepo]) -> AuthenticateWithKey:
+    auth_cfg = get_auth_runtime_config()
     config = load_config()
     credentials = config.get("credentials", {})
-    cookie = config.get("cookie", {})
-    notion_secrets = st.secrets.get("notion", {})
-    default_session_code = (
-        notion_secrets.get("default_session_code")
-        or config.get("default_session_code")
-        or "GLOBAL-SESSION"
-    )
     return AuthenticateWithKey(
         credentials,
-        cookie.get("name", "iceice-baby"),
-        cookie.get("key", "supersecret_cookie_key"),
-        cookie.get("expiry_days", 3),
+        auth_cfg["cookie_name"],
+        auth_cfg["cookie_key"],
+        auth_cfg["cookie_expiry_days"],
         notion_repo=repo,
-        default_session_code=default_session_code,
+        default_session_code=auth_cfg["default_session_code"],
     )
 
 
@@ -94,11 +88,37 @@ def get_active_session(repo: Optional[NotionRepo]) -> Optional[Dict[str, Any]]:
     active = repo.get_active_session()
     if active:
         return active
-    config = load_config()
-    notion_secrets = st.secrets.get("notion", {})
-    default_code = (
-        notion_secrets.get("default_session_code")
-        or config.get("default_session_code")
-        or "GLOBAL-SESSION"
-    )
+    default_code = get_auth_runtime_config()["default_session_code"]
     return repo.get_session_by_code(default_code)
+
+
+def get_auth_runtime_config() -> Dict[str, Any]:
+    cookie_cfg = st.secrets.get("cookie", {})
+    notion_secrets = st.secrets.get("notion", {})
+
+    cookie_name = str(cookie_cfg.get("name", "")).strip()
+    cookie_key = str(cookie_cfg.get("key", "")).strip()
+    expiry_raw = cookie_cfg.get("expiry_days")
+    default_session_code = str(
+        notion_secrets.get("default_session_code", "GLOBAL-SESSION")
+    ).strip() or "GLOBAL-SESSION"
+
+    try:
+        cookie_expiry_days = float(expiry_raw)
+    except Exception:
+        cookie_expiry_days = -1.0
+
+    if not cookie_name or not cookie_key or cookie_expiry_days <= 0:
+        st.error(
+            "Missing auth cookie secrets. Set st.secrets['cookie'] with keys: "
+            "'name', 'key', 'expiry_days'."
+        )
+        st.stop()
+
+    return {
+        "cookie_name": cookie_name,
+        "cookie_key": cookie_key,
+        "cookie_expiry_days": cookie_expiry_days,
+        "default_session_code": default_session_code,
+        "source": "st.secrets['cookie']",
+    }
