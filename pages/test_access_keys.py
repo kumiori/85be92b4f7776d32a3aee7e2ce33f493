@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import inspect
 from pathlib import Path
 import os
 from typing import Dict, Optional
 
 import streamlit as st
 import yaml
+from importlib.metadata import PackageNotFoundError, version
 from yaml.loader import SafeLoader
 
 
@@ -17,6 +19,15 @@ CONFIG_PATH = Path(__file__).resolve().parents[1] / "config.yaml"
 DEFAULT_SESSION_CODE = st.secrets.get("notion", {}).get(
     "default_session_code", "GLOBAL-SESSION"
 )
+
+
+def _pkg_version(name: str) -> str:
+    try:
+        return version(name)
+    except PackageNotFoundError:
+        return "not installed"
+    except Exception as exc:  # pragma: no cover
+        return f"error: {exc}"
 
 
 @st.cache_data(show_spinner=False)
@@ -42,38 +53,32 @@ except FileNotFoundError:
     st.error("config.yaml missing. Add it to the repo root and reload.")
     st.stop()
 
-notion_repo = init_notion_repo(
-    session_db_id=(
-        st.secrets.get("ICE_SESSIONS_DB_ID")
-        or st.secrets.get("notion", {}).get("ICE_SESSIONS_DB_ID")
-        or st.secrets.get("notion", {}).get("ice_sessions_db_id")
-        or st.secrets.get("notion", {}).get("sessions_db_id")
-        or st.secrets.get("notion", {}).get("sessions")
-        or os.getenv("ICE_SESSIONS_DB_ID", "")
-        or config.get("notion", {}).get("ice_sessions_db_id")
-        or config.get("notion", {}).get("sessions_db_id")
-        or config.get("notion", {}).get("sessions")
-    ),
-    players_db_id=(
-        st.secrets.get("ICE_PLAYERS_DB_ID")
-        or st.secrets.get("notion", {}).get("ICE_PLAYERS_DB_ID")
-        or st.secrets.get("notion", {}).get("ice_players_db_id")
-        or st.secrets.get("notion", {}).get("players_db_id")
-        or st.secrets.get("notion", {}).get("players")
-        or os.getenv("ICE_PLAYERS_DB_ID", "")
-        or config.get("notion", {}).get("ice_players_db_id")
-        or config.get("notion", {}).get("players_db_id")
-        or config.get("notion", {}).get("players")
-    ),
+resolved_session_db_id = (
+    st.secrets.get("ICE_SESSIONS_DB_ID")
+    or st.secrets.get("notion", {}).get("ICE_SESSIONS_DB_ID")
+    or st.secrets.get("notion", {}).get("ice_sessions_db_id")
+    or st.secrets.get("notion", {}).get("sessions_db_id")
+    or st.secrets.get("notion", {}).get("sessions")
+    or os.getenv("ICE_SESSIONS_DB_ID", "")
+    or config.get("notion", {}).get("ice_sessions_db_id")
+    or config.get("notion", {}).get("sessions_db_id")
+    or config.get("notion", {}).get("sessions")
+)
+resolved_players_db_id = (
+    st.secrets.get("ICE_PLAYERS_DB_ID")
+    or st.secrets.get("notion", {}).get("ICE_PLAYERS_DB_ID")
+    or st.secrets.get("notion", {}).get("ice_players_db_id")
+    or st.secrets.get("notion", {}).get("players_db_id")
+    or st.secrets.get("notion", {}).get("players")
+    or os.getenv("ICE_PLAYERS_DB_ID", "")
+    or config.get("notion", {}).get("ice_players_db_id")
+    or config.get("notion", {}).get("players_db_id")
+    or config.get("notion", {}).get("players")
 )
 
-authenticator = AuthenticateWithKey(
-    config["credentials"],
-    config["cookie"]["name"],
-    config["cookie"]["key"],
-    config["cookie"]["expiry_days"],
-    notion_repo=notion_repo,
-    default_session_code=DEFAULT_SESSION_CODE,
+notion_repo = init_notion_repo(
+    session_db_id=resolved_session_db_id,
+    players_db_id=resolved_players_db_id,
 )
 
 
@@ -92,6 +97,52 @@ def remember_access(payload: Dict) -> None:
 st.set_page_config(page_title="Access Keys · Idea Resonance", page_icon="🔑")
 st.title("🔑 Access Keys · Idea Resonance")
 st.caption("Mint or enter an access key, then jump straight into the idea round.")
+
+with st.expander("Debug: Notion connection", expanded=True):
+    st.write("Resolved IDs")
+    st.code(
+        (
+            f"ICE_SESSIONS_DB_ID={resolved_session_db_id or '<missing>'}\n"
+            f"ICE_PLAYERS_DB_ID={resolved_players_db_id or '<missing>'}"
+        )
+    )
+    st.write("Python package versions")
+    st.code(
+        (
+            f"streamlit={_pkg_version('streamlit')}\n"
+            f"notion-client={_pkg_version('notion-client')}\n"
+            f"streamlit-notion={_pkg_version('streamlit-notion')}\n"
+            f"streamlit-authenticator={_pkg_version('streamlit-authenticator')}"
+        )
+    )
+    if notion_repo:
+        client = notion_repo.client
+        databases_endpoint = getattr(client, "databases", None)
+        query_method = getattr(databases_endpoint, "query", None)
+        st.code(
+            (
+                f"client_type={type(client).__module__}.{type(client).__name__}\n"
+                f"databases_endpoint_type={type(databases_endpoint).__module__}.{type(databases_endpoint).__name__ if databases_endpoint else 'None'}\n"
+                f"has_databases_query={bool(query_method)}\n"
+                f"query_signature={inspect.signature(query_method) if query_method else '<missing>'}"
+            )
+        )
+    else:
+        st.error("Notion repo could not be initialized.")
+
+try:
+    authenticator = AuthenticateWithKey(
+        config["credentials"],
+        config["cookie"]["name"],
+        config["cookie"]["key"],
+        config["cookie"]["expiry_days"],
+        notion_repo=notion_repo,
+        default_session_code=DEFAULT_SESSION_CODE,
+    )
+except Exception as exc:
+    st.error(f"Authenticator init failed: {type(exc).__name__}: {exc}")
+    st.exception(exc)
+    st.stop()
 
 name, authentication_status, username = authenticator.login(
     key="access-key-login", callback=remember_access
