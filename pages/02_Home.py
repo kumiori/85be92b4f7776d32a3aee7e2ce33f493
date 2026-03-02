@@ -43,7 +43,7 @@ def main() -> None:
         auto_rotate_speed=1.8,
     )
 
-    display_centered_prompt("One key concept. With a <em>twist</em>.")
+    display_centered_prompt("One key. And a <em>twist</em>.")
 
     st.markdown(
         """
