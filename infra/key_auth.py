@@ -242,8 +242,18 @@ class AuthenticateWithKey:
     ):
         container = st.sidebar if location == "sidebar" else st
         token = self.cookie_controller.get_cookie()
-        if token and not st.session_state.get("authentication_status"):
+        is_authenticated = bool(st.session_state.get("authentication_status"))
+        if token and not is_authenticated:
             self.auth_model.login(token.get("username", ""), callback=callback)
+            is_authenticated = bool(st.session_state.get("authentication_status"))
+
+        # If already authenticated (from cookie or prior submit), do not render login form again.
+        if is_authenticated:
+            return (
+                st.session_state.get("name"),
+                st.session_state.get("authentication_status"),
+                st.session_state.get("username"),
+            )
 
         with container.form(key):
             access_key = st.text_input("Access key").strip()
