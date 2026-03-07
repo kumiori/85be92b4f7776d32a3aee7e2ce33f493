@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+from datetime import datetime
 
 import streamlit as st
 
@@ -18,6 +19,7 @@ from infra.app_state import (
     mint_anon_token,
 )
 from infra.cryosphere_cracks import CRYOSPHERE_CRACKS, cryosphere_crack_points
+from infra.credentials_pdf import build_credentials_pdf
 
 from ui import (
     apply_theme,
@@ -38,14 +40,6 @@ def main() -> None:
     sidebar_debug_state()
 
     heading("Welcome")
-    cracks_globe_block(
-        cryosphere_crack_points(),
-        height=600,
-        key="home-header-cracks",
-        auto_rotate_speed=1.8,
-    )
-    microcopy("Enter your access token, emoji tail, or passphrase.")
-
     display_centered_prompt("Subject to change.")
     st.markdown(
         """
@@ -98,16 +92,37 @@ This is a live orientation layer before entering the session lobby.
     if authentication_status:
         authenticator.logout(button_name="Logout", location="sidebar")
 
-    with st.expander("Mint access token"):
-        st.caption("Create a single access token for a new collaborator.")
-        mint_role = st.selectbox(
-            "Role", ["Player", "Organiser"], index=0, key="mint-role"
+    open_mint = bool(st.session_state.pop("focus_mint_token", False))
+    with st.expander("Mint access token", expanded=open_mint):
+        st.caption(
+            "This interaction is designed to be anonymous. Your access key is personal and "
+            "must be stored securely. If you add an email, it is used only to send a credentials reminder."
         )
-        mint_name = st.text_input("Display name (optional)", key="mint-name")
-        if st.button("Mint token", type="secondary", use_container_width=True):
+        with st.form("mint-token-form"):
+            mint_name = st.text_input("Name or nickname", key="mint-name")
+            mint_intent = st.text_input(
+                "Short intent (optional)",
+                key="mint-intent",
+                max_chars=120,
+            )
+            mint_email = st.text_input(
+                "Email (optional, for credentials reminder)",
+                key="mint-email",
+            )
+            mint_submit = st.form_submit_button(
+                "Create Access Key",
+                type="primary",
+                use_container_width=True,
+            )
+        if mint_submit:
             try:
                 access_key, _, payload = authenticator.register_user(
-                    metadata={"name": mint_name, "role": mint_role}
+                    metadata={
+                        "name": mint_name,
+                        "intent": mint_intent,
+                        "email": mint_email,
+                        "role": "Player",
+                    }
                 )
             except Exception as exc:
                 st.error(f"Minting failed: {exc}")
@@ -118,6 +133,26 @@ This is a live orientation layer before entering the session lobby.
                 st.write("Phrase:", payload.get("phrase", "—"))
                 st.write("Emoji suffix 4:", payload.get("emoji", "")[-4:])
                 st.write("Emoji suffix 6:", payload.get("emoji", "")[-6:])
+
+                emoji_value = str(payload.get("emoji", ""))
+                pdf_bytes = build_credentials_pdf(
+                    access_key=str(access_key or ""),
+                    emoji=emoji_value,
+                    phrase=str(payload.get("phrase", "")),
+                    nickname=str(mint_name or ""),
+                    role="Player",
+                    title="Access Card",
+                )
+                filename = (
+                    f"iceicebaby-key-{datetime.now().strftime('%Y%m%d-%H%M%S')}.pdf"
+                )
+                st.download_button(
+                    "Download Access Card PDF",
+                    data=pdf_bytes,
+                    file_name=filename,
+                    mime="application/pdf",
+                    use_container_width=True,
+                )
 
     if authentication_status:
         st.info(
