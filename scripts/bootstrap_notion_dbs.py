@@ -21,26 +21,89 @@ def assert_env(name: str) -> str:
 
 
 def db_update(client: Client, db_id: str, properties: dict):
+    data_sources = getattr(client, "data_sources", None)
+    ds_update = getattr(data_sources, "update", None) if data_sources else None
+    if callable(ds_update):
+        ds_id = resolve_data_source_id(client, db_id)
+        return ds_update(data_source_id=ds_id, properties=properties)
     return client.databases.update(database_id=db_id, properties=properties)
 
 
 def db_retrieve(client: Client, db_id: str):
+    data_sources = getattr(client, "data_sources", None)
+    ds_retrieve = getattr(data_sources, "retrieve", None) if data_sources else None
+    if callable(ds_retrieve):
+        ds_id = resolve_data_source_id(client, db_id)
+        return ds_retrieve(data_source_id=ds_id)
     return client.databases.retrieve(database_id=db_id)
+
+
+def resolve_data_source_id(client: Client, db_or_ds_id: str) -> str:
+    data_sources = getattr(client, "data_sources", None)
+    ds_retrieve = getattr(data_sources, "retrieve", None) if data_sources else None
+    if callable(ds_retrieve):
+        try:
+            ds_retrieve(data_source_id=db_or_ds_id)
+            return db_or_ds_id
+        except Exception:
+            pass
+
+    db = client.databases.retrieve(database_id=db_or_ds_id)
+    data_sources_list = db.get("data_sources", []) if isinstance(db, dict) else []
+    if data_sources_list and isinstance(data_sources_list[0], dict):
+        ds_id = data_sources_list[0].get("id")
+        if ds_id:
+            return str(ds_id)
+    return db_or_ds_id
+
+
+def db_query(client: Client, db_id: str, **kwargs):
+    data_sources = getattr(client, "data_sources", None)
+    ds_query = getattr(data_sources, "query", None) if data_sources else None
+    if callable(ds_query):
+        ds_id = resolve_data_source_id(client, db_id)
+        return ds_query(data_source_id=ds_id, **kwargs)
+    return client.databases.query(database_id=db_id, **kwargs)
+
+
+def parent_for_collection(client: Client, db_id: str) -> dict:
+    data_sources = getattr(client, "data_sources", None)
+    if callable(getattr(data_sources, "query", None)):
+        return {"data_source_id": resolve_data_source_id(client, db_id)}
+    return {"database_id": db_id}
+
+
+def relation_spec(client: Client, target_db_id: str, synced_property_name: str) -> dict:
+    data_sources = getattr(client, "data_sources", None)
+    if callable(getattr(data_sources, "update", None)):
+        return {
+            "relation": {
+                "data_source_id": resolve_data_source_id(client, target_db_id),
+                "dual_property": {"synced_property_name": synced_property_name},
+            }
+        }
+    return {
+        "relation": {
+            "database_id": target_db_id,
+            "dual_property": {"synced_property_name": synced_property_name},
+        }
+    }
 
 
 def ensure_page_in_db_by_title(
     client: Client, db_id: str, title_prop: str, title_value: str, extra_props: dict
 ):
     # Query by title equals
-    res = client.databases.query(
-        database_id=db_id,
+    res = db_query(
+        client,
+        db_id,
         filter={"property": title_prop, "title": {"equals": title_value}},
     )
     if res.get("results"):
         return res["results"][0]["id"], False
 
     created = client.pages.create(
-        parent={"database_id": db_id},
+        parent=parent_for_collection(client, db_id),
         properties={
             title_prop: {"title": [{"type": "text", "text": {"content": title_value}}]},
             **extra_props,
@@ -137,7 +200,13 @@ def main():
         client,
         ICE_RESPONSES_DB_ID,
         properties={
-            "value": {"number": {"format": "number"}},
+            "value": {"rich_text": {}},
+            "value_label": {"rich_text": {}},
+            "score": {"number": {"format": "number"}},
+            "item_id": {"rich_text": {}},
+            "depth": {"number": {"format": "number"}},
+            "page_index": {"number": {"format": "number"}},
+            "submitted_at": {"date": {}},
             "level_label": {
                 "select": {
                     "options": [
@@ -151,6 +220,18 @@ def main():
             },
             "note": {"rich_text": {}},
             "created_at": {"date": {}},
+            "question_type": {
+                "select": {
+                    "options": [
+                        {"name": "single", "color": "blue"},
+                        {"name": "multi", "color": "purple"},
+                        {"name": "text", "color": "green"},
+                        {"name": "signal", "color": "orange"},
+                        {"name": "other", "color": "gray"},
+                    ]
+                }
+            },
+            "optional_text": {"rich_text": {}},
             # relations added below
         },
     )
@@ -240,103 +321,48 @@ def main():
         client,
         ICE_STATEMENTS_DB_ID,
         properties={
-            "session": {
-                "relation": {
-                    "database_id": ICE_SESSIONS_DB_ID,
-                    "dual_property": {"synced_property_name": "statements"},
-                }
-            }
+            "session": relation_spec(client, ICE_SESSIONS_DB_ID, "statements")
         },
     )
     db_update(
         client,
         ICE_RESPONSES_DB_ID,
         properties={
-            "session": {
-                "relation": {
-                    "database_id": ICE_SESSIONS_DB_ID,
-                    "dual_property": {"synced_property_name": "responses"},
-                }
-            },
-            "player": {
-                "relation": {
-                    "database_id": ICE_PLAYERS_DB_ID,
-                    "dual_property": {"synced_property_name": "responses"},
-                }
-            },
-            "statement": {
-                "relation": {
-                    "database_id": ICE_STATEMENTS_DB_ID,
-                    "dual_property": {"synced_property_name": "responses"},
-                }
-            },
+            "session": relation_spec(client, ICE_SESSIONS_DB_ID, "responses"),
+            "player": relation_spec(client, ICE_PLAYERS_DB_ID, "responses"),
+            "statement": relation_spec(client, ICE_STATEMENTS_DB_ID, "responses"),
         },
     )
     db_update(
         client,
         ICE_QUESTIONS_DB_ID,
         properties={
-            "session": {
-                "relation": {
-                    "database_id": ICE_SESSIONS_DB_ID,
-                    "dual_property": {"synced_property_name": "questions"},
-                }
-            },
-            "submitted_by": {
-                "relation": {
-                    "database_id": ICE_PLAYERS_DB_ID,
-                    "dual_property": {"synced_property_name": "questions_submitted"},
-                }
-            },
+            "session": relation_spec(client, ICE_SESSIONS_DB_ID, "questions"),
+            "submitted_by": relation_spec(client, ICE_PLAYERS_DB_ID, "questions_submitted"),
         },
     )
     db_update(
         client,
         ICE_VOTES_DB_ID,
         properties={
-            "session": {
-                "relation": {
-                    "database_id": ICE_SESSIONS_DB_ID,
-                    "dual_property": {"synced_property_name": "moderation_votes"},
-                }
-            },
-            "question": {
-                "relation": {
-                    "database_id": ICE_QUESTIONS_DB_ID,
-                    "dual_property": {"synced_property_name": "moderation_votes"},
-                }
-            },
-            "voter": {
-                "relation": {
-                    "database_id": ICE_PLAYERS_DB_ID,
-                    "dual_property": {"synced_property_name": "moderation_votes"},
-                }
-            },
+            "session": relation_spec(client, ICE_SESSIONS_DB_ID, "moderation_votes"),
+            "question": relation_spec(client, ICE_QUESTIONS_DB_ID, "moderation_votes"),
+            "voter": relation_spec(client, ICE_PLAYERS_DB_ID, "moderation_votes"),
         },
     )
     db_update(
         client,
         ICE_DECISIONS_DB_ID,
         properties={
-            "session": {
-                "relation": {
-                    "database_id": ICE_SESSIONS_DB_ID,
-                    "dual_property": {"synced_property_name": "decisions"},
-                }
-            },
-            "player": {
-                "relation": {
-                    "database_id": ICE_PLAYERS_DB_ID,
-                    "dual_property": {"synced_property_name": "decisions"},
-                }
-            },
+            "session": relation_spec(client, ICE_SESSIONS_DB_ID, "decisions"),
+            "player": relation_spec(client, ICE_PLAYERS_DB_ID, "decisions"),
         },
     )
     # --- 9) Seed GLOBAL-SESSION
     # Need the actual title property name in ice_Sessions ("Title" vs "Name")
     sessions_db = db_retrieve(client, ICE_SESSIONS_DB_ID)
     title_prop = None
-    for prop_name, prop in sessions_db["properties"].items():
+    for prop_name, prop in sessions_db.get("properties", {}).items():
         if prop["type"] == "title":
             title_prop = prop_name
             break

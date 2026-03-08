@@ -30,6 +30,7 @@ def _render_intro() -> None:
     st.markdown(
         """
 ### Developed for the World Day for Glaciers at UNESCO, within the Decade of Action for Cryospheric Sciences (2024-2035).
+#### TODAY WE COMMUNICATE WITH ARTS, PHOTOGRAPHY, LITERATURE, POETRY, and SOUND.
 """
     )
     st.markdown(
@@ -69,7 +70,7 @@ def _render_access_cta() -> None:
     display_centered_prompt("Access")
     st.markdown(
         """
-### During this session, participants contribute observations, responses, and interpretations in real time.
+### During this session, ...
 """,
         unsafe_allow_html=True,
     )
@@ -138,6 +139,7 @@ def _render_mint_panel(authenticator: Any) -> None:
             "This interaction is designed to be anonymous. Your access key is personal and "
             "must be stored securely. If you add an email, it is used only to send a credentials reminder."
         )
+        st.markdown("### Now login with your access key to join the lobby")
         with st.form("splash-mint-token-form"):
             mint_name = st.text_input("Name or nickname", key="splash-mint-name")
             mint_intent = st.text_input(
