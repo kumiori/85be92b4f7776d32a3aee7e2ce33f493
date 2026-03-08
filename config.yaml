@@ -33,3 +33,12 @@ auth:
         step_k: 2
         max_k: 10
     player_status_active_value: 'active'
+
+overview:
+    active_user_window_minutes: 10
+    default_session_slug: "global-session"
+    show_debug_json: true
+
+presence:
+    enabled: true
+    update_last_seen_on_interaction: true

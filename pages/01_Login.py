@@ -25,6 +25,7 @@ from repositories.base import InteractionRepository
 from repositories.interaction_repo import (
     NotionInteractionRepository,
 )
+from services.presence import touch_player_presence
 
 from ui import (
     apply_theme,
@@ -42,9 +43,9 @@ PRE_LOBBY_RADIO_IDS = {"COLLABORATION_READINESS", "PERSONAL_AGENCY"}
 PRE_SIGNAL_TEXT_ID = "pre_lobby_signal_v0"
 PRE_LOBBY_MODULE_TEXT_ID = "pre_lobby_module_v1"
 PRE_SIGNAL_SCORE = {
-    "Yes — continue": 1,
-    "Maybe — depending upon conditions": 0,
-    "No — stop here": -1,
+    "Yes — we need to develop collective dynamics": 1,
+    "Maybe — depending on conditions": 0,
+    "No — for other reasons, stop here": -1,
 }
 
 
@@ -60,7 +61,7 @@ def _build_interaction_repository(notion_repo) -> tuple[InteractionRepository, s
     )
     if not db_id:
         raise ValueError(
-            "Missing Notion secret in [notion]: ice_interaction_responses_db_id or ice_responses_db_id"
+            "Missing Database secret in [notion]: ice_interaction_responses_db_id or ice_responses_db_id"
         )
     return NotionInteractionRepository(notion_repo, str(db_id)), "notion"
 
@@ -87,6 +88,7 @@ Room XXX, 4pm, March 19, 2026. Organised by: ______, ______, ______, ______, and
         """
 ### Transitions in nature rarely announce themselves clearly. Signals accumulate. Tensions build, energy stores. Then systems shift. 
 #### Understanding these transitions is a scientific challenge. Acting through them is a collective one.
+### To act in the decade Decade of Action for Cryospheric Sciences (2025–2034) // of irreversible transitions, we need new languages and new coordination experiments.
         """
     )
 
@@ -100,10 +102,7 @@ Room XXX, 4pm, March 19, 2026. Organised by: ______, ______, ______, ______, and
         left_subtitle="collective experiment",
         right_content="\n".join(
             [
-                "To act in a decade of irreversible transitions,",
-                "we need new languages and new coordination experiments.",
-                "",
-                "New problems require new forms of interaction.",
+                "New problems require new forms of interaction. Today we speak through the arts and sciences.",
                 "",
                 "This platform explores how groups perceive signals,",
                 "exchange interpretations, and form decisions together.",
@@ -173,6 +172,16 @@ Room XXX, 4pm, March 19, 2026. Organised by: ______, ______, ______, ______, and
 
     if authentication_status:
         display_name = name or st.session_state.get("player_name") or "collaborator"
+        prev_auth = st.session_state.get("_prev_auth_status")
+        if prev_auth is not True:
+            ok, err = touch_player_presence(
+                str(st.session_state.get("player_page_id", "")),
+                page="login",
+                session_slug=str(st.session_state.get("session_label", "")),
+            )
+            if not ok:
+                st.toast(f"Presence update failed: {err}", icon="⚠️")
+        st.session_state["_prev_auth_status"] = True
         st.success(f"Authentication status: LOGGED IN")
         st.success(f"Hello {display_name}. You are already logged in.")
         st.info(
@@ -192,7 +201,7 @@ Room XXX, 4pm, March 19, 2026. Organised by: ______, ______, ______, ______, and
             storage_error = str(exc)
             st.error(
                 "Interaction storage is not available in Notion. "
-                f"Fix Notion settings/schema to proceed. Details: {storage_error}"
+                f"Fix Database settings/schema to proceed. Details: {storage_error}"
             )
         salt = st.secrets.get("anon_salt", "iceicebaby")
         anon_token = mint_anon_token(
@@ -203,7 +212,7 @@ Room XXX, 4pm, March 19, 2026. Organised by: ______, ______, ______, ______, and
         st.session_state["anon_token"] = anon_token
 
         pre_lobby_depth = st.slider(
-            "Pre-lobby depth",
+            "Ice-breaker depth",
             min_value=0,
             max_value=5,
             value=1,
@@ -227,7 +236,7 @@ Room XXX, 4pm, March 19, 2026. Organised by: ______, ______, ______, ______, and
 
         if pre_lobby_questions:
             st.markdown("---")
-            st.subheader("Pre-lobby signal module")
+            st.subheader("Ice-breaker")
             st.caption(
                 "Depth 0 = collective entry signal. Depth 1–5 = emotional perception and interpretation."
             )
@@ -252,11 +261,20 @@ Room XXX, 4pm, March 19, 2026. Organised by: ______, ______, ______, ______, and
                 if isinstance(choice_val, list):
                     return len(choice_val) > 0
                 return str(choice_val or "").strip() != ""
+            
+            def _signal_score(choice_val: str | list[str]) -> int | None:
+                if not isinstance(choice_val, str):
+                    return None
+                txt = choice_val.strip().lower()
+                if txt.startswith("yes"):
+                    return 1
+                if txt.startswith("no"):
+                    return -1
+                if "maybe" in txt:
+                    return 0
+                return None
 
             total = len(pre_lobby_questions)
-            answered = sum(1 for q in pre_lobby_questions if _is_valid(q.id))
-            st.progress(answered / total if total else 0.0)
-            st.caption(f"Progress: {answered} / {total} answered")
 
             idx = min(st.session_state.get(ui_idx_key, 0), max(total - 1, 0))
             st.session_state[ui_idx_key] = idx
@@ -303,16 +321,10 @@ Room XXX, 4pm, March 19, 2026. Organised by: ______, ______, ______, ______, and
             maybe_selected = False
             other_selected = False
             if isinstance(choice, list):
-                maybe_selected = (
-                    "Maybe — depending upon conditions" in choice
-                    or "Maybe — under certain conditions" in choice
-                )
+                maybe_selected = any("maybe" in str(x).lower() for x in choice)
                 other_selected = "Other" in choice
             else:
-                maybe_selected = choice in {
-                    "Maybe — depending upon conditions",
-                    "Maybe — under certain conditions",
-                }
+                maybe_selected = "maybe" in str(choice).lower()
                 other_selected = choice == "Other"
 
             if q.show_text_field and (maybe_selected or other_selected):
@@ -324,9 +336,7 @@ Room XXX, 4pm, March 19, 2026. Organised by: ______, ______, ______, ______, and
                 )
             answers[q.id] = {
                 "choice": choice,
-                "score": PRE_SIGNAL_SCORE.get(choice)
-                if q.id == PRE_SIGNAL_ID and isinstance(choice, str)
-                else None,
+                "score": _signal_score(choice) if q.id == PRE_SIGNAL_ID else None,
                 "comment": comment.strip(),
                 "type": "pre_signal" if q.depth == 0 else "pre_lobby",
                 "question_type": "signal"
@@ -336,6 +346,9 @@ Room XXX, 4pm, March 19, 2026. Organised by: ______, ______, ______, ______, and
                 "depth": q.depth,
             }
             st.session_state[ui_answers_key] = answers
+            answered = sum(1 for item in pre_lobby_questions if _is_valid(item.id))
+            st.progress(answered / total if total else 0.0)
+            st.caption(f"Path: {answered} / {total} answered")
 
             back_col, next_col, submit_col = st.columns(3)
             with back_col:
@@ -358,12 +371,10 @@ Room XXX, 4pm, March 19, 2026. Organised by: ______, ______, ______, ______, and
                     st.rerun()
             with submit_col:
                 submit_module = st.button(
-                    "Send signal module",
+                    "Send signal again" if pre_signal_submitted else "Send signal",
                     type="primary",
                     use_container_width=True,
-                    disabled=idx != total - 1
-                    or answered < total
-                    or pre_signal_submitted,
+                    disabled=idx != total - 1 or answered < total,
                     key="pre-lobby-submit",
                 )
 
@@ -372,7 +383,7 @@ Room XXX, 4pm, March 19, 2026. Organised by: ______, ______, ______, ______, and
                     st.error("No active session found. Please refresh and try again.")
                 elif not signal_repo:
                     st.error(
-                        "Responses could not be saved because Notion interaction storage is unavailable."
+                        "Responses could not be saved because Database interaction storage is unavailable."
                     )
                 else:
                     for item in pre_lobby_questions:
@@ -386,15 +397,30 @@ Room XXX, 4pm, March 19, 2026. Organised by: ______, ______, ______, ______, and
                             else PRE_SIGNAL_TEXT_ID,
                             device_id=anon_token,
                         )
+                    # Presence heartbeat for "choices submitted" event.
+                    ok, err = touch_player_presence(
+                        str(player_page_id or ""),
+                        page="choices_submit",
+                        session_slug=str(st.session_state.get("session_label", "")),
+                    )
+                    if not ok:
+                        st.toast(f"Presence update failed: {err}", icon="⚠️")
                     st.session_state[module_done_key] = True
                     pre_signal_submitted = True
-                    st.success(f"Signal module recorded ({signal_backend}).")
+                    st.success(f"✨ Signal recorded.")
         if st.button(
             "Enter lobby",
             type="secondary",
             use_container_width=True,
             disabled=not pre_signal_submitted,
         ):
+            ok, err = touch_player_presence(
+                str(player_page_id or ""),
+                page="enter_lobby",
+                session_slug=str(st.session_state.get("session_label", "")),
+            )
+            if not ok:
+                st.toast(f"Presence update failed: {err}", icon="⚠️")
             st.switch_page("pages/02_Home.py")
         if not pre_signal_submitted:
             st.warning(
@@ -402,10 +428,10 @@ Room XXX, 4pm, March 19, 2026. Organised by: ______, ______, ______, ______, and
             )
         authenticator.logout(button_name="Logout", location="main")
     elif authentication_status is False:
-        st.error("Authentication status: INVALID KEY")
-        st.error("Key invalid or ambiguous. Try full hash or more emoji.")
+        st.session_state["_prev_auth_status"] = False
     else:
-        st.info("Authentication status: NOT LOGGED IN")
+        st.session_state["_prev_auth_status"] = None
+        st.info("Authentication status: Offline")
         st.caption("Use the access key form above to log in.")
 
 

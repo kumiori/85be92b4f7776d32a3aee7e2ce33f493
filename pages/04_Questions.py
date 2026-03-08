@@ -34,10 +34,12 @@ def main() -> None:
         authenticator.logout(button_name="Logout", location="sidebar")
     session_id = st.session_state.get("session_id")
     player_page_id = st.session_state.get("player_page_id")
-    role = st.session_state.get("player_role", "Contributor")
+    role = st.session_state.get("player_role", "None")
 
     heading("Question Harvest")
-    microcopy("Submit a bite-sized question for the session. Admins can list items in the queue.")
+    microcopy(
+        "Submit a bite-sized question for the session. Admins can list items in the queue."
+    )
 
     if not repo or not session_id or not player_page_id:
         st.error("Missing session or player context.")

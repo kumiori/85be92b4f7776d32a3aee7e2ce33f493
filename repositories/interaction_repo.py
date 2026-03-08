@@ -287,6 +287,7 @@ class NotionInteractionRepository(InteractionRepository):
         submitted_prop = self._find_prop("submitted_at", "date")
         created_prop = self._find_prop("created_at", "date")
         text_prop = self._find_prop("text_id", "rich_text")
+        device_prop = self._find_prop("device_id", "rich_text")
         player_prop = self._find_prop("player", "relation")
         if not session_prop or not item_prop or not value_json_prop:
             return []
@@ -332,6 +333,7 @@ class NotionInteractionRepository(InteractionRepository):
                     score = score_val.get("number")
                 out.append(
                     {
+                        "response_id": page.get("id"),
                         "session_id": session_id,
                         "player_id": player_ids[0] if player_ids else None,
                         "item_id": _extract_rich_text(props, item_prop),
@@ -341,6 +343,7 @@ class NotionInteractionRepository(InteractionRepository):
                         "question_type": _extract_select_name(props, question_type_prop) if question_type_prop else "",
                         "score": score,
                         "text_id": _extract_rich_text(props, text_prop) if text_prop else "",
+                        "device_id": _extract_rich_text(props, device_prop) if device_prop else "",
                         "created_at": submitted or created or page.get("created_time"),
                     }
                 )

@@ -44,14 +44,16 @@ def main() -> None:
     )
 
     st.write("Quick actions")
-    if st.button("Let's Decide", use_container_width=True):
-        st.switch_page("pages/05_Decisions.py")
-    if st.button("Coordination board", use_container_width=True):
-        st.switch_page("pages/06_Coordination.py")
+    st.button("Session 1", disabled=True, use_container_width=True)
+    st.button("Session 2", disabled=True, use_container_width=True)
+    st.button("Session 3", disabled=True, use_container_width=True)
+
     if st.button("Live map", use_container_width=True):
-        st.switch_page("pages/03_Resonance.py")
+        st.switch_page("pages/10_Fracture.py")
 
     st.button("Ask a scientist", disabled=True, use_container_width=True)
+    if st.button("Coordination board", use_container_width=True):
+        st.switch_page("pages/06_Coordination.py")
     if st.session_state.get("authentication_status"):
         authenticator.logout(button_name="Logout", location="sidebar")
     if repo and st.session_state.get("session_id"):

@@ -16,6 +16,14 @@ from infra.key_codec import (
 from infra.notion_repo import NotionRepo
 
 
+def _mint_trace(message: str) -> None:
+    for key in ("splash_mint_debug", "mint_debug_trace"):
+        trace = st.session_state.get(key)
+        if isinstance(trace, list):
+            trace.append(message)
+            st.session_state[key] = trace
+
+
 class AccessKeyAuthenticationModel:
     """Minimal authentication backend that treats Notion player IDs as access keys."""
 
@@ -88,12 +96,17 @@ class AccessKeyAuthenticationModel:
         metadata: Optional[Dict[str, str]] = None,
         callback: Optional[Callable[[Dict], None]] = None,
     ) -> Tuple[Optional[str], Optional[str], Optional[Dict]]:
+        _mint_trace("register_user:start")
         if not self.repo or not self.session_id:
+            _mint_trace("register_user:error:repo_or_session_missing")
             raise RegisterError(
                 "Notion repository not configured; cannot mint new access keys."
             )
+        _mint_trace("register_user:generate_key")
         access_key = generate_hex_key()
+        _mint_trace("register_user:check_collision")
         if self._valid_access_key(access_key):
+            _mint_trace("register_user:error:collision")
             raise RegisterError("Collision detected; retry generating a new key.")
 
         nickname = ""
@@ -104,10 +117,12 @@ class AccessKeyAuthenticationModel:
             role = metadata.get("role") or role
             preferred_mode = metadata.get("mode")
 
+        _mint_trace("register_user:build_emoji_payload")
         emoji = hex_to_emoji(access_key)
         symbols = split_emoji_symbols(emoji)
         suffix4 = "".join(symbols[-4:]) if len(symbols) >= 4 else ""
         suffix6 = "".join(symbols[-6:]) if len(symbols) >= 6 else ""
+        _mint_trace("register_user:upsert_player:start")
         player = self.repo.upsert_player(
             session_id=self.session_id,
             player_id=access_key,
@@ -121,6 +136,7 @@ class AccessKeyAuthenticationModel:
             emoji_suffix_4=suffix4,
             emoji_suffix_6=suffix6,
         )
+        _mint_trace("register_user:upsert_player:done")
         payload: Dict[str, object] = {
             "player": player,
             "access_key": access_key,
@@ -129,7 +145,10 @@ class AccessKeyAuthenticationModel:
             "phrase": hex_to_phrase(access_key),
         }
         if callback:
+            _mint_trace("register_user:callback:start")
             callback(payload)
+            _mint_trace("register_user:callback:done")
+        _mint_trace("register_user:done")
         return access_key, access_key, payload
 
     def _valid_access_key(self, access_key: str) -> Optional[Dict]:
@@ -183,7 +202,7 @@ class AccessKeyAuthenticationModel:
                     payload = self._build_payload(record, normalized_key)
                     callback(payload)
                 return True
-        st.error("Key invalid or ambiguous. Try full hash or more emoji.")
+        # st.error("Key invalid or ambiguous. Try full hash or more emoji.")
         st.session_state["authentication_status"] = False
         return False
 
@@ -256,7 +275,7 @@ class AuthenticateWithKey:
             )
 
         with container.form(key):
-            access_key = st.text_input("Access key").strip()
+            access_key = st.text_input("Paste your 4️⃣-emoji access key").strip()
             submit = st.form_submit_button("Open with key 🔑")
         if submit:
             success = self.auth_model.login(access_key, callback=callback)
@@ -264,7 +283,9 @@ class AuthenticateWithKey:
                 self.cookie_controller.set_cookie()
                 st.toast("Access granted.")
             else:
-                st.error("Access key invalid.")
+                st.error(
+                    "Key invalid or ambiguous. Double check or try full hash or more emoji."
+                )
 
         return (
             st.session_state.get("name"),

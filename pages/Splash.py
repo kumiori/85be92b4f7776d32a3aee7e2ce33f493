@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+import time
 from typing import Any, Dict
 
 import streamlit as st
@@ -23,10 +24,17 @@ from ui import (
 
 MINT_RESULT_KEY = "splash_mint_result"
 OPEN_MINT_KEY = "focus_mint_token"
+MINT_DEBUG_KEY = "splash_mint_debug"
+MINT_DEBUG_TRACE_KEY = "mint_debug_trace"
 
 
 def _render_intro() -> None:
-    heading("Ice Ice Baby · Cryosphere Signals")
+    heading("<center>Cryosphere Signals</center>")
+    st.write("")
+    st.write(
+        f"### `CODENAME: Ice Ice Baby. The copy that follows is subject to change. Suggested listening: Computations - Kenn-Eerik, 2023`"
+    )
+
     st.markdown(
         """
 ### Developed for the World Day for Glaciers at UNESCO, within the Decade of Action for Cryospheric Sciences (2024-2035).
@@ -47,20 +55,22 @@ Room XXX, 4pm, March 19, 2026. Organised by: ______, ______, ______, ______, and
         camera_lng=10.0,
         camera_altitude=0.8,
     )
-    microcopy("Signals concentrate where the cryosphere is under stress.")
+    microcopy(
+        "Planet Earth at night. Signals concentrate where the cryosphere is under stress."
+    )
     display_centered_prompt("Something is happening now.")
     render_info_block(
         left_title="Why participate?",
         left_subtitle="signals · choices · transitions",
         right_content="\n".join(
             [
-                "### Glaciers, ice shelves, and frozen ground are _evolving_ systems.",
+                "### Glaciers, ice shelves, and frozen ground are _evolving_ systems. These systems speak many languages.",
                 # "#### Understanding their transitions is not about _tracking_ them.",
                 "",
                 "#### When systems approach thresholds, signals appear before they break.",
                 "#### Detecting them requires attention, interpretation, and collective judgement.",
                 "",
-                "#### This platform invites you to observe, respond, and interact. In real time.",
+                "#### This platform invites your observations, responses, and interactions. In real time.",
             ]
         ),
     )
@@ -70,11 +80,11 @@ def _render_access_cta() -> None:
     display_centered_prompt("Access")
     st.markdown(
         """
-### During this session, ...
+### This session ...
 """,
         unsafe_allow_html=True,
     )
-    st.markdown("#### To participate, each player enters using a unique access key.")
+    st.markdown("#### Each player enters using a unique access key.")
 
     col_login, col_create = st.columns(2)
 
@@ -132,18 +142,20 @@ def _build_mint_result(
 
 def _render_mint_panel(authenticator: Any) -> None:
     st.session_state.setdefault(MINT_RESULT_KEY, None)
+    st.session_state.setdefault(MINT_DEBUG_KEY, [])
+    st.session_state.setdefault(MINT_DEBUG_TRACE_KEY, [])
     open_mint = bool(st.session_state.pop(OPEN_MINT_KEY, False))
 
     with st.expander("Mint access token", expanded=open_mint):
         st.caption(
-            "This interaction is designed to be anonymous. Your access key is personal and "
+            "All sessions are designed to be anonymous. Your access key is personal and "
             "must be stored securely. If you add an email, it is used only to send a credentials reminder."
         )
         st.markdown("### Now login with your access key to join the lobby")
         with st.form("splash-mint-token-form"):
             mint_name = st.text_input("Name or nickname", key="splash-mint-name")
             mint_intent = st.text_input(
-                "Short intent (optional)",
+                "What is your motivation? (optional)",
                 key="splash-mint-intent",
                 max_chars=120,
             )
@@ -160,28 +172,79 @@ def _render_mint_panel(authenticator: Any) -> None:
         if not mint_submit:
             return
 
-        try:
-            access_key, _, payload = authenticator.register_user(
-                metadata={
-                    "name": mint_name,
-                    "intent": mint_intent,
-                    "email": mint_email,
-                    "role": "Player",
-                }
-            )
-        except Exception as exc:
-            st.error(f"Minting failed: {exc}")
-            return
+        debug_steps: list[str] = []
+        st.session_state[MINT_DEBUG_TRACE_KEY] = []
+        t0 = time.perf_counter()
+        debug_steps.append("submit_received")
+        with st.status("Minting access key...", expanded=True) as status:
+            status.update(label="Starting mint workflow", state="running")
+            try:
+                t1 = time.perf_counter()
+                status.update(
+                    label="Calling authenticator.register_user(...)",
+                    state="running",
+                )
+                access_key, _, payload = authenticator.register_user(
+                    metadata={
+                        "name": mint_name,
+                        "intent": mint_intent,
+                        "email": mint_email,
+                        "role": "Player",
+                    }
+                )
+                status.update(label="register_user returned", state="running")
+                debug_steps.append(
+                    f"register_user_done_ms={int((time.perf_counter() - t1) * 1000)}"
+                )
+            except Exception as exc:
+                status.update(label="Minting failed", state="error")
+                debug_steps.append(
+                    f"register_user_failed_ms={int((time.perf_counter() - t0) * 1000)}"
+                )
+                st.session_state[MINT_DEBUG_KEY] = debug_steps + st.session_state.get(
+                    MINT_DEBUG_TRACE_KEY, []
+                )
+                st.error(f"Minting failed: {exc}")
+                return
 
-        st.session_state[MINT_RESULT_KEY] = _build_mint_result(
-            access_key=str(access_key or ""),
-            payload=payload,
-            mint_name=mint_name,
+            try:
+                t2 = time.perf_counter()
+                status.update(label="Building PDF payload", state="running")
+                st.session_state[MINT_RESULT_KEY] = _build_mint_result(
+                    access_key=str(access_key or ""),
+                    payload=payload,
+                    mint_name=mint_name,
+                )
+                status.update(label="PDF payload built", state="running")
+                debug_steps.append(
+                    f"build_pdf_done_ms={int((time.perf_counter() - t2) * 1000)}"
+                )
+            except Exception as exc:
+                status.update(label="Minting failed at PDF step", state="error")
+                debug_steps.append(
+                    f"build_pdf_failed_ms={int((time.perf_counter() - t0) * 1000)}"
+                )
+                st.session_state[MINT_DEBUG_KEY] = debug_steps + st.session_state.get(
+                    MINT_DEBUG_TRACE_KEY, []
+                )
+                st.error(f"Minted but could not build PDF: {exc}")
+                return
+            status.update(label="Minting complete", state="complete")
+
+        debug_steps.append(f"total_ms={int((time.perf_counter() - t0) * 1000)}")
+        st.session_state[MINT_DEBUG_KEY] = debug_steps + st.session_state.get(
+            MINT_DEBUG_TRACE_KEY, []
         )
 
 
 def _render_mint_result() -> None:
     mint_result = st.session_state.get(MINT_RESULT_KEY)
+    mint_debug = st.session_state.get(MINT_DEBUG_KEY) or []
+    with st.sidebar.expander("Mint debug trace", expanded=False):
+        if mint_debug:
+            st.code("\n".join(str(step) for step in mint_debug))
+        else:
+            st.caption("No minting trace yet.")
     if not mint_result:
         return
 
@@ -192,7 +255,7 @@ def _render_mint_result() -> None:
         unsafe_allow_html=True,
     )
     st.caption(
-        "A long unique key has been generated. In most cases, these last 4 emoji are sufficient to log in. "
+        "A 22-emojis string unique key has been generated. In most cases, its last 4 emoji are sufficient to log in. "
         "Create a story around them to remember, or store the full key securely."
     )
     with st.expander("Show full credentials", expanded=False):

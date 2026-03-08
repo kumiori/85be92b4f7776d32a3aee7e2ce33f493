@@ -9,9 +9,9 @@ QUESTION_CATALOG: list[Question] = [
         prompt="Should we organise another event and continue the conversation?",
         qtype="pre_signal",
         options=[
-            "Yes — continue",
-            "Maybe — depending upon conditions",
-            "No — stop here",
+            "Yes — we need to develop collective dynamics",
+            "Maybe — depending on conditions",
+            "No — for other reasons, stop here",
         ],
         short_description=(
             "This first response sends a collective signal. "
@@ -88,7 +88,7 @@ QUESTION_CATALOG: list[Question] = [
         qtype="single",
         options=[
             "Yes — collaboration is possible",
-            "Maybe — under certain conditions",
+            "Maybe — depending upon conditions",
             "No — differences are too strong",
             "Other",
         ],
