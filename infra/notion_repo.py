@@ -108,8 +108,7 @@ def _clean_notion_id(value: Optional[str]) -> str:
     if compact:
         token = compact.group(1).lower()
         return (
-            f"{token[0:8]}-{token[8:12]}-{token[12:16]}-"
-            f"{token[16:20]}-{token[20:32]}"
+            f"{token[0:8]}-{token[8:12]}-{token[12:16]}-{token[16:20]}-{token[20:32]}"
         )
     return raw
 
@@ -187,7 +186,9 @@ def _cached_query(client: Client, database_id: str, **kwargs) -> Dict[str, Any]:
     if callable(ds_query):
         return _execute_with_retry(ds_query, data_source_id=db_id, **kwargs)
 
-    raise AttributeError("Notion client has no data_sources.query (requires notion-client 3.x)")
+    raise AttributeError(
+        "Notion client has no data_sources.query (requires notion-client 3.x)"
+    )
 
 
 @st.cache_data(ttl=5, show_spinner=False, hash_funcs=HASH_FUNCS)
@@ -205,7 +206,9 @@ def _cached_retrieve(client: Client, database_id: str) -> Dict[str, Any]:
     if callable(ds_retrieve):
         return _execute_with_retry(ds_retrieve, db_id)
 
-    raise AttributeError("Notion client has no data_sources.retrieve (requires notion-client 3.x)")
+    raise AttributeError(
+        "Notion client has no data_sources.retrieve (requires notion-client 3.x)"
+    )
 
 
 def _clear_query_cache():
@@ -275,12 +278,18 @@ class NotionRepo:
             }
         }
 
-    def _build_rich_text_chunks(self, name: str, value: str, chunk_size: int = 2000) -> Dict[str, Any]:
+    def _build_rich_text_chunks(
+        self, name: str, value: str, chunk_size: int = 2000
+    ) -> Dict[str, Any]:
         text = value or ""
-        chunks = [text[i : i + chunk_size] for i in range(0, len(text), chunk_size)] or [""]
+        chunks = [
+            text[i : i + chunk_size] for i in range(0, len(text), chunk_size)
+        ] or [""]
         return {
             name: {
-                "rich_text": [{"type": "text", "text": {"content": chunk}} for chunk in chunks],
+                "rich_text": [
+                    {"type": "text", "text": {"content": chunk}} for chunk in chunks
+                ],
             }
         }
 
@@ -307,9 +316,19 @@ class NotionRepo:
 
     def _normalize_select(self, props: Dict[str, Any], name: str) -> Optional[str]:
         value = props.get(name)
-        if value and value.get("type") == "select":
-            selected = value.get("select") or {}
-            return selected.get("name")
+        if not isinstance(value, dict):
+            return None
+        selected = value.get("select")
+        if isinstance(selected, dict):
+            selected_name = selected.get("name")
+            if selected_name:
+                return str(selected_name)
+        # Some Notion select-like fields are "status" typed.
+        status_val = value.get("status")
+        if isinstance(status_val, dict):
+            status_name = status_val.get("name")
+            if status_name:
+                return str(status_name)
         return None
 
     def _normalize_multi_select(self, props: Dict[str, Any], name: str) -> List[str]:
@@ -701,8 +720,6 @@ class NotionRepo:
         if self._prop_exists(db_id, "role"):
             role_prop = self._prop_name(db_id, "role", "select")
             props.update(self._build_select(role_prop, role))
-        elif self._prop_exists(db_id, "status"):
-            props.update(self._build_select("status", role))
 
         consent_prop = "consented" if self._prop_exists(db_id, "consented") else None
         if consent_prop:
@@ -776,12 +793,35 @@ class NotionRepo:
     ) -> Dict[str, Any]:
         db_id = self._players_db_id(players_db_id)
         props = page.get("properties", {})
-        if self._prop_exists(db_id, "access_key"):
-            pid_prop = self._prop_name(db_id, "access_key", "rich_text")
-        else:
-            pid_prop = self._prop_name(db_id, "player_id", "rich_text")
-        role_prop = self._prop_name(db_id, "role", "select")
-        session_prop = self._prop_name(db_id, "session", "relation")
+
+        def _extract_role_name(raw_props: Dict[str, Any]) -> Optional[str]:
+            role_value = raw_props.get("role")
+            if not isinstance(role_value, dict):
+                return None
+            select_obj = role_value.get("select")
+            if isinstance(select_obj, dict) and select_obj.get("name"):
+                return str(select_obj.get("name"))
+            status_obj = role_value.get("status")
+            if isinstance(status_obj, dict) and status_obj.get("name"):
+                return str(status_obj.get("name"))
+            return None
+
+        def _pick_prop_name(
+            candidates: List[str], fallback_type: Optional[str] = None
+        ) -> str:
+            for candidate in candidates:
+                if candidate in props:
+                    return candidate
+            for candidate in candidates:
+                if self._prop_exists(db_id, candidate):
+                    return candidate
+            if fallback_type:
+                return self._prop_name(db_id, candidates[0], fallback_type)
+            return candidates[0]
+
+        pid_prop = _pick_prop_name(["access_key", "player_id"], "rich_text")
+        role_prop = _pick_prop_name(["role"], "select")
+        session_prop = _pick_prop_name(["session"], "relation")
 
         nickname_val = ""
         if self._prop_exists(db_id, "nickname"):
@@ -795,7 +835,9 @@ class NotionRepo:
             "id": page.get("id"),
             "access_key": self._normalize_rich_text(props, pid_prop),
             "nickname": nickname_val,
-            "role": self._normalize_select(props, role_prop) or "Contributor",
+            "role": _extract_role_name(props)
+            or self._normalize_select(props, role_prop)
+            or "None",
             "session_ids": self._normalize_relation_ids(props, session_prop)
             if self._prop_exists(db_id, "session")
             else [],
@@ -827,13 +869,53 @@ class NotionRepo:
                 )
         if self._prop_exists(db_id, "preferred_mode"):
             player["preferred_mode"] = self._normalize_select(props, "preferred_mode")
+
+        # Some Notion query payloads can omit/reshape select properties.
+        # Re-read the page directly and trust that payload for role when available.
+        if player.get("id"):
+            try:
+                raw_page = _execute_with_retry(
+                    self.client.pages.retrieve, page_id=player["id"]
+                )
+                raw_props = (
+                    raw_page.get("properties", {}) if isinstance(raw_page, dict) else {}
+                )
+                direct_role = _extract_role_name(raw_props) or self._normalize_select(
+                    raw_props, "role"
+                )
+                if direct_role:
+                    player["role"] = direct_role
+            except Exception:
+                pass
         return player
 
     def get_player_by_id(
         self, player_id: str, players_db_id: Optional[str] = None
     ) -> Optional[Dict[str, Any]]:
         """Public accessor for a player lookup by UUID/access key."""
-        return self._find_player_by_id(player_id, players_db_id=players_db_id)
+        player = self._find_player_by_id(player_id, players_db_id=players_db_id)
+        if player:
+            return player
+        # Fallback: allow direct player page id lookups for session rehydration/debug.
+        if "-" in str(player_id):
+            db_id = self._players_db_id(players_db_id)
+            try:
+                page = _execute_with_retry(
+                    self.client.pages.retrieve, page_id=player_id
+                )
+                parent = page.get("parent", {}) if isinstance(page, dict) else {}
+                parent_db_id = _clean_notion_id(parent.get("database_id") or "")
+                parent_ds_id = _clean_notion_id(parent.get("data_source_id") or "")
+                resolved_db_id = _clean_notion_id(db_id)
+                resolved_ds_id = _resolve_data_source_id(self.client, db_id)
+                if (parent_db_id and parent_db_id != resolved_db_id) and (
+                    parent_ds_id and parent_ds_id != resolved_ds_id
+                ):
+                    return None
+                return self._normalize_player(page, players_db_id=db_id)
+            except Exception:
+                return None
+        return None
 
     # ---- Ideas -------------------------------------------------------
     def create_idea(
@@ -1704,7 +1786,9 @@ class NotionRepo:
         end_prop = self._prop_name(db_id, "end_char", "number")
         props: Dict[str, Any] = {}
 
-        props.update(self._build_title(title_prop, f"{text_id}:{start_char}-{end_char}"))
+        props.update(
+            self._build_title(title_prop, f"{text_id}:{start_char}-{end_char}")
+        )
         props.update(self._build_rich_text(text_id_prop, text_id))
         props.update(self._build_rich_text(selected_prop, selected_text))
         props.update(self._build_number(start_prop, start_char))
@@ -1763,9 +1847,13 @@ class NotionRepo:
         ]
         if player_id:
             if self._prop_exists(db_id, "player"):
-                filters.append({"property": "player", "relation": {"contains": player_id}})
+                filters.append(
+                    {"property": "player", "relation": {"contains": player_id}}
+                )
             elif self._prop_exists(db_id, "player_id"):
-                filters.append({"property": "player_id", "rich_text": {"equals": player_id}})
+                filters.append(
+                    {"property": "player_id", "rich_text": {"equals": player_id}}
+                )
 
         response = _cached_query(
             self.client,
@@ -1793,7 +1881,9 @@ class NotionRepo:
             text_prop = self._prop_name(db_id, "text_id", "rich_text")
             filters.append({"property": text_prop, "rich_text": {"equals": text_id}})
         if session_id and self._prop_exists(db_id, "session"):
-            filters.append({"property": "session", "relation": {"contains": session_id}})
+            filters.append(
+                {"property": "session", "relation": {"contains": session_id}}
+            )
 
         filter_payload: Optional[Dict[str, Any]] = None
         if len(filters) == 1:

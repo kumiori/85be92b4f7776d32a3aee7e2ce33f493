@@ -671,6 +671,9 @@ def cracks_globe_block(
     height: int = 520,
     key: str = "cracks-globe",
     auto_rotate_speed: float = 2.6,
+    camera_lat: float = 0.0,
+    camera_lng: float = 0.0,
+    camera_altitude: float = 1.2,
 ) -> None:
     safe_key = "".join(ch if ch.isalnum() else "-" for ch in key).strip("-") or "cracks"
     globe_id = f"globe-{safe_key}"
@@ -743,6 +746,11 @@ def cracks_globe_block(
     }});
 
   globe.heatmapsData([cryosphereCracksData]);
+  globe.pointOfView({{
+    lat: {camera_lat},
+    lng: {camera_lng},
+    altitude: {camera_altitude}
+  }}, 0);
 
   const resizeGlobe = () => {{
     globe.width(globeContainer.clientWidth);

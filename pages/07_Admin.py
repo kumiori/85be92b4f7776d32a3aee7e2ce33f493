@@ -70,8 +70,12 @@ def main() -> None:
     ensure_session_context(repo)
     require_login()
     sidebar_debug_state()
-
-    role = st.session_state.get("player_role", "Contributor")
+    st.sidebar.markdown(f"**Session ID:** {st.session_state.get('session_id', 'N/A')}")
+    # debug show session state in sidebar
+    st.sidebar.markdown("**Session State:**")
+    st.sidebar.json(st.session_state)
+    role = st.session_state.get("player_role", "None")
+    st.write(f"Your role: {role}")
     if not _is_admin(role):
         st.error("Admin access only.")
         return

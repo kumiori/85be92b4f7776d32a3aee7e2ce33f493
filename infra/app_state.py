@@ -7,11 +7,12 @@ import streamlit as st
 
 from infra.app_context import get_active_session
 
+
 def ensure_session_state() -> None:
     st.session_state.setdefault("player_page_id", "")
     st.session_state.setdefault("player_access_key", "")
     st.session_state.setdefault("player_name", "")
-    st.session_state.setdefault("player_role", "Contributor")
+    st.session_state.setdefault("player_role", "None")
     st.session_state.setdefault("session_id", "")
     st.session_state.setdefault("session_title", "")
     st.session_state.setdefault("anon_token", "")
@@ -25,8 +26,8 @@ def remember_access(payload: Dict) -> None:
         "access_key", ""
     )
     st.session_state["player_name"] = player.get("nickname") or "Collaborator"
-    status = player.get("status") or player.get("role") or "Contributor"
-    st.session_state["player_role"] = status
+    role_value = player.get("role") or "None"
+    st.session_state["player_role"] = str(role_value)
 
 
 def set_session(session_id: str, session_title: str) -> None:
@@ -51,7 +52,28 @@ def ensure_auth(
     key: str = "auto-login",
     location: str = "sidebar",
 ) -> Tuple[Optional[str], Optional[bool], Optional[str]]:
-    return authenticator.login(location=location, key=key, callback=callback)
+    name, auth_status, username = authenticator.login(
+        location=location, key=key, callback=callback
+    )
+    if auth_status:
+        auth_model = getattr(authenticator, "auth_model", None)
+        repo = getattr(auth_model, "repo", None) if auth_model else None
+        candidate_id = (
+            username
+            or st.session_state.get("player_access_key", "")
+            or st.session_state.get("player_page_id", "")
+        )
+        if repo and candidate_id:
+            player = repo.get_player_by_id(str(candidate_id))
+            if player:
+                remember_access(
+                    {
+                        "player": player,
+                        "access_key": player.get("access_key", "")
+                        or st.session_state.get("player_access_key", ""),
+                    }
+                )
+    return name, auth_status, username
 
 
 def ensure_session_context(repo) -> None:
