@@ -44,12 +44,12 @@ def main() -> None:
     )
 
     st.write("Quick actions")
-    st.button("Session 1", disabled=True, use_container_width=True)
-    st.button("Session 2", disabled=True, use_container_width=True)
-    st.button("Session 3", disabled=True, use_container_width=True)
+    st.button("Session 1 (live Thu 19 March)", disabled=True, use_container_width=True)
+    st.button("Session 2 (live Thu 19 March)", disabled=True, use_container_width=True)
+    st.button("Session 3 (live Thu 19 March)", disabled=True, use_container_width=True)
 
     if st.button("Live map", use_container_width=True):
-        st.switch_page("pages/10_Fracture.py")
+        st.switch_page("pages/08_Overview.py")
 
     st.button("Ask a scientist", disabled=True, use_container_width=True)
     if st.button("Coordination board", use_container_width=True):
