@@ -9,12 +9,30 @@ import streamlit as st
 from config import settings
 
 
+def _initial_sidebar_state() -> str:
+    ui_cfg = st.secrets.get("ui", {})
+    explicit = str(ui_cfg.get("sidebar_state", "")).strip().lower()
+    if explicit in {"expanded", "collapsed", "auto"}:
+        return explicit
+    visible_raw = ui_cfg.get("sidebar_visible")
+    if visible_raw is None:
+        return "expanded"
+    if isinstance(visible_raw, bool):
+        return "expanded" if visible_raw else "collapsed"
+    visible_txt = str(visible_raw).strip().lower()
+    if visible_txt in {"1", "true", "yes", "on"}:
+        return "expanded"
+    if visible_txt in {"0", "false", "no", "off"}:
+        return "collapsed"
+    return "expanded"
+
+
 def set_page() -> None:
     st.set_page_config(
         page_title=settings.app_title,
         page_icon="🪶",
         layout="centered",
-        initial_sidebar_state="expanded",
+        initial_sidebar_state=_initial_sidebar_state(),
     )
 
 

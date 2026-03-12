@@ -282,6 +282,17 @@ class AuthenticateWithKey:
                 "Prefilled with your newly minted 4-emoji key."
             )
 
+        st.markdown(
+            """
+<style>
+div[data-testid="stTextInput"] input {
+  font-size: 3em !important;
+  line-height: 1.1 !important;
+}
+</style>
+            """,
+            unsafe_allow_html=True,
+        )
         with container.form(key):
             access_key = st.text_input(
                 "Paste your 4️⃣-emoji access key",

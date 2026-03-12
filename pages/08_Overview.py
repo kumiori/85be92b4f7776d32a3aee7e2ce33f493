@@ -28,7 +28,7 @@ def main() -> None:
     window = int(overview_cfg.get("active_user_window_minutes", 10))
     show_debug_json = bool(overview_cfg.get("show_debug_json", True))
 
-    heading("Overview · Collective Mirror")
+    heading("Live Map of the Room")
     st.caption("Signals, momentum, distribution, convergence, hesitation.")
 
     repo = get_notion_repo()

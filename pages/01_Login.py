@@ -72,7 +72,7 @@ def main() -> None:
     ensure_session_state()
     sidebar_debug_state()
 
-    heading("Ice Ice Baby · Cryosphere Signals")
+    heading("<center>Glaciers, Listening to Society</center>")
     st.markdown(
         """
 ### Developed for the World Day for Glaciers at UNESCO, within the Decade of Action for Cryospheric Sciences (2024-2035).
@@ -111,7 +111,7 @@ Room XXX, 4pm, March 19, 2026. Organised by: ______, ______, ______, ______, and
             ]
         ),
     )
-    display_centered_prompt("The first signal is yours to send.")
+    display_centered_prompt("The first signal begins with you.")
     repo = get_notion_repo()
     authenticator = get_authenticator(repo)
     auth_cfg = get_auth_runtime_config()
@@ -181,11 +181,13 @@ Room XXX, 4pm, March 19, 2026. Organised by: ______, ______, ______, ______, and
             if not ok:
                 st.toast(f"Presence update failed: {err}", icon="⚠️")
         st.session_state["_prev_auth_status"] = True
-        st.success(f"Authentication status: LOGGED IN")
-        st.success(f"Hello {display_name}. You are already logged in.")
-        st.info(
-            "Your session cookie is active. You can continue directly to the lobby."
+        # st.success(f"Authentication status: LOGGED IN")
+        st.success(
+            f"Hello {display_name}. Before entering the lobby, we invite you to send a first signal."
         )
+        # st.info(
+        #     "Your session cookie is active. You can continue directly to the lobby."
+        # )
         session = get_active_session(repo)
         if session:
             set_session(session.get("id", ""), session.get("session_code", "Session"))
@@ -209,14 +211,22 @@ Room XXX, 4pm, March 19, 2026. Organised by: ______, ______, ______, ______, and
             salt,
         )
         st.session_state["anon_token"] = anon_token
-
+        st.markdown(
+            "### This opening module collects the room's first signals: how we arrive, how we feel, and whether we want to continue together."
+        )
+        st.markdown(
+            "#### A short path or a deeper one? You can select the depth of this first module using the slider below."
+        )
         pre_lobby_depth = st.slider(
-            "Ice-breaker depth",
+            "Depth controls how far you go.",
             min_value=0,
             max_value=5,
-            value=1,
+            value=0,
             step=1,
-            help="Depth 0 sends only the collective entry signal. Depth 1–5 adds emotional interpretation questions.",
+            help="Use the slider to keep the interaction minimal or to explore a few more questions before entering the lobby.",
+        )
+        st.markdown(
+            "At minimal depth (0), you are invited to respond to only one key question. Higher levels unlock a few more short questions on emotion and interpretation."
         )
         pre_lobby_questions = sorted(
             [
@@ -226,19 +236,37 @@ Room XXX, 4pm, March 19, 2026. Organised by: ______, ______, ______, ______, and
             ],
             key=lambda q: (q.depth, q.id),
         )
+        signal_count = sum(1 for q in pre_lobby_questions if q.depth == 0)
+        emotional_count = sum(1 for q in pre_lobby_questions if q.depth >= 1)
+        st.caption(
+            f"Selected depth [{pre_lobby_depth}]: includes "
+            f"{signal_count} signal question and {emotional_count} emotional question(s)."
+        )
         pre_lobby_signature = (
             f"{session_id}:{player_page_id}:{pre_lobby_depth}:"
             f"{','.join(q.id for q in pre_lobby_questions)}"
         )
         module_done_key = f"pre_lobby_submitted:{pre_lobby_signature}"
         pre_signal_submitted = bool(st.session_state.get(module_done_key, False))
+        depth_confirm_key = "pre_lobby_depth_confirm_sig"
+        depth_sig = f"{session_id}:{player_page_id}:{pre_lobby_depth}"
+        depth_confirmed = st.session_state.get(depth_confirm_key) == depth_sig
 
-        if pre_lobby_questions:
+        if pre_lobby_questions and not depth_confirmed:
             st.markdown("---")
-            st.subheader("Ice-breaker")
-            st.caption(
-                "Depth 0 = collective entry signal. Depth 1–5 = emotional perception and interpretation."
-            )
+            if st.button(
+                "Continue with selected depth",
+                type="secondary",
+                use_container_width=True,
+                key="pre-lobby-depth-continue",
+            ):
+                st.session_state[depth_confirm_key] = depth_sig
+                st.rerun()
+            st.info("Confirm depth first, then continue to the first question.")
+
+        if pre_lobby_questions and depth_confirmed:
+            st.markdown("---")
+            # st.subheader("Ice breaker")
 
             ui_sig_key = "pre_lobby_ui_sig"
             ui_idx_key = "pre_lobby_ui_idx"
@@ -347,7 +375,7 @@ Room XXX, 4pm, March 19, 2026. Organised by: ______, ______, ______, ______, and
             st.session_state[ui_answers_key] = answers
             answered = sum(1 for item in pre_lobby_questions if _is_valid(item.id))
             st.progress(answered / total if total else 0.0)
-            st.caption(f"Path: {answered} / {total} answered")
+            st.caption(f"Progress: {answered} / {total} answered")
 
             back_col, next_col, submit_col = st.columns(3)
             with back_col:
@@ -407,6 +435,7 @@ Room XXX, 4pm, March 19, 2026. Organised by: ______, ______, ______, ______, and
                     st.session_state[module_done_key] = True
                     pre_signal_submitted = True
                     st.success(f"✨ Signal recorded.")
+                    st.balloons()
         if st.button(
             "Enter lobby",
             type="secondary",
