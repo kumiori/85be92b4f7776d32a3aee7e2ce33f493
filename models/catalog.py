@@ -9,13 +9,13 @@ QUESTION_CATALOG: list[Question] = [
         prompt="Should we organise another event and continue the conversation?",
         qtype="pre_signal",
         options=[
-            "Yes — we need to develop collective dynamics",
-            "Maybe — depending on conditions",
-            "No — for other reasons, stop here",
+            "Yes, let's continue the conversation",
+            "Maybe, depending on conditions",
+            "No, stop here",
         ],
         short_description=(
-            "This first response sends a collective signal. "
-            "Your answer contributes to the live dynamics of the group."
+            "This first response sends a collective alignment signal. "
+            "It helps shape the shared dynamics of the room."
         ),
         depth=0,
         required=True,
@@ -34,6 +34,7 @@ QUESTION_CATALOG: list[Question] = [
             "Concerned",
             "Skeptical",
             "Overwhelmed",
+            "Tired",
             "Inspired",
             "Neutral",
             "Other",

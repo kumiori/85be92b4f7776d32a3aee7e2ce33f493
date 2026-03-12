@@ -6,9 +6,20 @@ from ui import apply_theme, heading, microcopy, set_page, display_centered_promp
 def main() -> None:
     set_page()
     apply_theme()
-    heading("IceIceBaby v0")
-    microcopy("Use the sidebar or jump to the login page to start.")
-    display_centered_prompt("One key. And a <em>twist</em>.")
+    # heading("IceIceBaby v0")
+    heading("<center>Glaciers, Listening to Society</center>")
+    st.markdown(
+        """
+### Developed for the World Day for Glaciers at UNESCO, within the Decade of Action for Cryospheric Sciences (2024-2035).
+"""
+    )
+    st.markdown(
+        """
+Room XXX, March 19, 2026,  4pm. Organised by: ______, ______, ______, ______, and ______.
+"""
+    )
+    # microcopy("Use the sidebar or jump to the login page to start.")
+    display_centered_prompt("One idea. With a <em>twist</em>.")
 
     st.markdown(
         """
