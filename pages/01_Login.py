@@ -88,10 +88,10 @@ Room XXX, 4pm, March 19, 2026. Organised by: ______, ______, ______, ______, and
         """
 ### Transitions in nature rarely announce themselves clearly. Signals accumulate. Tensions build, energy stores. Then systems shift. 
 #### Understanding these transitions is a scientific challenge. Acting through them is a collective one.
-### To act in the decade Decade of Action for Cryospheric Sciences (2025–2034) // of irreversible transitions, we need new languages and new coordination experiments.
+### To act in the decade Decade of Action for Cryospheric Sciences (2025–2034), we need new languages and new coordination experiments.
         """
     )
-
+    st.divider()
     locations_md = []
     for category, entries in CRYOSPHERE_CRACKS.items():
         regions = ", ".join(entry["Region"] for entry in entries)
@@ -102,12 +102,11 @@ Room XXX, 4pm, March 19, 2026. Organised by: ______, ______, ______, ______, and
         left_subtitle="collective experiment",
         right_content="\n".join(
             [
-                "New problems require new forms of interaction. Today we speak through the arts and sciences.",
+                "#### New problems require new forms of interaction. Today we speak through the arts and sciences.",
                 "",
-                "This platform explores how groups perceive signals,",
-                "exchange interpretations, and form decisions together.",
+                "#### This platform explores how groups perceive signals, exchange perspectives, and form decisions together.",
                 "",
-                "What happens next depends on the signals we generate here.",
+                "#### What happens _next_ depends on the signals we generate here.",
                 "",
             ]
         ),
@@ -261,7 +260,7 @@ Room XXX, 4pm, March 19, 2026. Organised by: ______, ______, ______, ______, and
                 if isinstance(choice_val, list):
                     return len(choice_val) > 0
                 return str(choice_val or "").strip() != ""
-            
+
             def _signal_score(choice_val: str | list[str]) -> int | None:
                 if not isinstance(choice_val, str):
                     return None
@@ -423,9 +422,7 @@ Room XXX, 4pm, March 19, 2026. Organised by: ______, ______, ______, ______, and
                 st.toast(f"Presence update failed: {err}", icon="⚠️")
             st.switch_page("pages/02_Home.py")
         if not pre_signal_submitted:
-            st.warning(
-                "Submit the collective entry signal above before entering the lobby."
-            )
+            st.warning("Send a signal above before entering the lobby.")
         authenticator.logout(button_name="Logout", location="main")
     elif authentication_status is False:
         st.session_state["_prev_auth_status"] = False
