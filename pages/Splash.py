@@ -29,7 +29,7 @@ MINT_DEBUG_TRACE_KEY = "mint_debug_trace"
 
 
 def _render_intro() -> None:
-    heading("<center>Cryosphere Signals</center>")
+    heading("<center>Glaciers, Listening to Society</center>")
     st.write("")
     st.write(
         f"### `CODENAME: Ice Ice Baby. The copy that follows is subject to change. Suggested listening: Computations - Kenn-Eerik, 2023`"
@@ -67,8 +67,8 @@ Room XXX, 4pm, March 19, 2026. Organised by: ______, ______, ______, ______, and
                 "### Glaciers, ice shelves, and frozen ground are _evolving_ systems. These systems speak many languages.",
                 # "#### Understanding their transitions is not about _tracking_ them.",
                 "",
-                "#### When systems approach thresholds, signals appear before they break.",
-                "#### Detecting them requires attention, interpretation, and collective judgement.",
+                # "#### When systems approach thresholds, signals appear before they break.",
+                "#### Detecting and understanding them requires attention, interpretation, and collective judgement.",
                 "",
                 "#### This platform invites your observations, responses, and interactions. In real time.",
             ]
@@ -146,7 +146,7 @@ def _render_mint_panel(authenticator: Any) -> None:
     st.session_state.setdefault(MINT_DEBUG_TRACE_KEY, [])
     open_mint = bool(st.session_state.pop(OPEN_MINT_KEY, False))
 
-    with st.expander("Mint access token", expanded=open_mint):
+    with st.expander("Access key details", expanded=open_mint):
         st.caption(
             "All sessions are designed to be anonymous. Your access key is personal and "
             "must be stored securely. If you add an email, it is used only to send a credentials reminder."
