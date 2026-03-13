@@ -20,7 +20,7 @@ from infra.app_state import (
 )
 from infra.cryosphere_cracks import CRYOSPHERE_CRACKS, cryosphere_crack_points
 from infra.credentials_pdf import build_credentials_pdf
-from models.catalog import QUESTION_CATALOG
+from models.catalog import questions_for_session
 from repositories.base import InteractionRepository
 from repositories.interaction_repo import (
     NotionInteractionRepository,
@@ -228,13 +228,18 @@ Room XXX, 4pm, March 19, 2026. Organised by: ______, ______, ______, ______, and
         st.markdown(
             "At minimal depth (0), you are invited to respond to only one key question. Higher levels unlock a few more short questions on emotion and interpretation."
         )
+        current_session_code = (
+            str(st.session_state.get("session_title", "") or "").strip()
+            or str((session or {}).get("session_code", "") or "").strip()
+            or "GLOBAL-SESSION"
+        )
         pre_lobby_questions = sorted(
             [
                 q
-                for q in QUESTION_CATALOG
+                for q in questions_for_session(current_session_code)
                 if q.visible_before_lobby and q.depth <= pre_lobby_depth
             ],
-            key=lambda q: (q.depth, q.id),
+            key=lambda q: (q.depth, q.order, q.id),
         )
         signal_count = sum(1 for q in pre_lobby_questions if q.depth == 0)
         emotional_count = sum(1 for q in pre_lobby_questions if q.depth >= 1)
