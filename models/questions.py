@@ -10,7 +10,9 @@ QuestionCategory = Literal["perception", "structure", "agency", "integration"]
 @dataclass(frozen=True)
 class Question:
     id: str
+    session_id: str
     category: QuestionCategory
+    context: str
     prompt: str
     qtype: QuestionType
     options: Optional[list[str]] = None
@@ -21,3 +23,13 @@ class Question:
     visible_before_lobby: bool = False
     show_text_field: bool = False
     placeholder: str = ""
+    order: int = 0
+    active: bool = True
+
+    @property
+    def response_type(self) -> QuestionType:
+        return self.qtype
+
+    @property
+    def response_options(self) -> list[str]:
+        return list(self.options or [])

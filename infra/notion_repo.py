@@ -466,6 +466,8 @@ class NotionRepo:
         if "round_index" in fields:
             name = self._prop_name(db_id, "round_index", "number")
             props.update(self._build_number(name, fields["round_index"]))
+        if "active" in fields and self._prop_exists(db_id, "active"):
+            props.update(self._build_checkbox("active", fields["active"]))
         if "peer_average_visible" in fields and self._prop_exists(
             db_id, "peer_average_visible"
         ):

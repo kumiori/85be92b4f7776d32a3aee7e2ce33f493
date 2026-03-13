@@ -28,10 +28,23 @@ def _make_rng(seed_key: str) -> random.Random:
     return random.Random(int(digest[:16], 16))
 
 
-def select_questions(depth: int, seed_key: str, catalog: list[Question]) -> list[Question]:
+def select_questions(
+    depth: int,
+    seed_key: str,
+    catalog: list[Question],
+    session_id: str | None = None,
+) -> list[Question]:
     rng = _make_rng(seed_key)
     grouped: dict[str, list[Question]] = defaultdict(list)
-    eligible_catalog = [q for q in catalog if q.depth >= 1 and not q.visible_before_lobby]
+    target_session = (session_id or "").strip().upper()
+    eligible_catalog = [
+        q
+        for q in catalog
+        if q.depth >= 1
+        and not q.visible_before_lobby
+        and q.active
+        and (not target_session or q.session_id.upper() == target_session)
+    ]
     for q in eligible_catalog:
         grouped[q.category].append(q)
 

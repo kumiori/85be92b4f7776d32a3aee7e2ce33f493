@@ -4,6 +4,7 @@ import json
 from io import StringIO
 from typing import Any, Dict, List
 from datetime import datetime
+from pathlib import Path
 
 import streamlit as st
 import yaml
@@ -16,6 +17,7 @@ from infra.app_state import (
     remember_access,
     require_login,
 )
+from models.catalog import catalog_session_codes, questions_for_session
 from ui import apply_theme, heading, microcopy, set_page, sidebar_debug_state
 
 
@@ -60,6 +62,108 @@ def _load_statement_set_v0() -> List[Dict[str, Any]]:
     return items
 
 
+def _session_sort_key(session: Dict[str, Any]) -> tuple[int, str]:
+    code = str(session.get("session_code") or "").strip()
+    rank = 0 if code.upper() == "GLOBAL-SESSION" else 1
+    return rank, code.upper()
+
+
+def _render_sessions_panel(repo) -> None:
+    st.subheader("Session management")
+    st.caption(
+        "GLOBAL-SESSION stays active by default. Multiple additional sessions may be active at once."
+    )
+    sessions = repo.list_sessions(limit=200)
+    if not sessions:
+        st.info("No sessions found in Notion.")
+        return
+
+    sessions = sorted(sessions, key=_session_sort_key)
+    try:
+        supports_active_toggle = repo._prop_exists(  # noqa: SLF001
+            repo._sessions_db_id(None),  # noqa: SLF001
+            "active",
+        )
+    except Exception:
+        supports_active_toggle = False
+
+    notion_codes = {str(s.get("session_code") or "").strip() for s in sessions}
+    catalog_codes = set(catalog_session_codes())
+    missing = sorted(code for code in catalog_codes if code not in notion_codes)
+    if missing:
+        st.warning(
+            "Catalogue references sessions not present in Notion: "
+            + ", ".join(missing)
+        )
+
+    for session in sessions:
+        session_id = str(session.get("id") or "")
+        session_code = str(session.get("session_code") or "Unnamed session").strip()
+        is_global = session_code.upper() == "GLOBAL-SESSION"
+        is_active = bool(session.get("active"))
+        status_label = "Active" if is_active else "Inactive"
+        session_questions = questions_for_session(
+            session_code,
+            include_inactive=True,
+        )
+
+        with st.container(border=True):
+            c1, c2, c3 = st.columns([4, 2, 2])
+            with c1:
+                st.markdown(f"**{session_code}**")
+                if session.get("notes"):
+                    st.caption(str(session.get("notes")))
+            with c2:
+                st.caption("Status")
+                if is_active:
+                    st.success(status_label)
+                else:
+                    st.warning(status_label)
+            with c3:
+                st.caption("Questions")
+                st.metric("Count", len(session_questions))
+
+            toggle_label = "Deactivate session" if is_active else "Activate session"
+            disable_toggle = is_global and is_active
+            toggle_help = (
+                "GLOBAL-SESSION is pinned active."
+                if disable_toggle
+                else "Toggle active/inactive for this session."
+            )
+            if st.button(
+                toggle_label,
+                key=f"session-toggle-{session_id}",
+                use_container_width=True,
+                disabled=disable_toggle or (not supports_active_toggle),
+                help=toggle_help,
+            ):
+                try:
+                    repo.update_session(session_id, active=not is_active)
+                except Exception as exc:
+                    st.error(f"Failed to update session active state: {exc}")
+                else:
+                    st.toast(
+                        f"{session_code} is now {'active' if not is_active else 'inactive'}.",
+                        icon="✅",
+                    )
+                    st.rerun()
+            if not supports_active_toggle:
+                st.caption("Session DB has no `active` checkbox property to toggle.")
+
+            with st.expander(f"Questions in {session_code}", expanded=False):
+                if not session_questions:
+                    st.caption("No catalogue questions linked to this session yet.")
+                else:
+                    for q in session_questions:
+                        q_status = "Active" if q.active else "Inactive"
+                        st.markdown(
+                            f"- `{q.id}` • `{q.response_type}` • depth `{q.depth}` • order `{q.order}` • {q_status}"
+                        )
+                        st.caption(q.prompt)
+                        if q.context:
+                            st.caption(q.context)
+
+
 def main() -> None:
     set_page()
     apply_theme()
@@ -85,13 +189,15 @@ def main() -> None:
     session_id = st.session_state.get("session_id")
 
     heading("Admin Console")
-    microcopy("Manage sessions, statements, and exports.")
+    microcopy("Manage sessions, question catalogue mapping, and exports.")
 
     if not repo or not session_id:
         st.error("Missing session context.")
         return
 
-    st.subheader("Statements import")
+    _render_sessions_panel(repo)
+
+    st.subheader("Question catalogue (legacy statements import)")
     upload = st.file_uploader("Upload JSON or YAML", type=["json", "yaml", "yml"])
     if upload:
         content = StringIO(upload.getvalue().decode("utf-8")).read()

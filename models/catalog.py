@@ -5,7 +5,9 @@ from models.questions import Question
 QUESTION_CATALOG: list[Question] = [
     Question(
         id="ORGANISATION_SIGNAL",
+        session_id="GLOBAL-SESSION",
         category="integration",
+        context="First collective entry signal before entering the lobby.",
         prompt="Should we organise another event and continue the conversation?",
         qtype="pre_signal",
         options=[
@@ -22,10 +24,14 @@ QUESTION_CATALOG: list[Question] = [
         visible_before_lobby=True,
         show_text_field=True,
         placeholder="Your condition or comment",
+        order=1,
+        active=True,
     ),
     Question(
         id="ARRIVAL_EMOTION",
+        session_id="GLOBAL-SESSION",
         category="perception",
+        context="Initial emotional state of the room.",
         prompt="What emotion did you bring with you today?",
         qtype="single",
         options=[
@@ -43,10 +49,14 @@ QUESTION_CATALOG: list[Question] = [
         depth=1,
         required=True,
         visible_before_lobby=True,
+        order=2,
+        active=True,
     ),
     Question(
         id="ENVIRONMENT_CHANGE_EMOTION",
+        session_id="GLOBAL-SESSION",
         category="perception",
+        context="Affective framing of environmental transformation.",
         prompt="What emotion do you associate with changes in the natural world?",
         qtype="single",
         options=[
@@ -62,10 +72,14 @@ QUESTION_CATALOG: list[Question] = [
         depth=2,
         required=True,
         visible_before_lobby=True,
+        order=3,
+        active=True,
     ),
     Question(
         id="SOCIETAL_CHANGE_EMOTION",
+        session_id="GLOBAL-SESSION",
         category="structure",
+        context="Affective framing of social and institutional transformation.",
         prompt="What emotion do you associate with societal change?",
         qtype="single",
         options=[
@@ -81,10 +95,14 @@ QUESTION_CATALOG: list[Question] = [
         depth=3,
         required=True,
         visible_before_lobby=True,
+        order=4,
+        active=True,
     ),
     Question(
         id="COLLABORATION_READINESS",
+        session_id="GLOBAL-SESSION",
         category="agency",
+        context="Collective readiness to collaborate across differences.",
         prompt="Do you feel collaboration is possible across differences?",
         qtype="single",
         options=[
@@ -98,10 +116,14 @@ QUESTION_CATALOG: list[Question] = [
         visible_before_lobby=True,
         show_text_field=True,
         placeholder="Your condition or comment",
+        order=5,
+        active=True,
     ),
     Question(
         id="PERSONAL_AGENCY",
+        session_id="GLOBAL-SESSION",
         category="agency",
+        context="Perceived personal agency in collective decisions.",
         prompt="Do you feel able to influence collective decisions?",
         qtype="single",
         options=[
@@ -114,10 +136,14 @@ QUESTION_CATALOG: list[Question] = [
         depth=5,
         required=True,
         visible_before_lobby=True,
+        order=6,
+        active=True,
     ),
     Question(
         id="PERCEPTION_ENTRY",
+        session_id="GLOBAL-SESSION",
         category="perception",
+        context="Entry perception for the post-lobby interaction.",
         prompt="When you hear the word 'glacier', what comes first?",
         qtype="single",
         options=[
@@ -128,10 +154,14 @@ QUESTION_CATALOG: list[Question] = [
             "Warning",
             "Other",
         ],
+        order=100,
+        active=True,
     ),
     Question(
         id="PROXIMITY",
+        session_id="GLOBAL-SESSION",
         category="perception",
+        context="Self-positioning toward cryosphere impact.",
         prompt="Do glaciers feel distant or present in your life?",
         qtype="single",
         options=[
@@ -140,20 +170,28 @@ QUESTION_CATALOG: list[Question] = [
             "Personally connected",
             "Structurally linked to my future",
         ],
+        order=101,
+        active=True,
     ),
     Question(
         id="EPISTEMIC_FRAME",
+        session_id="GLOBAL-SESSION",
         category="structure",
+        context="Interpretive frame for system dynamics.",
         prompt="Which description feels closer to reality?",
         qtype="single",
         options=[
             "Gradual slope",
             "Threshold or tipping point",
         ],
+        order=102,
+        active=True,
     ),
     Question(
         id="IRREVERSIBILITY_AFFECT",
+        session_id="GLOBAL-SESSION",
         category="structure",
+        context="Emotional response to irreversible transitions.",
         prompt="Irreversibility makes me feel...",
         qtype="multi",
         options=[
@@ -165,10 +203,14 @@ QUESTION_CATALOG: list[Question] = [
             "Curiosity",
         ],
         max_select=2,
+        order=103,
+        active=True,
     ),
     Question(
         id="PRIORITY_AFTER_NO_RETURN",
+        session_id="GLOBAL-SESSION",
         category="agency",
+        context="Priority setting under irreversible conditions.",
         prompt="When reversal is no longer possible, what becomes most important?",
         qtype="single",
         options=[
@@ -178,10 +220,14 @@ QUESTION_CATALOG: list[Question] = [
             "Innovation",
             "Acceptance",
         ],
+        order=104,
+        active=True,
     ),
     Question(
         id="WHAT_ENABLES_ACTION",
+        session_id="GLOBAL-SESSION",
         category="agency",
+        context="Collective action enablers under uncertainty.",
         prompt="What helps societies act under uncertainty?",
         qtype="multi",
         options=[
@@ -193,10 +239,14 @@ QUESTION_CATALOG: list[Question] = [
             "Community belonging",
         ],
         max_select=2,
+        order=105,
+        active=True,
     ),
     Question(
         id="SHIFT_AFTER_PANEL",
+        session_id="GLOBAL-SESSION",
         category="integration",
+        context="Post-session framing shift.",
         prompt="After this session, glaciers feel more like...",
         qtype="single",
         options=[
@@ -206,13 +256,112 @@ QUESTION_CATALOG: list[Question] = [
             "Mirror of society",
             "Call to responsibility",
         ],
+        order=106,
+        active=True,
     ),
     Question(
         id="ONE_WORD_TRACE",
+        session_id="GLOBAL-SESSION",
         category="integration",
+        context="Minimal residual trace after interaction.",
         prompt="One word that remains with you.",
         qtype="text",
+        order=107,
+        active=True,
+    ),
+    Question(
+        id="IF_YOU_WERE_A_GLACIER",
+        session_id="SESSION-1",
+        category="integration",
+        context="Give glaciers a direct voice in first person.",
+        prompt="If you were a glacier, what would you say?",
+        qtype="text",
+        depth=1,
+        order=1,
+        active=True,
+    ),
+    Question(
+        id="GLACIER_EMOTIONS",
+        session_id="SESSION-1",
+        category="perception",
+        context="Capture emotional tones attached to glacier futures.",
+        prompt="Which emotions describe your relation to glaciers right now?",
+        qtype="multi",
+        options=[
+            "Curious",
+            "Concerned",
+            "Protective",
+            "Conflicted",
+            "Hopeful",
+            "Overwhelmed",
+        ],
+        max_select=3,
+        depth=1,
+        order=2,
+        active=True,
+    ),
+    Question(
+        id="WORDS_TO_TAKE_WITH_YOU",
+        session_id="SESSION-1",
+        category="integration",
+        context="Collect key terms participants want to carry forward.",
+        prompt="What words do you want to take with you from this session?",
+        qtype="multi",
+        options=[
+            "Care",
+            "Repair",
+            "Justice",
+            "Responsibility",
+            "Imagination",
+            "Coordination",
+        ],
+        max_select=3,
+        depth=2,
+        order=3,
+        active=True,
+    ),
+    Question(
+        id="SESSION2_PRIORITY_SIGNAL",
+        session_id="SESSION-2",
+        category="agency",
+        context="Priority signal for the second experimental module.",
+        prompt="For SESSION-2, what should we prioritize first?",
+        qtype="single",
+        options=[
+            "Shared understanding",
+            "Practical coordination",
+            "Policy translation",
+            "Local experimentation",
+        ],
+        depth=1,
+        order=1,
+        active=True,
+    ),
+    Question(
+        id="SESSION2_OPEN_TRACE",
+        session_id="SESSION-2",
+        category="integration",
+        context="Short open trace to close SESSION-2.",
+        prompt="Name one condition needed to continue from SESSION-2.",
+        qtype="text",
+        depth=2,
+        order=2,
+        active=True,
     ),
 ]
 
 QUESTION_BY_ID = {q.id: q for q in QUESTION_CATALOG}
+
+
+def questions_for_session(
+    session_code: str, *, include_inactive: bool = False
+) -> list[Question]:
+    code = (session_code or "").strip().upper()
+    items = [q for q in QUESTION_CATALOG if q.session_id.upper() == code]
+    if not include_inactive:
+        items = [q for q in items if q.active]
+    return sorted(items, key=lambda q: (q.order, q.depth, q.id))
+
+
+def catalog_session_codes() -> list[str]:
+    return sorted({q.session_id for q in QUESTION_CATALOG})
