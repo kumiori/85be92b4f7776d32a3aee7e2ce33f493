@@ -13,7 +13,7 @@ EVENT_TIME = "16:00-17:30 (CET)"
 EVENT_ROOM = "Room XI, UNESCO Headquarters"
 EVENT_ORGANISERS = (
     "Ignacio Palomo, Andrés León Baldelli, Leopold Bouzard, "
-    "Veronique Dansereau, Jean-François Delhom, Bruno Doucey"
+    "Véronique Dansereau, Jean-François Delhom, Bruno Doucey"
 )
 MARGINS = {
     "top": "2.875rem",
