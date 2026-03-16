@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from models.questions import Question
+from models.sessions import session_spec_by_id
 
 QUESTION_CATALOG: list[Question] = [
     Question(
@@ -26,6 +27,13 @@ QUESTION_CATALOG: list[Question] = [
         placeholder="Your condition or comment",
         order=1,
         active=True,
+        response_mode="signal",
+        response_structure=[
+            "Yes — let’s continue",
+            "Maybe — depending on conditions",
+            "No — stop here",
+        ],
+        is_collective_signal=True,
     ),
     Question(
         id="ARRIVAL_EMOTION",
@@ -51,6 +59,20 @@ QUESTION_CATALOG: list[Question] = [
         visible_before_lobby=True,
         order=2,
         active=True,
+        response_mode="tags",
+        response_structure=list(
+            [
+                "Curious",
+                "Hopeful",
+                "Concerned",
+                "Skeptical",
+                "Overwhelmed",
+                "Tired",
+                "Inspired",
+                "Neutral",
+                "Other",
+            ]
+        ),
     ),
     Question(
         id="ENVIRONMENT_CHANGE_EMOTION",
@@ -74,6 +96,7 @@ QUESTION_CATALOG: list[Question] = [
         visible_before_lobby=True,
         order=3,
         active=True,
+        response_mode="tags",
     ),
     Question(
         id="SOCIETAL_CHANGE_EMOTION",
@@ -97,6 +120,7 @@ QUESTION_CATALOG: list[Question] = [
         visible_before_lobby=True,
         order=4,
         active=True,
+        response_mode="tags",
     ),
     Question(
         id="COLLABORATION_READINESS",
@@ -118,6 +142,7 @@ QUESTION_CATALOG: list[Question] = [
         placeholder="Your condition or comment",
         order=5,
         active=True,
+        response_mode="choice",
     ),
     Question(
         id="PERSONAL_AGENCY",
@@ -138,6 +163,7 @@ QUESTION_CATALOG: list[Question] = [
         visible_before_lobby=True,
         order=6,
         active=True,
+        response_mode="choice",
     ),
     Question(
         id="PERCEPTION_ENTRY",
@@ -268,6 +294,8 @@ QUESTION_CATALOG: list[Question] = [
         qtype="text",
         order=107,
         active=True,
+        response_mode="text",
+        response_structure={"max_length": 200},
     ),
     Question(
         id="IF_YOU_WERE_A_GLACIER",
@@ -279,6 +307,8 @@ QUESTION_CATALOG: list[Question] = [
         depth=1,
         order=1,
         active=True,
+        response_mode="text",
+        response_structure={"max_length": 200},
     ),
     Question(
         id="GLACIER_EMOTIONS",
@@ -299,6 +329,7 @@ QUESTION_CATALOG: list[Question] = [
         depth=1,
         order=2,
         active=True,
+        response_mode="tags",
     ),
     Question(
         id="WORDS_TO_TAKE_WITH_YOU",
@@ -319,6 +350,8 @@ QUESTION_CATALOG: list[Question] = [
         depth=2,
         order=3,
         active=True,
+        response_mode="keywords",
+        response_structure={"max_tags": 5},
     ),
     Question(
         id="SESSION2_PRIORITY_SIGNAL",
@@ -336,6 +369,7 @@ QUESTION_CATALOG: list[Question] = [
         depth=1,
         order=1,
         active=True,
+        response_mode="choice",
     ),
     Question(
         id="SESSION2_OPEN_TRACE",
@@ -347,6 +381,8 @@ QUESTION_CATALOG: list[Question] = [
         depth=2,
         order=2,
         active=True,
+        response_mode="text",
+        response_structure={"max_length": 200},
     ),
 ]
 
@@ -365,3 +401,19 @@ def questions_for_session(
 
 def catalog_session_codes() -> list[str]:
     return sorted({q.session_id for q in QUESTION_CATALOG})
+
+
+def validate_question_catalog() -> list[str]:
+    errors: list[str] = []
+    seen: set[str] = set()
+    for q in QUESTION_CATALOG:
+        if q.id in seen:
+            errors.append(f"Duplicate question id: {q.id}")
+        seen.add(q.id)
+        if not session_spec_by_id(q.session_id):
+            errors.append(f"Unknown session_id on question {q.id}: {q.session_id}")
+        if q.order <= 0:
+            errors.append(f"Question {q.id} must have order > 0")
+        if q.response_type in {"choice", "tags", "keywords", "signal"} and not q.options:
+            errors.append(f"Question {q.id} requires options for {q.response_type}")
+    return errors

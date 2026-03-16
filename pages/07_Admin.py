@@ -17,7 +17,12 @@ from infra.app_state import (
     remember_access,
     require_login,
 )
-from models.catalog import catalog_session_codes, questions_for_session
+from models.catalog import (
+    catalog_session_codes,
+    questions_for_session,
+    validate_question_catalog,
+)
+from models.sessions import session_spec_by_id
 from ui import apply_theme, heading, microcopy, set_page, sidebar_debug_state
 
 
@@ -62,10 +67,12 @@ def _load_statement_set_v0() -> List[Dict[str, Any]]:
     return items
 
 
-def _session_sort_key(session: Dict[str, Any]) -> tuple[int, str]:
+def _session_sort_key(session: Dict[str, Any]) -> tuple[int, int, str]:
     code = str(session.get("session_code") or "").strip()
+    spec = session_spec_by_id(code)
+    order = int(session.get("session_order") or (spec.session_order if spec else 999))
     rank = 0 if code.upper() == "GLOBAL-SESSION" else 1
-    return rank, code.upper()
+    return rank, order, code.upper()
 
 
 def _render_sessions_panel(repo) -> None:
@@ -77,6 +84,11 @@ def _render_sessions_panel(repo) -> None:
     if not sessions:
         st.info("No sessions found in Notion.")
         return
+    catalogue_errors = validate_question_catalog()
+    if catalogue_errors:
+        st.error("Question catalogue validation errors detected:")
+        for err in catalogue_errors:
+            st.caption(f"- {err}")
 
     sessions = sorted(sessions, key=_session_sort_key)
     try:
@@ -99,6 +111,19 @@ def _render_sessions_panel(repo) -> None:
     for session in sessions:
         session_id = str(session.get("id") or "")
         session_code = str(session.get("session_code") or "Unnamed session").strip()
+        spec = session_spec_by_id(session_code)
+        session_name = str(session.get("session_name") or (spec.session_name if spec else session_code))
+        session_title = str(session.get("session_title") or (spec.session_title if spec else session_code))
+        session_description = str(
+            session.get("session_description")
+            or session.get("notes")
+            or (spec.session_description if spec else "")
+        )
+        session_order = int(session.get("session_order") or (spec.session_order if spec else 999))
+        session_visualisation = str(
+            session.get("session_visualisation")
+            or (spec.session_visualisation if spec else "")
+        )
         is_global = session_code.upper() == "GLOBAL-SESSION"
         is_active = bool(session.get("active"))
         status_label = "Active" if is_active else "Inactive"
@@ -110,9 +135,10 @@ def _render_sessions_panel(repo) -> None:
         with st.container(border=True):
             c1, c2, c3 = st.columns([4, 2, 2])
             with c1:
-                st.markdown(f"**{session_code}**")
-                if session.get("notes"):
-                    st.caption(str(session.get("notes")))
+                st.markdown(f"**{session_code}** · {session_name}")
+                st.caption(f"Title: {session_title} · Order: {session_order}")
+                if session_description:
+                    st.caption(session_description)
             with c2:
                 st.caption("Status")
                 if is_active:
@@ -122,6 +148,8 @@ def _render_sessions_panel(repo) -> None:
             with c3:
                 st.caption("Questions")
                 st.metric("Count", len(session_questions))
+                if session_visualisation:
+                    st.caption(f"Visualisation: {session_visualisation}")
 
             toggle_label = "Deactivate session" if is_active else "Activate session"
             disable_toggle = is_global and is_active
@@ -138,7 +166,7 @@ def _render_sessions_panel(repo) -> None:
                 help=toggle_help,
             ):
                 try:
-                    repo.update_session(session_id, active=not is_active)
+                    repo.update_session(session_id, session_active=not is_active)
                 except Exception as exc:
                     st.error(f"Failed to update session active state: {exc}")
                 else:
@@ -149,6 +177,56 @@ def _render_sessions_panel(repo) -> None:
                     st.rerun()
             if not supports_active_toggle:
                 st.caption("Session DB has no `active` checkbox property to toggle.")
+
+            with st.expander(f"Edit {session_code} metadata", expanded=False):
+                meta_name = st.text_input(
+                    "Session name",
+                    value=session_name,
+                    key=f"session-meta-name-{session_id}",
+                )
+                meta_title = st.text_input(
+                    "Session title",
+                    value=session_title,
+                    key=f"session-meta-title-{session_id}",
+                )
+                meta_order = st.number_input(
+                    "Session order",
+                    min_value=0,
+                    step=1,
+                    value=session_order,
+                    key=f"session-meta-order-{session_id}",
+                )
+                meta_visual = st.text_input(
+                    "Session visualisation",
+                    value=session_visualisation,
+                    key=f"session-meta-visual-{session_id}",
+                )
+                meta_desc = st.text_area(
+                    "Session description",
+                    value=session_description,
+                    key=f"session-meta-desc-{session_id}",
+                    height=80,
+                )
+                if st.button(
+                    "Save session metadata",
+                    key=f"session-meta-save-{session_id}",
+                    use_container_width=True,
+                    type="secondary",
+                ):
+                    try:
+                        repo.update_session(
+                            session_id,
+                            session_name=meta_name,
+                            session_title=meta_title,
+                            session_order=int(meta_order),
+                            session_description=meta_desc,
+                            session_visualisation=meta_visual,
+                        )
+                    except Exception as exc:
+                        st.error(f"Failed to update session metadata: {exc}")
+                    else:
+                        st.toast("Session metadata updated.", icon="✅")
+                        st.rerun()
 
             with st.expander(f"Questions in {session_code}", expanded=False):
                 if not session_questions:

@@ -33,6 +33,13 @@ def main() -> None:
 
     repo = get_notion_repo()
     sessions = repo.list_sessions(limit=200) if repo else []
+    sessions = sorted(
+        sessions,
+        key=lambda s: (
+            int(s.get("session_order", 999)),
+            str(s.get("session_code", "")).upper(),
+        ),
+    )
     session_labels = [s.get("session_code") or "Session" for s in sessions]
     session_map = {_slugify(s.get("session_code") or ""): s for s in sessions}
     default_slug = _slugify(
@@ -53,7 +60,10 @@ def main() -> None:
     payload = get_overview_payload(selected_slug)
     active_global = count_active_users(window)
     sessions_active = sum(
-        1 for s in sessions if (s.get("status") or "").lower() == "active"
+        1
+        for s in sessions
+        if bool(s.get("session_active", s.get("active")))
+        or (s.get("status") or "").lower() == "active"
     )
 
     c1, c2, c3, c4 = st.columns(4)

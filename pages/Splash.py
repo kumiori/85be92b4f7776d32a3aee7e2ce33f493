@@ -30,10 +30,7 @@ MINT_DEBUG_TRACE_KEY = "mint_debug_trace"
 
 def _render_intro() -> None:
     heading("<center>Glaciers, Listening to Society</center>")
-    st.write("")
-    st.write(
-        f"### `CODENAME: Ice Ice Baby. The copy that follows is subject to change. Suggested listening: Computations - Kenn-Eerik, 2023`"
-    )
+    st.caption(f"### `The copy that follows is subject to change.`")
 
     st.markdown(
         """
@@ -56,7 +53,7 @@ Room XXX, 4pm, March 19, 2026. Organised by: ______, ______, ______, ______, and
         camera_altitude=0.8,
     )
     microcopy(
-        "Planet Earth at night. Signals concentrate where the cryosphere is under stress."
+        "Planet Earth at night. Signals concentrate where the cryosphere is under stress. Suggested listening: Computations - Kenn-Eerik, 2023"
     )
     display_centered_prompt("Something is happening now.")
     render_info_block(

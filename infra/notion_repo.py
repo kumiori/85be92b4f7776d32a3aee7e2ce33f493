@@ -457,6 +457,48 @@ class NotionRepo:
     ) -> Dict[str, Any]:
         db_id = self._sessions_db_id(session_db_id)
         props = {}
+        if "session_active" in fields and self._prop_exists(db_id, "active"):
+            props.update(self._build_checkbox("active", fields["session_active"]))
+        if "session_order" in fields:
+            name = "session_order" if self._prop_exists(db_id, "session_order") else ""
+            if not name and self._prop_exists(db_id, "order"):
+                name = "order"
+            if name:
+                props.update(self._build_number(name, fields["session_order"]))
+        if "session_name" in fields:
+            name = "session_name" if self._prop_exists(db_id, "session_name") else ""
+            if not name and self._prop_exists(db_id, "name"):
+                name = "name"
+            if name:
+                props.update(self._build_rich_text(name, str(fields["session_name"])))
+        if "session_title" in fields:
+            if self._prop_exists(db_id, "session_title"):
+                props.update(
+                    self._build_rich_text("session_title", str(fields["session_title"]))
+                )
+        if "session_description" in fields:
+            name = (
+                "session_description"
+                if self._prop_exists(db_id, "session_description")
+                else ("notes" if self._prop_exists(db_id, "notes") else "")
+            )
+            if name:
+                props.update(
+                    self._build_rich_text(name, str(fields["session_description"]))
+                )
+        if "session_visualisation" in fields:
+            if self._prop_exists(db_id, "session_visualisation"):
+                props.update(
+                    self._build_rich_text(
+                        "session_visualisation", str(fields["session_visualisation"])
+                    )
+                )
+            elif self._prop_exists(db_id, "session_visualization"):
+                props.update(
+                    self._build_rich_text(
+                        "session_visualization", str(fields["session_visualisation"])
+                    )
+                )
         if "status" in fields:
             name = self._prop_name(db_id, "status", "select")
             props.update(self._build_select(name, fields["status"]))
@@ -556,6 +598,29 @@ class NotionRepo:
         mode_name = self._prop_name(db_id, "mode", "select")
         round_name = self._prop_name(db_id, "round_index", "number")
         active_name = "active" if self._prop_exists(db_id, "active") else None
+        session_name_prop = (
+            "session_name" if self._prop_exists(db_id, "session_name") else None
+        )
+        session_title_prop = (
+            "session_title" if self._prop_exists(db_id, "session_title") else None
+        )
+        session_order_prop = (
+            "session_order" if self._prop_exists(db_id, "session_order") else None
+        )
+        session_description_prop = (
+            "session_description"
+            if self._prop_exists(db_id, "session_description")
+            else None
+        )
+        session_visualisation_prop = (
+            "session_visualisation"
+            if self._prop_exists(db_id, "session_visualisation")
+            else (
+                "session_visualization"
+                if self._prop_exists(db_id, "session_visualization")
+                else None
+            )
+        )
         start_name = "start" if self._prop_exists(db_id, "start") else None
         end_name = "end" if self._prop_exists(db_id, "end") else None
         notes_name = "notes" if self._prop_exists(db_id, "notes") else None
@@ -568,15 +633,54 @@ class NotionRepo:
             "yellow_active" if self._prop_exists(db_id, "yellow_active") else None
         )
 
+        session_code = self._normalize_title(props, title_name)
+        session_description = (
+            self._normalize_rich_text(props, session_description_prop)
+            if session_description_prop
+            else (self._normalize_rich_text(props, notes_name) if notes_name else "")
+        )
+        session_name = (
+            self._normalize_rich_text(props, session_name_prop)
+            if session_name_prop
+            else session_code
+        )
+        session_order = int(
+            self._normalize_number(
+                props,
+                session_order_prop or "order",
+                0,
+            )
+            or 0
+        )
+        session_active = (
+            self._normalize_checkbox(props, active_name, False) if active_name else False
+        )
+        session_visualisation = (
+            self._normalize_rich_text(props, session_visualisation_prop)
+            if session_visualisation_prop
+            else ""
+        )
+
+        session_title = (
+            self._normalize_rich_text(props, session_title_prop)
+            if session_title_prop
+            else session_code
+        )
+
         return {
             "id": page.get("id"),
-            "session_code": self._normalize_title(props, title_name),
+            "session_id": session_code,
+            "session_code": session_code,
+            "session_title": session_title or session_code,
+            "session_name": session_name or session_code,
+            "session_order": session_order,
+            "session_description": session_description,
+            "session_visualisation": session_visualisation,
+            "session_active": session_active,
             "status": self._normalize_select(props, status_name) or "Lobby",
             "mode": self._normalize_select(props, mode_name) or "Non-linear",
             "round_index": int(self._normalize_number(props, round_name, 0) or 0),
-            "active": self._normalize_checkbox(props, active_name, False)
-            if active_name
-            else False,
+            "active": session_active,
             "start": self._safe_date_prop(props, start_name),
             "end": self._safe_date_prop(props, end_name),
             "notes": self._normalize_rich_text(props, notes_name) if notes_name else "",

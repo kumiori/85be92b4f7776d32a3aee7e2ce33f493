@@ -15,6 +15,8 @@ def _extract_choice(payload: Any) -> Any:
             return payload.get("answer")
         if "choice" in payload:
             return payload.get("choice")
+        if "response_value" in payload:
+            return payload.get("response_value")
     return payload
 
 
@@ -61,7 +63,9 @@ def _latest_rows(rows_for_item: list[Dict[str, Any]]) -> list[Dict[str, Any]]:
 def aggregate_question(rows_for_item: list[Dict[str, Any]]) -> Dict[str, Any]:
     if not rows_for_item:
         return {}
-    item_id = str(rows_for_item[0].get("item_id", ""))
+    item_id = str(
+        rows_for_item[0].get("question_id", rows_for_item[0].get("item_id", ""))
+    )
     qtype = _guess_type(rows_for_item)
     latest_rows = _latest_rows(rows_for_item)
 
@@ -71,7 +75,9 @@ def aggregate_question(rows_for_item: list[Dict[str, Any]]) -> Dict[str, Any]:
         timeline: list[Dict[str, Any]] = []
         for row in latest_rows:
             payload = row.get("value_json")
-            choice = _extract_choice(payload)
+            choice = row.get("response_value")
+            if choice in (None, "", []):
+                choice = _extract_choice(payload)
             label = str(choice or row.get("value_label") or "Other")
             label_counts[label] += 1
             score = row.get("score")
@@ -106,7 +112,9 @@ def aggregate_question(rows_for_item: list[Dict[str, Any]]) -> Dict[str, Any]:
         counts = Counter()
         for row in latest_rows:
             payload = row.get("value_json")
-            choice = _extract_choice(payload)
+            choice = row.get("response_value")
+            if choice in (None, "", []):
+                choice = _extract_choice(payload)
             if not isinstance(choice, list):
                 continue
             for token in choice:
@@ -126,7 +134,9 @@ def aggregate_question(rows_for_item: list[Dict[str, Any]]) -> Dict[str, Any]:
         entries = []
         for row in latest_rows:
             payload = row.get("value_json")
-            choice = _extract_choice(payload)
+            choice = row.get("response_value")
+            if choice in (None, "", []):
+                choice = _extract_choice(payload)
             txt = str(choice or row.get("value_label") or "").strip()
             if txt:
                 entries.append({"t": row.get("submitted_at", ""), "text": txt})
@@ -143,7 +153,9 @@ def aggregate_question(rows_for_item: list[Dict[str, Any]]) -> Dict[str, Any]:
     counts = Counter()
     for row in latest_rows:
         payload = row.get("value_json")
-        choice = _extract_choice(payload)
+        choice = row.get("response_value")
+        if choice in (None, "", []):
+            choice = _extract_choice(payload)
         label = str(choice or row.get("value_label") or "").strip()
         if label:
             if "maybe" in label.lower():
@@ -174,21 +186,24 @@ def aggregate_session(session_slug: Optional[str]) -> Dict[str, Any]:
 
     grouped: dict[str, list[Dict[str, Any]]] = {}
     for row in rows:
-        item_id = str(row.get("item_id", "")).strip()
+        item_id = str(row.get("question_id", row.get("item_id", ""))).strip()
         if not item_id:
             continue
         grouped.setdefault(item_id, []).append(row)
 
     cfg = load_config() or {}
     window = int(((cfg.get("overview") or {}).get("active_user_window_minutes")) or 10)
-    session_name = str(session.get("session_code") or "Session")
+    session_name = str(session.get("session_name") or session.get("session_code") or "Session")
     session_slug_norm = str(rows[0].get("session_slug")) if rows else session_name.lower()
 
     participant_ids = {_actor_key(r) for r in rows if _actor_key(r) != "unknown"}
 
     return {
+        "session_id": str(session.get("session_id") or session.get("session_code") or ""),
         "session_slug": session_slug_norm,
         "session_name": session_name,
+        "session_title": str(session.get("session_title") or session_name),
+        "session_visualisation": str(session.get("session_visualisation") or ""),
         "active_users": count_active_users(window, session_id=str(session.get("id", ""))),
         "participant_count": len(participant_ids),
         "response_count": len(rows),
