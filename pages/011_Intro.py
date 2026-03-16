@@ -22,7 +22,7 @@ from infra.app_state import (
 )
 from infra.event_logger import log_event, get_module_logger
 from infra.event_logger import perf_timer, log_perf
-from models.catalog import QUESTION_BY_ID, questions_for_session
+from models.catalog import questions_for_session
 from repositories.base import InteractionRepository
 from repositories.interaction_repo import (
     NotionInteractionRepository,
@@ -233,58 +233,13 @@ def _render_first_signal_step(repo, authenticator) -> None:
         st.markdown(
             "### This opening module collects the room's first signals: how we arrive, how we feel, and whether we want to continue together."
         )
-
-        depth_question = QUESTION_BY_ID.get("PRE_LOBBY_DEPTH")
-        depth_cfg = (
-            depth_question.response_structure
-            if depth_question and isinstance(depth_question.response_structure, dict)
-            else {}
-        )
-        depth_prompt = (
-            depth_question.prompt
-            if depth_question
-            else "Depth controls how far you go."
-        )
-        depth_context = (
-            depth_question.context
-            if depth_question
-            else "A short path or a deeper one? You can select the depth of this first module using the slider below."
-        )
-        depth_description = (
-            depth_question.short_description
-            if depth_question
-            else "Use the slider to keep the interaction minimal or to explore a few more questions before entering the lobby."
-        )
-        depth_explanation = str(
-            depth_cfg.get(
-                "explanation",
-                "At minimal depth (0), you are invited to respond to only one key question. Higher levels unlock a few more short questions on emotion and interpretation.",
-            )
-        )
-        st.markdown(f"#### {depth_context}")
-        if depth_description:
-            st.caption(depth_description)
-        pre_lobby_depth = st.slider(
-            depth_prompt,
-            min_value=int(depth_cfg.get("min", 0)),
-            max_value=int(depth_cfg.get("max", 5)),
-            value=int(depth_cfg.get("default", 0)),
-            step=int(depth_cfg.get("step", 1)),
-            help=str(depth_cfg.get("help", depth_description)),
-        )
-        st.markdown(depth_explanation)
-        current_session_code = (
-            str(st.session_state.get("session_title", "") or "").strip()
-            or str((session or {}).get("session_code", "") or "").strip()
-            or "GLOBAL-SESSION"
-        )
+        current_session_code = "GLOBAL-SESSION"
         t_questions = time.perf_counter()
         pre_lobby_questions = sorted(
             [
                 q
                 for q in questions_for_session(current_session_code)
                 if q.visible_before_lobby
-                and q.depth <= pre_lobby_depth
                 and q.qtype != "control"
             ],
             key=lambda q: (q.depth, q.order, q.id),
@@ -294,38 +249,17 @@ def _render_first_signal_step(repo, authenticator) -> None:
             "pre_lobby_questions_select",
             (time.perf_counter() - t_questions) * 1000.0,
             session=current_session_code,
-            depth=pre_lobby_depth,
             count=len(pre_lobby_questions),
-        )
-        signal_count = sum(1 for q in pre_lobby_questions if q.depth == 0)
-        emotional_count = sum(1 for q in pre_lobby_questions if q.depth >= 1)
-        st.caption(
-            f"Selected depth [{pre_lobby_depth}]: includes "
-            f"{signal_count} signal question and {emotional_count} emotional question(s)."
+            mode="fixed_set",
         )
         pre_lobby_signature = (
-            f"{session_id}:{player_page_id}:{pre_lobby_depth}:"
+            f"{session_id}:{player_page_id}:"
             f"{','.join(q.id for q in pre_lobby_questions)}"
         )
         module_done_key = f"pre_lobby_submitted:{pre_lobby_signature}"
         pre_signal_submitted = bool(st.session_state.get(module_done_key, False))
-        depth_confirm_key = "pre_lobby_depth_confirm_sig"
-        depth_sig = f"{session_id}:{player_page_id}:{pre_lobby_depth}"
-        depth_confirmed = st.session_state.get(depth_confirm_key) == depth_sig
 
-        if pre_lobby_questions and not depth_confirmed:
-            st.markdown("---")
-            if st.button(
-                "Let me send my first signal",
-                type="secondary",
-                use_container_width=True,
-                key="pre-lobby-depth-continue-intro",
-            ):
-                st.session_state[depth_confirm_key] = depth_sig
-                st.rerun()
-            st.info("Confirm depth first, then continue to the first question.")
-
-        if pre_lobby_questions and depth_confirmed:
+        if pre_lobby_questions:
             st.markdown("---")
             ui_sig_key = "pre_lobby_ui_sig"
             ui_idx_key = "pre_lobby_ui_idx"
@@ -478,7 +412,6 @@ def _render_first_signal_step(repo, authenticator) -> None:
                         "pre_lobby_save_batch",
                         session=session_id,
                         count=len(pre_lobby_questions),
-                        depth=pre_lobby_depth,
                     ):
                         for item in pre_lobby_questions:
                             signal_repo.save_response(
@@ -512,7 +445,7 @@ def _render_first_signal_step(repo, authenticator) -> None:
                         metadata={
                             "answered": answered,
                             "total": total,
-                            "depth": pre_lobby_depth,
+                            "mode": "fixed_set",
                         },
                     )
                     st.success("✨ Signal recorded.")

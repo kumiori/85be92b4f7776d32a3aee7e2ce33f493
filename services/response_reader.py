@@ -7,7 +7,10 @@ from typing import Any, Dict, Optional, Tuple
 import streamlit as st
 
 from infra.app_context import get_active_session, get_notion_repo, load_config
+from infra.event_logger import get_module_logger
 from repositories.interaction_repo import NotionInteractionRepository
+
+LOGGER = get_module_logger("iceicebaby.responses")
 
 
 def _slugify(value: str) -> str:
@@ -48,6 +51,7 @@ def _resolve_session(session_slug: Optional[str]) -> Optional[Dict[str, Any]]:
     active = get_active_session(repo)
     if active:
         return active
+    LOGGER.warning("active session not found; fallback to first available session")
     return sessions[0] if sessions else None
 
 
@@ -64,6 +68,7 @@ def normalize_response_row(
         try:
             parsed_json = json.loads(raw_json)
         except Exception:
+            LOGGER.warning("malformed response JSON for response_id=%s", notion_row.get("response_id", ""))
             parsed_json = {"parse_error": True, "raw": raw_json}
     else:
         parsed_json = {}
