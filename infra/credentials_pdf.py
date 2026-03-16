@@ -33,10 +33,14 @@ def _pick_emoji_font(
     symbols: List[str], size: int
 ) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
     candidates = [
+        "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf",
+        "/usr/share/fonts/noto/NotoColorEmoji.ttf",
+        "/usr/local/share/fonts/NotoColorEmoji.ttf",
         "/System/Library/Fonts/Apple Color Emoji.ttc",
         "/System/Library/Fonts/Supplemental/Apple Symbols.ttf",
         "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
         "/Library/Fonts/Arial Unicode.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
     ]
     best_font: ImageFont.FreeTypeFont | ImageFont.ImageFont = ImageFont.load_default()
     best_score = 0
@@ -106,6 +110,8 @@ def build_credentials_pdf(
 
     text_font = _load_font(
         [
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
             "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
             "/System/Library/Fonts/Supplemental/Helvetica.ttc",
             "/Library/Fonts/Arial Unicode.ttf",
@@ -115,6 +121,8 @@ def build_credentials_pdf(
     emoji_font = _pick_emoji_font(symbols + suffix4_symbols + suffix6_symbols, 26)
     title_font = _load_font(
         [
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
             "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
             "/System/Library/Fonts/Supplemental/Helvetica.ttc",
             "/Library/Fonts/Arial Unicode.ttf",

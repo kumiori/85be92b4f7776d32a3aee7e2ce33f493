@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any, Dict, Optional
+import logging
 
 import streamlit as st
 import yaml
@@ -9,8 +10,10 @@ from yaml.loader import SafeLoader
 
 from infra.key_auth import AuthenticateWithKey
 from infra.notion_repo import NotionRepo, init_notion_repo
+from time import perf_counter
 
 CONFIG_PATH = Path(__file__).resolve().parents[1] / "config.yaml"
+CORE_LOGGER = logging.getLogger("iceicebaby.core")
 
 
 @st.cache_data(show_spinner=False)
@@ -30,6 +33,7 @@ def _pick_id(key: str) -> str:
 
 @st.cache_resource(show_spinner=False)
 def get_notion_repo() -> Optional[NotionRepo]:
+    t0 = perf_counter()
     repo = init_notion_repo(
         session_db_id=_pick_id("ice_sessions_db_id")
         or _pick_id("sessions_db_id")
@@ -58,6 +62,11 @@ def get_notion_repo() -> Optional[NotionRepo]:
             decisions_db_id=_pick_id("ice_decisions_db_id") or _pick_id("decisions"),
             highlights_db_id=_pick_id("ice_highlights_db_id") or _pick_id("highlights"),
         )
+    CORE_LOGGER.info(
+        "perf.repo_init_ms=%.1f cache=resource repo_ready=%s",
+        (perf_counter() - t0) * 1000.0,
+        bool(repo),
+    )
     return repo
 
 

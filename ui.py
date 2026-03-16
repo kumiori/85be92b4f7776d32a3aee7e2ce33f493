@@ -8,6 +8,30 @@ import streamlit as st
 
 from config import settings
 
+EVENT_DATE = "19 March 2026"
+EVENT_TIME = "16:00-17:30 (CET)"
+EVENT_ROOM = "Room XI, UNESCO Headquarters"
+EVENT_ORGANISERS = (
+    "Ignacio Palomo, Andrés León Baldelli, Leopold Bouzard, "
+    "Veronique Dansereau, Jean-François Delhom, Bruno Doucey"
+)
+MARGINS = {
+    "top": "2.875rem",
+    "bottom": "0",
+}
+STICKY_CONTAINER_HTML = """
+<style>
+div[data-testid="stVerticalBlock"] div:has(div.fixed-header-{i}) {{
+    position: sticky;
+    {position}: {margin};
+    background-color: white;
+    z-index: 999;
+}}
+</style>
+<div class='fixed-header-{i}'/>
+""".strip()
+_sticky_count = 0
+
 
 def _initial_sidebar_state() -> str:
     ui_cfg = st.secrets.get("ui", {})
@@ -50,6 +74,76 @@ def heading(text: str) -> None:
 
 def microcopy(text: str) -> None:
     st.markdown(f"<p class='microcopy'>{text}</p>", unsafe_allow_html=True)
+
+
+def render_event_details() -> None:
+    st.markdown(
+        f"""
+Date: {EVENT_DATE}  
+Time: {EVENT_TIME}  
+{EVENT_ROOM}  
+Organisers and co-organisers: {EVENT_ORGANISERS}
+"""
+    )
+
+
+def apply_auth_input_form_styles(
+    main_font_rem: float = 3.0, input_height_em: float | None = None
+) -> None:
+    if input_height_em is None:
+        main_min_height = f"calc({main_font_rem}rem * 1.8)"
+    else:
+        main_min_height = f"{input_height_em}em"
+    st.markdown(
+        f"""
+<style>
+section.main [data-testid="stTextInput"] input {{
+  font-size: {main_font_rem}rem !important;
+  line-height: 1.15 !important;
+  min-height: {main_min_height} !important;
+  padding-top: 0.45rem !important;
+  padding-bottom: 0.45rem !important;
+}}
+section.main [data-testid="stTextInput"] label p {{
+  font-size: 1.05rem !important;
+}}
+div[data-testid="stSidebar"] [data-testid="stTextInput"] input {{
+  font-size: 1rem !important;
+  line-height: 1.3 !important;
+  min-height: 2.4rem !important;
+}}
+div[data-testid="stSidebar"] [data-testid="stTextInput"] label p {{
+  font-size: 0.95rem !important;
+}}
+</style>
+""",
+        unsafe_allow_html=True,
+    )
+
+
+def sticky_container(
+    *,
+    height: int | None = None,
+    border: bool | None = None,
+    mode: Literal["top", "bottom"] = "top",
+    margin: str | None = None,
+):
+    global _sticky_count
+    if margin is None:
+        margin = MARGINS[mode]
+    html_code = STICKY_CONTAINER_HTML.format(
+        position=mode,
+        margin=margin,
+        i=_sticky_count,
+    )
+    _sticky_count += 1
+
+    if height is None:
+        container = st.container(border=border)
+    else:
+        container = st.container(height=height, border=border)
+    container.markdown(html_code, unsafe_allow_html=True)
+    return container
 
 
 def primary_button(

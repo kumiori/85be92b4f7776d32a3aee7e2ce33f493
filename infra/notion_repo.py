@@ -1023,6 +1023,45 @@ class NotionRepo:
                 return None
         return None
 
+    def set_player_role(
+        self,
+        player_id: str,
+        role: str,
+        players_db_id: Optional[str] = None,
+        source: str = "",
+    ) -> Optional[Dict[str, Any]]:
+        player = self.get_player_by_id(player_id, players_db_id=players_db_id)
+        if not player:
+            return None
+        db_id = self._players_db_id(players_db_id)
+        if not self._prop_exists(db_id, "role"):
+            return player
+        role_prop = self._prop_name(db_id, "role", "select")
+        properties: Dict[str, Any] = {role_prop: {"select": {"name": role}}}
+        now_iso = datetime.now(timezone.utc).isoformat()
+        if self._prop_exists(db_id, "role_claimed_at"):
+            properties["role_claimed_at"] = {"date": {"start": now_iso}}
+        if source:
+            if self._prop_exists(db_id, "role_claim_source"):
+                claim_source_prop = self._prop_name(
+                    db_id, "role_claim_source", "rich_text"
+                )
+                if self._db_props(db_id).get(claim_source_prop, {}).get("type") == "select":
+                    properties[claim_source_prop] = {"select": {"name": source}}
+                else:
+                    properties[claim_source_prop] = {
+                        "rich_text": [
+                            {"type": "text", "text": {"content": source}}
+                        ]
+                    }
+        page = _execute_with_retry(
+            self.client.pages.update,
+            page_id=player["id"],
+            properties=properties,
+        )
+        _clear_query_cache()
+        return self._normalize_player(page, players_db_id=db_id)
+
     # ---- Ideas -------------------------------------------------------
     def create_idea(
         self,

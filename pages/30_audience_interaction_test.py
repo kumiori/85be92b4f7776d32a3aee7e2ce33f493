@@ -235,6 +235,24 @@ def main() -> None:
 
     sessions, default_session_id = _resolve_sessions()
     session_ids = [s["id"] for s in sessions]
+    qp = st.query_params
+    requested_session = str(qp.get("session", "") or "").strip()
+    requested_mode = str(qp.get("mode", "") or "").strip().lower()
+    requested_depth_raw = str(qp.get("depth", "") or "").strip()
+    requested_depth: Optional[int] = None
+    if requested_depth_raw.isdigit():
+        requested_depth = max(1, min(10, int(requested_depth_raw)))
+    if requested_depth is None and requested_mode == "extended":
+        requested_depth = 8
+
+    if requested_session:
+        for session in sessions:
+            sid = str(session.get("id") or "")
+            label = str(session.get("label") or "")
+            if requested_session in {sid, label}:
+                default_session_id = sid
+                break
+
     default_idx = (
         session_ids.index(default_session_id)
         if default_session_id in session_ids
@@ -254,7 +272,13 @@ def main() -> None:
     )
     text_id = st.selectbox("TEXT_ID (optional)", TEXT_OPTIONS, index=0)
     st.caption(TEXT_SNIPPETS.get(text_id, ""))
-    depth = st.slider("Question depth", min_value=1, max_value=10, value=5, step=1)
+    depth = st.slider(
+        "Question depth",
+        min_value=1,
+        max_value=10,
+        value=requested_depth or 5,
+        step=1,
+    )
 
     actor_id, player_id = _actor_identity()
     seed_key = f"{selected_session_id}:{actor_id}"

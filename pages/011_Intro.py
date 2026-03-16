@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import time
 from datetime import datetime
 
 import streamlit as st
@@ -10,17 +11,17 @@ from infra.app_context import (
     get_authenticator,
     get_auth_runtime_config,
     get_notion_repo,
+    load_config,
 )
 from infra.app_state import (
     ensure_auth,
     ensure_session_state,
+    mint_anon_token,
     remember_access,
     set_session,
-    mint_anon_token,
 )
-from infra.cryosphere_cracks import CRYOSPHERE_CRACKS, cryosphere_crack_points
-from infra.credentials_pdf import build_credentials_pdf
 from infra.event_logger import log_event, get_module_logger
+from infra.event_logger import perf_timer, log_perf
 from models.catalog import questions_for_session
 from repositories.base import InteractionRepository
 from repositories.interaction_repo import (
@@ -37,7 +38,6 @@ from ui import (
     sidebar_debug_state,
     cracks_globe_block,
     display_centered_prompt,
-    render_event_details,
     render_info_block,
 )
 
@@ -51,6 +51,59 @@ PRE_SIGNAL_SCORE = {
     "No — for other reasons, stop here": -1,
 }
 AUTH_LOGGER = get_module_logger("iceicebaby.auth")
+INTRO_STEP_KEY = "intro_step"
+INTRO_ANIMATE_KEY = "intro_animate_text"
+INTRO_COMPLETED_KEY = "intro_seen_once"
+
+
+def _intro_stream_timing_config() -> tuple[float, dict[str, float]]:
+    cfg = load_config().get("intro", {}).get("streaming", {})
+
+    base_delay_raw = cfg.get("base_delay_s", 0.04)
+    try:
+        base_delay_s = max(0.001, float(base_delay_raw))
+    except Exception:
+        base_delay_s = 0.04
+
+    raw_coef = cfg.get("punctuation_pause_coef", {}) or {}
+
+    def _coef(name: str, default: float) -> float:
+        try:
+            return max(1.0, float(raw_coef.get(name, default)))
+        except Exception:
+            return default
+
+    punctuation_coef = {
+        ",": _coef("comma", 1.8),
+        ";": _coef("semicolon", 2.0),
+        ":": _coef("colon", 2.0),
+        ".": _coef("period", 2.4),
+        "!": _coef("exclamation", 2.4),
+        "?": _coef("question", 2.4),
+    }
+    return base_delay_s, punctuation_coef
+
+
+def _stream_writer(text: str, delay_s: float, punctuation_coef: dict[str, float]):
+    words = text.split(" ")
+    for i, word in enumerate(words):
+        if i == 0:
+            yield word
+        else:
+            yield " " + word
+        trailing = word.rstrip()[-1:] if word else ""
+        coef = punctuation_coef.get(trailing, 1.0)
+        time.sleep(delay_s * coef)
+
+
+def _render_streamed_paragraph(text: str, key: str, animate: bool = True) -> None:
+    done_key = f"intro_stream_done:{key}"
+    if not animate or st.session_state.get(done_key):
+        st.markdown(text)
+        return
+    base_delay_s, punctuation_coef = _intro_stream_timing_config()
+    st.write_stream(_stream_writer(text, base_delay_s, punctuation_coef))
+    st.session_state[done_key] = True
 
 
 def _build_interaction_repository(notion_repo) -> tuple[InteractionRepository, str]:
@@ -70,50 +123,8 @@ def _build_interaction_repository(notion_repo) -> tuple[InteractionRepository, s
     return NotionInteractionRepository(notion_repo, str(db_id)), "notion"
 
 
-def main() -> None:
-    set_page()
-    apply_theme()
-    ensure_session_state()
-    sidebar_debug_state()
-
-    heading("<center>Glaciers, Listening to Society</center>")
-    st.markdown(
-        """
-### Developed for the World Day for Glaciers at UNESCO, within the Decade of Action for Cryospheric Sciences (2024-2035).
-"""
-    )
-    render_event_details()
-    display_centered_prompt("A moment before deciding.")
-    st.markdown(
-        """
-### Transitions in nature rarely announce themselves clearly. Signals accumulate. Tensions build, energy stores. Then systems shift. 
-#### Understanding these transitions is a scientific challenge. Acting through them is a collective one.
-### To act in the decade Decade of Action for Cryospheric Sciences (2025–2034), we need new languages and new coordination experiments.
-        """
-    )
-    st.divider()
-    locations_md = []
-    for category, entries in CRYOSPHERE_CRACKS.items():
-        regions = ", ".join(entry["Region"] for entry in entries)
-        locations_md.append(f"- **{category}**: {regions}")
-
-    render_info_block(
-        left_title="Decision signals",
-        left_subtitle="collective experiment",
-        right_content="\n".join(
-            [
-                "#### New problems require new forms of interaction. Today we speak through the arts and sciences.",
-                "",
-                "#### This platform explores how groups perceive signals, exchange perspectives, and form decisions together.",
-                "",
-                "#### What happens _next_ depends on the signals we generate here.",
-                "",
-            ]
-        ),
-    )
+def _render_first_signal_step(repo, authenticator) -> None:
     display_centered_prompt("The first signal begins with you.")
-    repo = get_notion_repo()
-    authenticator = get_authenticator(repo)
     auth_cfg = get_auth_runtime_config()
     key_hash_prefix = hashlib.sha256(
         auth_cfg["cookie_key"].encode("utf-8")
@@ -160,15 +171,13 @@ def main() -> None:
         name = st.session_state.get("name")
         authentication_status = st.session_state.get("authentication_status")
     else:
-        apply_auth_input_form_styles(main_font_rem=3.0)
+        apply_auth_input_form_styles(main_font_rem=3.0, input_height_em=2.0)
         name, authentication_status, _ = ensure_auth(
             authenticator,
             callback=remember_access,
-            key="access-key-login",
+            key="intro-access-key-login",
             location="main",
         )
-
-    open_mint = bool(st.session_state.pop("focus_mint_token", False))
 
     if authentication_status:
         display_name = name or st.session_state.get("player_name") or "collaborator"
@@ -176,7 +185,7 @@ def main() -> None:
         if prev_auth is not True:
             ok, err = touch_player_presence(
                 str(st.session_state.get("player_page_id", "")),
-                page="login",
+                page="intro",
                 session_slug=str(st.session_state.get("session_label", "")),
             )
             if not ok:
@@ -186,26 +195,26 @@ def main() -> None:
                 event_type="login_success",
                 player_id=str(st.session_state.get("player_page_id", "")),
                 session_id=str(st.session_state.get("session_id", "")),
-                metadata={"page": "login"},
+                metadata={"page": "011_Intro"},
             )
         st.session_state["_prev_auth_status"] = True
-        # st.success(f"Authentication status: LOGGED IN")
         st.success(
             f"Hello {display_name}. Before entering the lobby, we invite you to send a first signal."
         )
-        # st.info(
-        #     "Your session cookie is active. You can continue directly to the lobby."
-        # )
-        session = get_active_session(repo)
+
+        with perf_timer("iceicebaby.auth", "active_session_lookup", page="011_Intro"):
+            session = get_active_session(repo)
         if session:
             set_session(session.get("id", ""), session.get("session_code", "Session"))
         session_id = st.session_state.get("session_id", "")
         player_page_id = st.session_state.get("player_page_id", "")
         signal_repo: InteractionRepository | None = None
-        signal_backend = "notion"
         storage_error = ""
         try:
-            signal_repo, signal_backend = _build_interaction_repository(repo)
+            with perf_timer(
+                "iceicebaby.responses", "interaction_repo_init", page="011_Intro"
+            ):
+                signal_repo, _ = _build_interaction_repository(repo)
         except Exception as exc:
             storage_error = str(exc)
             AUTH_LOGGER.error("schema mismatch: %s", storage_error)
@@ -213,6 +222,7 @@ def main() -> None:
                 "Interaction storage is not available in Notion. "
                 f"Fix Database settings/schema to proceed. Details: {storage_error}"
             )
+
         salt = st.secrets.get("anon_salt", "iceicebaby")
         anon_token = mint_anon_token(
             st.session_state.get("session_id", ""),
@@ -242,6 +252,7 @@ def main() -> None:
             or str((session or {}).get("session_code", "") or "").strip()
             or "GLOBAL-SESSION"
         )
+        t_questions = time.perf_counter()
         pre_lobby_questions = sorted(
             [
                 q
@@ -249,6 +260,14 @@ def main() -> None:
                 if q.visible_before_lobby and q.depth <= pre_lobby_depth
             ],
             key=lambda q: (q.depth, q.order, q.id),
+        )
+        log_perf(
+            "iceicebaby.responses",
+            "pre_lobby_questions_select",
+            (time.perf_counter() - t_questions) * 1000.0,
+            session=current_session_code,
+            depth=pre_lobby_depth,
+            count=len(pre_lobby_questions),
         )
         signal_count = sum(1 for q in pre_lobby_questions if q.depth == 0)
         emotional_count = sum(1 for q in pre_lobby_questions if q.depth >= 1)
@@ -269,10 +288,10 @@ def main() -> None:
         if pre_lobby_questions and not depth_confirmed:
             st.markdown("---")
             if st.button(
-                "Continue with selected depth",
+                "Let me send my first signal",
                 type="secondary",
                 use_container_width=True,
-                key="pre-lobby-depth-continue",
+                key="pre-lobby-depth-continue-intro",
             ):
                 st.session_state[depth_confirm_key] = depth_sig
                 st.rerun()
@@ -280,8 +299,6 @@ def main() -> None:
 
         if pre_lobby_questions and depth_confirmed:
             st.markdown("---")
-            # st.subheader("Ice breaker")
-
             ui_sig_key = "pre_lobby_ui_sig"
             ui_idx_key = "pre_lobby_ui_idx"
             ui_answers_key = "pre_lobby_ui_answers"
@@ -316,7 +333,6 @@ def main() -> None:
                 return None
 
             total = len(pre_lobby_questions)
-
             idx = min(st.session_state.get(ui_idx_key, 0), max(total - 1, 0))
             st.session_state[ui_idx_key] = idx
             q = pre_lobby_questions[idx]
@@ -335,7 +351,7 @@ def main() -> None:
                     "Response",
                     options,
                     index=selected_idx,
-                    key=f"pre-lobby-choice-{q.id}",
+                    key=f"pre-lobby-choice-intro-{q.id}",
                     label_visibility="collapsed",
                 )
                 choice: str | list[str] = (
@@ -351,7 +367,7 @@ def main() -> None:
                         q.options or [],
                         selection_mode="multi",
                         default=existing_choice_list,
-                        key=f"pre-lobby-choice-{q.id}",
+                        key=f"pre-lobby-choice-intro-{q.id}",
                         label_visibility="collapsed",
                     )
                     or []
@@ -373,7 +389,7 @@ def main() -> None:
                     "Condition or comment",
                     value=comment_existing,
                     placeholder=q.placeholder or "Your condition or comment",
-                    key=f"pre-lobby-comment-{q.id}",
+                    key=f"pre-lobby-comment-intro-{q.id}",
                 )
             answers[q.id] = {
                 "choice": choice,
@@ -397,7 +413,7 @@ def main() -> None:
                     "Back",
                     use_container_width=True,
                     disabled=idx == 0,
-                    key="pre-lobby-back",
+                    key="pre-lobby-back-intro",
                 ):
                     st.session_state[ui_idx_key] = max(0, idx - 1)
                     st.rerun()
@@ -406,7 +422,7 @@ def main() -> None:
                     "Next",
                     use_container_width=True,
                     disabled=idx >= total - 1 or not _is_valid(q.id),
-                    key="pre-lobby-next",
+                    key="pre-lobby-next-intro",
                 ):
                     st.session_state[ui_idx_key] = min(total - 1, idx + 1)
                     st.rerun()
@@ -416,7 +432,7 @@ def main() -> None:
                     type="primary",
                     use_container_width=True,
                     disabled=idx != total - 1 or answered < total,
-                    key="pre-lobby-submit",
+                    key="pre-lobby-submit-intro",
                 )
 
             if submit_module:
@@ -429,18 +445,24 @@ def main() -> None:
                     )
                     AUTH_LOGGER.error("notion write failure: signal repo unavailable")
                 else:
-                    for item in pre_lobby_questions:
-                        signal_repo.save_response(
-                            session_id=session_id,
-                            player_id=player_page_id or None,
-                            question_id=item.id,
-                            value=answers.get(item.id, {}),
-                            text_id=PRE_LOBBY_MODULE_TEXT_ID
-                            if item.depth >= 1
-                            else PRE_SIGNAL_TEXT_ID,
-                            device_id=anon_token,
-                        )
-                    # Presence heartbeat for "choices submitted" event.
+                    with perf_timer(
+                        "iceicebaby.responses",
+                        "pre_lobby_save_batch",
+                        session=session_id,
+                        count=len(pre_lobby_questions),
+                        depth=pre_lobby_depth,
+                    ):
+                        for item in pre_lobby_questions:
+                            signal_repo.save_response(
+                                session_id=session_id,
+                                player_id=player_page_id or None,
+                                question_id=item.id,
+                                value=answers.get(item.id, {}),
+                                text_id=PRE_LOBBY_MODULE_TEXT_ID
+                                if item.depth >= 1
+                                else PRE_SIGNAL_TEXT_ID,
+                                device_id=anon_token,
+                            )
                     ok, err = touch_player_presence(
                         str(player_page_id or ""),
                         page="choices_submit",
@@ -456,20 +478,23 @@ def main() -> None:
                         player_id=str(player_page_id or ""),
                         session_id=str(session_id),
                         item_id=PRE_SIGNAL_ID,
-                        value_label=str(answers.get(PRE_SIGNAL_ID, {}).get("choice", "")),
+                        value_label=str(
+                            answers.get(PRE_SIGNAL_ID, {}).get("choice", "")
+                        ),
                         metadata={
                             "answered": answered,
                             "total": total,
                             "depth": pre_lobby_depth,
                         },
                     )
-                    st.success(f"✨ Signal recorded.")
+                    st.success("✨ Signal recorded.")
                     st.balloons()
         if st.button(
             "Enter lobby",
             type="secondary",
             use_container_width=True,
             disabled=not pre_signal_submitted,
+            key="intro-enter-lobby",
         ):
             ok, err = touch_player_presence(
                 str(player_page_id or ""),
@@ -483,7 +508,7 @@ def main() -> None:
                 event_type="enter_lobby",
                 player_id=str(player_page_id or ""),
                 session_id=str(session_id),
-                metadata={"source_page": "01_Login"},
+                metadata={"source_page": "011_Intro"},
             )
             st.switch_page("pages/02_Home.py")
         if not pre_signal_submitted:
@@ -495,6 +520,133 @@ def main() -> None:
         st.session_state["_prev_auth_status"] = None
         st.info("Authentication status: Offline")
         st.caption("Use the access key form above to log in.")
+
+
+def main() -> None:
+    set_page()
+    apply_theme()
+    ensure_session_state()
+    sidebar_debug_state()
+    st.session_state.setdefault(INTRO_STEP_KEY, 0)
+    st.session_state.setdefault(INTRO_ANIMATE_KEY, True)
+
+    heading("<center>Glaciers, Listening to Society</center>")
+    t_repo = time.perf_counter()
+    repo = get_notion_repo()
+    log_perf(
+        "iceicebaby.auth",
+        "intro_repo_fetch",
+        (time.perf_counter() - t_repo) * 1000.0,
+        page="011_Intro",
+        repo_ready=bool(repo),
+    )
+    t_auth = time.perf_counter()
+    authenticator = get_authenticator(repo)
+    log_perf(
+        "iceicebaby.auth",
+        "intro_authenticator_init",
+        (time.perf_counter() - t_auth) * 1000.0,
+        page="011_Intro",
+    )
+
+    step = int(st.session_state.get(INTRO_STEP_KEY, 0))
+    is_returning = bool(
+        st.session_state.get("authentication_status")
+        or st.session_state.get("player_page_id")
+        or st.session_state.get(INTRO_COMPLETED_KEY)
+    )
+    if is_returning and step < 2:
+        if st.button(
+            "Skip intro and go to first signal",
+            type="secondary",
+            use_container_width=True,
+            key="intro-skip",
+        ):
+            st.session_state[INTRO_STEP_KEY] = 2
+            st.rerun()
+
+    animate = bool(st.session_state.get(INTRO_ANIMATE_KEY, True))
+    if step == 0:
+        display_centered_prompt("A moment before deciding.")
+        # spinner for .5 sec
+        with st.spinner("Consider this..."):
+            time.sleep(4.5)
+
+        _render_streamed_paragraph(
+            "### Transitions in nature rarely announce themselves clearly. Signals accumulate. Tensions build, energy stores. Then systems shift.",
+            key="step0-p1",
+            animate=animate,
+        )
+        _render_streamed_paragraph(
+            "### Understanding these transitions is a scientific challenge. Acting through them is a collective one.",
+            key="step0-p2",
+            animate=animate,
+        )
+        _render_streamed_paragraph(
+            "### To act in the Decade of Action for Cryospheric Sciences (2025–2034), we need new languages and new coordination experiments.",
+            key="step0-p3",
+            animate=animate,
+        )
+        left, right = st.columns([1, 1.4])
+        with left:
+            if st.button(
+                "Back",
+                type="secondary",
+                use_container_width=True,
+                key="intro-step0-back",
+            ):
+                st.switch_page("pages/Splash.py")
+        with right:
+            if st.button(
+                "I would like to explore this",
+                type="primary",
+                use_container_width=True,
+                key="intro-step0-next",
+            ):
+                st.session_state[INTRO_STEP_KEY] = 1
+                st.rerun()
+        return
+
+    if step == 1:
+        st.markdown("### Decision signals")
+        st.caption("collective experiment")
+        _render_streamed_paragraph(
+            "### New problems require new forms of interaction. Today we speak through the arts and sciences.",
+            key="step1-p1",
+            animate=animate,
+        )
+        _render_streamed_paragraph(
+            "### This platform explores how groups perceive signals, exchange perspectives, and form decisions together.",
+            key="step1-p2",
+            animate=animate,
+        )
+        _render_streamed_paragraph(
+            "### What happens next depends on the signals we generate here.",
+            key="step1-p3",
+            animate=animate,
+        )
+        left, right = st.columns([1, 1.4])
+        with left:
+            if st.button(
+                "Back to access page",
+                type="secondary",
+                use_container_width=True,
+                key="intro-step1-back",
+            ):
+                st.switch_page("pages/Splash.py")
+        with right:
+            if st.button(
+                "I am curious about this experiment",
+                type="primary",
+                use_container_width=True,
+                key="intro-step1-next",
+            ):
+                st.session_state[INTRO_STEP_KEY] = 2
+                st.rerun()
+        return
+
+    st.session_state[INTRO_COMPLETED_KEY] = True
+    _render_first_signal_step(repo, authenticator)
 
 
 if __name__ == "__main__":

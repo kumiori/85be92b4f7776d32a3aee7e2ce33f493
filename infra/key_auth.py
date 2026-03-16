@@ -1,18 +1,29 @@
 from __future__ import annotations
 
 from typing import Callable, Dict, Optional, Tuple, List
+import importlib
 
 import streamlit as st
 from streamlit_authenticator.controllers import CookieController
 from streamlit_authenticator.utilities import RegisterError, Validator
 
-from infra.key_codec import (
-    generate_hex_key,
-    hex_to_emoji,
-    hex_to_phrase,
-    normalize_access_key,
-    split_emoji_symbols,
-)
+try:
+    from infra.key_codec import (
+        generate_hex_key,
+        hex_to_emoji,
+        hex_to_phrase,
+        normalize_access_key,
+        split_emoji_symbols,
+    )
+except Exception:
+    # Streamlit hot-reload can occasionally leave a partially initialised module entry.
+    # Fallback to an explicit import to recover without crashing page import.
+    _kc = importlib.import_module("infra.key_codec")
+    generate_hex_key = _kc.generate_hex_key
+    hex_to_emoji = _kc.hex_to_emoji
+    hex_to_phrase = _kc.hex_to_phrase
+    normalize_access_key = _kc.normalize_access_key
+    split_emoji_symbols = _kc.split_emoji_symbols
 from infra.notion_repo import NotionRepo
 
 
@@ -282,17 +293,6 @@ class AuthenticateWithKey:
                 "Prefilled with your newly minted 4-emoji key."
             )
 
-        st.markdown(
-            """
-<style>
-div[data-testid="stTextInput"] input {
-  font-size: 3em !important;
-  line-height: 1.1 !important;
-}
-</style>
-            """,
-            unsafe_allow_html=True,
-        )
         with container.form(key):
             access_key = st.text_input(
                 "Paste your 4️⃣-emoji access key",

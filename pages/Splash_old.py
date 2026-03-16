@@ -6,139 +6,106 @@ from typing import Any, Dict
 
 import streamlit as st
 
-from infra.app_context import get_authenticator, get_notion_repo, load_config
+from infra.app_context import get_authenticator, get_notion_repo
 from infra.app_state import ensure_session_state
+from infra.cryosphere_cracks import cryosphere_crack_points
 from infra.credentials_pdf import build_credentials_pdf
 from infra.key_codec import split_emoji_symbols
 from infra.event_logger import log_event, get_module_logger
 from ui import (
     apply_theme,
+    cracks_globe_block,
     display_centered_prompt,
     heading,
+    microcopy,
+    render_event_details,
+    render_info_block,
     set_page,
     sidebar_debug_state,
-    sticky_container,
 )
 
 MINT_RESULT_KEY = "splash_mint_result"
+OPEN_MINT_KEY = "focus_mint_token"
 MINT_DEBUG_KEY = "splash_mint_debug"
 MINT_DEBUG_TRACE_KEY = "mint_debug_trace"
-SHOW_MINT_DIALOG_KEY = "splash_show_mint_dialog"
-SHOW_MINT_FORM_KEY = "splash_show_mint_form"
-HIDE_ACCESS_INTRO_KEY = "splash_hide_access_intro"
 AUTH_LOGGER = get_module_logger("iceicebaby.auth")
 
 
-def _splash_stream_timing_config() -> tuple[float, dict[str, float]]:
-    root = load_config()
-    cfg = (
-        root.get("splash", {}).get("streaming", {})
-        or root.get("intro", {}).get("streaming", {})
-        or {}
+def _render_intro() -> None:
+    heading("<center>Glaciers, Listening to Society</center>")
+    st.caption(f"### `The copy that follows is subject to change.`")
+
+    st.markdown(
+        """
+### Developed for the World Day for Glaciers at UNESCO, within the Decade of Action for Cryospheric Sciences (2024-2035).
+#### TODAY WE COMMUNICATE WITH ARTS, PHOTOGRAPHY, LITERATURE, POETRY, and SOUND.
+"""
     )
-    base_raw = cfg.get("base_delay_s", 0.04)
-    try:
-        base_delay_s = max(0.001, float(base_raw))
-    except Exception:
-        base_delay_s = 0.04
-    raw_coef = cfg.get("punctuation_pause_coef", {}) or {}
-
-    def _coef(name: str, default: float) -> float:
-        try:
-            return max(1.0, float(raw_coef.get(name, default)))
-        except Exception:
-            return default
-
-    punctuation_coef = {
-        ",": _coef("comma", 1.8),
-        ";": _coef("semicolon", 2.0),
-        ":": _coef("colon", 2.0),
-        ".": _coef("period", 2.4),
-        "!": _coef("exclamation", 2.4),
-        "?": _coef("question", 2.4),
-    }
-    return base_delay_s, punctuation_coef
-
-
-def _stream_writer(text: str, delay_s: float, punctuation_coef: dict[str, float]):
-    words = text.split(" ")
-    for i, word in enumerate(words):
-        yield word if i == 0 else " " + word
-        trailing = word.rstrip()[-1:] if word else ""
-        coef = punctuation_coef.get(trailing, 1.0)
-        time.sleep(delay_s * coef)
-
-
-def _render_streamed_paragraph(text: str, key: str, animate: bool = True) -> None:
-    done_key = f"splash_stream_done:{key}"
-    if not animate or st.session_state.get(done_key):
-        st.markdown(text)
-        return
-    base_delay_s, punctuation_coef = _splash_stream_timing_config()
-    st.write_stream(_stream_writer(text, base_delay_s, punctuation_coef))
-    st.session_state[done_key] = True
+    render_event_details()
+    cracks_globe_block(
+        cryosphere_crack_points(),
+        height=600,
+        key="home-header-cracks",
+        auto_rotate_speed=0.8,
+        camera_lat=-28.0,
+        camera_lng=10.0,
+        camera_altitude=0.8,
+    )
+    microcopy(
+        "Planet Earth at night. Signals concentrate where the cryosphere is under stress. Suggested listening: Computations - Kenn-Eerik, 2023"
+    )
+    display_centered_prompt("Something is happening now.")
+    render_info_block(
+        left_title="Why participate?",
+        left_subtitle="signals · choices · transitions",
+        right_content="\n".join(
+            [
+                "### Glaciers, ice shelves, and frozen ground are _evolving_ systems. These systems speak many languages.",
+                # "#### Understanding their transitions is not about _tracking_ them.",
+                "",
+                # "#### When systems approach thresholds, signals appear before they break.",
+                "#### Detecting and understanding them requires attention, interpretation, and collective judgement.",
+                "",
+                "#### This platform invites your observations, responses, and interactions. In real time.",
+            ]
+        ),
+    )
 
 
 def _render_access_cta() -> None:
-    has_mint_result = bool(st.session_state.get(MINT_RESULT_KEY))
-    hide_intro = bool(st.session_state.get(HIDE_ACCESS_INTRO_KEY, False))
     display_centered_prompt("Access")
-    if not hide_intro:
-        animate = bool(st.session_state.get("splash_animate_text", True))
-        _render_streamed_paragraph(
-            "### This platform gathers individual points of view and follows how they shift through time.",
-            key="access_p1",
-            animate=animate,
-        )
-        _render_streamed_paragraph(
-            "### A unique access key lets you enter, respond, and trace your path across the session.",
-            key="access_p2",
-            animate=animate,
-        )
-        _render_streamed_paragraph(
-            "### This exchange sheds light on the temperature in the room: how we arrive emotionally, how we relate to the themes ahead, and whether we should continue the conversation.",
-            key="access_p3",
-            animate=animate,
-        )
-    if st.button(
-        "Create access key",
-        type="secondary" if has_mint_result else "primary",
-        use_container_width=True,
-        key="splash-create-key",
-    ):
-        st.session_state[HIDE_ACCESS_INTRO_KEY] = True
-        st.session_state[SHOW_MINT_DIALOG_KEY] = True
-        st.rerun()
-    st.caption("Generate your personal emoji access key and start.")
-
-    st.page_link("pages/011_Intro.py", label="I already have an access key")
-
-
-@st.dialog("Create your access key")
-def _render_mint_info_dialog() -> None:
     st.markdown(
         """
-This platform is designed to be transparent and anonymous.
-Your responses are linked only to your personal access key.
-
-You may customise the key to make your experience easier:
-
-• Name or nickname — so the platform can greet you when you return.
-• Motivation — one short line about why you are joining the conversation.
-• Email — optional, used only to send you a reminder of your credentials.
-
-All answers remain anonymous and associated only with your key.
-"""
+### This session ...
+""",
+        unsafe_allow_html=True,
     )
-    if st.button(
-        "Understood, let's create the key",
-        type="primary",
-        use_container_width=True,
-        key="splash-open-mint-form",
-    ):
-        st.session_state[SHOW_MINT_FORM_KEY] = True
-        st.session_state[SHOW_MINT_DIALOG_KEY] = False
-        st.rerun()
+    st.markdown("#### Each player enters using a unique access key.")
+
+    col_login, col_create = st.columns(2)
+
+    with col_login:
+        st.markdown("#### I already have an access key")
+        st.caption("And I am ready to participate.")
+        if st.button(
+            "🔑 Go to Login",
+            type="secondary",
+            use_container_width=True,
+            key="splash-go-login",
+        ):
+            st.switch_page("pages/01_Login.py")
+
+    with col_create:
+        st.markdown("#### Create a new access key")
+        st.caption("Generate your personal token to participate.")
+        if st.button(
+            "✨ Create Access Key",
+            type="primary",
+            use_container_width=True,
+            key="splash-create-key",
+        ):
+            st.session_state[OPEN_MINT_KEY] = True
+            st.rerun()
 
 
 def _build_mint_result(
@@ -173,29 +140,27 @@ def _render_mint_panel(authenticator: Any) -> None:
     st.session_state.setdefault(MINT_RESULT_KEY, None)
     st.session_state.setdefault(MINT_DEBUG_KEY, [])
     st.session_state.setdefault(MINT_DEBUG_TRACE_KEY, [])
-    st.session_state.setdefault(SHOW_MINT_FORM_KEY, False)
+    open_mint = bool(st.session_state.pop(OPEN_MINT_KEY, False))
 
-    if not bool(st.session_state.get(SHOW_MINT_FORM_KEY)):
-        return
-
-    with st.container(border=True):
-        st.markdown("### Add optional details to your key")
+    with st.expander("Access key details", expanded=open_mint):
+        st.caption(
+            "All sessions are designed to be anonymous. Your access key is personal and "
+            "must be stored securely. If you add an email, it is used only to send a credentials reminder."
+        )
+        st.markdown("### Now login with your access key to join the lobby")
         with st.form("splash-mint-token-form"):
-            mint_name = st.text_input(
-                "Name or nickname (for your reference)",
-                key="splash-mint-name",
-            )
+            mint_name = st.text_input("Name or nickname", key="splash-mint-name")
             mint_intent = st.text_input(
-                "Why are you joining this conversation? (optional)",
+                "What is your motivation? (optional)",
                 key="splash-mint-intent",
                 max_chars=120,
             )
             mint_email = st.text_input(
-                "Email (optional, only for credential reminder)",
+                "Email (optional, for credentials reminder)",
                 key="splash-mint-email",
             )
             mint_submit = st.form_submit_button(
-                "Generate Access Key",
+                "Create Access Key",
                 type="primary",
                 use_container_width=True,
             )
@@ -287,28 +252,15 @@ def _render_mint_result() -> None:
     if not mint_result:
         return
 
-    st.success("Your access key")
-    st.markdown(
-        """
-A unique access key has been created for you.
-
-This key allows you to enter the platform, answer questions, and return later to continue your trajectory. Your responses remain anonymous and are linked only to this key.
-
-Please store your key somewhere safe. If you provide an email below, we can send you a reminder of your credentials.
-
-You can now begin the session.
-"""
-    )
-    st.markdown("### Your key (store safely)")
+    st.success("Token minted.")
+    st.markdown("### Your handy access key (emoji-4)")
     st.markdown(
         f"<div style='font-size:4.1rem;line-height:1.2;text-align:center'>{mint_result.get('emoji4', '—')}</div>",
         unsafe_allow_html=True,
     )
     st.caption(
-        "A unique 22-emoji access key has been generated.\n\n"
-        "For convenience, the last four emojis are usually enough to log in.\n\n"
-        "You may invent a small story with these emojis to help remember your key.\n\n"
-        "Your key is personal and private, so store it somewhere safe."
+        "A 22-emojis string unique key has been generated. In most cases, its last 4 emoji are sufficient to log in. "
+        "Create a story around them to remember, or store the full key securely."
     )
     with st.expander("Show full credentials", expanded=False):
         st.code(f"Access key: {mint_result.get('access_key', '')}", language="text")
@@ -317,27 +269,14 @@ You can now begin the session.
         st.write("Emoji suffix 4:", mint_result.get("emoji4", "—"))
         st.write("Emoji suffix 6:", mint_result.get("emoji6", "—"))
 
-    st.write(
-        "You can also download an Access Card containing the full credentials for safe storage."
-    )
     st.download_button(
-        "Download Access Card",
+        "Download Access Card PDF",
         data=mint_result.get("pdf_bytes", b""),
         file_name=mint_result.get("filename", "iceicebaby-key.pdf"),
         mime="application/pdf",
         use_container_width=True,
         key="splash-mint-download-pdf",
     )
-    if st.button(
-        "Login now",
-        type="primary",
-        use_container_width=True,
-        key="splash-go-login-after-mint",
-    ):
-        st.session_state["login_access_key_prefill"] = str(
-            mint_result.get("emoji4") or mint_result.get("access_key") or ""
-        )
-        st.switch_page("pages/011_Intro.py")
 
 
 def main() -> None:
@@ -349,11 +288,8 @@ def main() -> None:
     repo = get_notion_repo()
     authenticator = get_authenticator(repo)
 
-    with sticky_container(mode="top"):
-        heading("<center>Glaciers, Listening to Society</center>")
-        _render_access_cta()
-    if bool(st.session_state.get(SHOW_MINT_DIALOG_KEY)):
-        _render_mint_info_dialog()
+    _render_intro()
+    _render_access_cta()
     _render_mint_panel(authenticator)
     _render_mint_result()
 

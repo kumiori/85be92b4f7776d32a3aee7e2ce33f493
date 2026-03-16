@@ -10,6 +10,7 @@ from infra.app_state import (
     remember_access,
     require_login,
 )
+from infra.event_logger import log_event
 from ui import apply_theme, heading, microcopy, set_page, sidebar_debug_state
 
 DOMAINS = ["organisation", "science", "society", "policy", "technology", "other"]
@@ -58,6 +59,14 @@ def main() -> None:
             text=question,
             domain=domain_value,
             submitted_by=player_page_id,
+        )
+        log_event(
+            module="iceicebaby.responses",
+            event_type="question_submit",
+            player_id=str(player_page_id),
+            session_id=str(session_id),
+            value_label=str(question[:80]),
+            metadata={"domain": domain_value},
         )
         st.success("Thanks, your input is saved.")
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import streamlit as st
 
 from infra.app_context import get_notion_repo, load_config
+from infra.event_logger import log_event, get_module_logger
 from services.aggregator import get_overview_payload
 from services.presence import count_active_users
 from ui import apply_theme, heading, set_page, sidebar_debug_state
@@ -58,6 +59,15 @@ def main() -> None:
     )
 
     payload = get_overview_payload(selected_slug)
+    if not payload:
+        get_module_logger("iceicebaby.overview").warning("overview payload empty")
+    log_event(
+        module="iceicebaby.overview",
+        event_type="overview_loaded",
+        session_id=str((session_map.get(selected_slug) or {}).get("id", "")),
+        value_label=str(selected_slug),
+        metadata={"question_count": len(payload.get("questions", []))},
+    )
     active_global = count_active_users(window)
     sessions_active = sum(
         1

@@ -36,9 +36,22 @@ auth:
 
 overview:
     active_user_window_minutes: 10
-    default_session_slug: "global-session"
+    default_session_slug: 'global-session'
     show_debug_json: true
 
 presence:
     enabled: true
     update_last_seen_on_interaction: true
+
+intro:
+    streaming:
+        # Base delay per token (seconds). Increase for slower reading.
+        base_delay_s: 0.3
+        # Extra pause multiplier when token ends with punctuation.
+        punctuation_pause_coef:
+            comma: 1.8
+            semicolon: 2.0
+            colon: 2.0
+            period: 3.4
+            exclamation: 5.4
+            question: 5.4
