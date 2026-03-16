@@ -8,6 +8,7 @@ QuestionType = Literal[
     "multi",
     "text",
     "pre_signal",
+    "control",
     "choice",
     "tags",
     "keywords",

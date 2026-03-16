@@ -22,7 +22,7 @@ from infra.app_state import (
 )
 from infra.event_logger import log_event, get_module_logger
 from infra.event_logger import perf_timer, log_perf
-from models.catalog import questions_for_session
+from models.catalog import QUESTION_BY_ID, questions_for_session
 from repositories.base import InteractionRepository
 from repositories.interaction_repo import (
     NotionInteractionRepository,
@@ -233,20 +233,46 @@ def _render_first_signal_step(repo, authenticator) -> None:
         st.markdown(
             "### This opening module collects the room's first signals: how we arrive, how we feel, and whether we want to continue together."
         )
-        st.markdown(
-            "#### A short path or a deeper one? You can select the depth of this first module using the slider below."
+
+        depth_question = QUESTION_BY_ID.get("PRE_LOBBY_DEPTH")
+        depth_cfg = (
+            depth_question.response_structure
+            if depth_question and isinstance(depth_question.response_structure, dict)
+            else {}
         )
+        depth_prompt = (
+            depth_question.prompt
+            if depth_question
+            else "Depth controls how far you go."
+        )
+        depth_context = (
+            depth_question.context
+            if depth_question
+            else "A short path or a deeper one? You can select the depth of this first module using the slider below."
+        )
+        depth_description = (
+            depth_question.short_description
+            if depth_question
+            else "Use the slider to keep the interaction minimal or to explore a few more questions before entering the lobby."
+        )
+        depth_explanation = str(
+            depth_cfg.get(
+                "explanation",
+                "At minimal depth (0), you are invited to respond to only one key question. Higher levels unlock a few more short questions on emotion and interpretation.",
+            )
+        )
+        st.markdown(f"#### {depth_context}")
+        if depth_description:
+            st.caption(depth_description)
         pre_lobby_depth = st.slider(
-            "Depth controls how far you go.",
-            min_value=0,
-            max_value=5,
-            value=0,
-            step=1,
-            help="Use the slider to keep the interaction minimal or to explore a few more questions before entering the lobby.",
+            depth_prompt,
+            min_value=int(depth_cfg.get("min", 0)),
+            max_value=int(depth_cfg.get("max", 5)),
+            value=int(depth_cfg.get("default", 0)),
+            step=int(depth_cfg.get("step", 1)),
+            help=str(depth_cfg.get("help", depth_description)),
         )
-        st.markdown(
-            "At minimal depth (0), you are invited to respond to only one key question. Higher levels unlock a few more short questions on emotion and interpretation."
-        )
+        st.markdown(depth_explanation)
         current_session_code = (
             str(st.session_state.get("session_title", "") or "").strip()
             or str((session or {}).get("session_code", "") or "").strip()
@@ -257,7 +283,9 @@ def _render_first_signal_step(repo, authenticator) -> None:
             [
                 q
                 for q in questions_for_session(current_session_code)
-                if q.visible_before_lobby and q.depth <= pre_lobby_depth
+                if q.visible_before_lobby
+                and q.depth <= pre_lobby_depth
+                and q.qtype != "control"
             ],
             key=lambda q: (q.depth, q.order, q.id),
         )
