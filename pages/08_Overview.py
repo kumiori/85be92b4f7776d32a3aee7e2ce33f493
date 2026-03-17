@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from datetime import datetime
+
+import altair as alt
+import pandas as pd
 import streamlit as st
 
 from infra.app_context import get_notion_repo, load_config
@@ -19,6 +23,83 @@ def _slugify(value: str) -> str:
     )
 
 
+def _counts_rows(counts: dict) -> list[dict]:
+    rows = [{"id": str(k), "value": int(v)} for k, v in (counts or {}).items()]
+    rows.sort(key=lambda x: x["value"], reverse=True)
+    return rows
+
+
+def _render_bar(
+    title: str,
+    counts: dict,
+    *,
+    horizontal: bool = True,
+    height: int = 260,
+) -> None:
+    rows = _counts_rows(counts)
+    if not rows:
+        st.caption(f"{title}: no data yet.")
+        return
+    df = pd.DataFrame(rows)
+    if horizontal:
+        chart = (
+            alt.Chart(df)
+            .mark_bar()
+            .encode(
+                x=alt.X("value:Q", title="Count"),
+                y=alt.Y("id:N", sort="-x", title=None),
+                tooltip=["id:N", "value:Q"],
+            )
+            .properties(title=title, height=height)
+        )
+    else:
+        chart = (
+            alt.Chart(df)
+            .mark_bar()
+            .encode(
+                x=alt.X("id:N", sort="-y", title=None),
+                y=alt.Y("value:Q", title="Count"),
+                tooltip=["id:N", "value:Q"],
+            )
+            .properties(title=title, height=height)
+        )
+    st.altair_chart(chart, use_container_width=True)
+
+
+def _render_signal_timeline(title: str, timeline: list[dict]) -> None:
+    points = []
+    for item in timeline or []:
+        t = item.get("t")
+        y = item.get("score")
+        if t is None or y is None:
+            continue
+        try:
+            dt = datetime.fromisoformat(str(t).replace("Z", "+00:00"))
+        except Exception:
+            continue
+        points.append({"t": dt, "score": float(y)})
+    points.sort(key=lambda x: x["t"])
+    if not points:
+        st.caption(f"{title}: no timeline yet.")
+        return
+    df = pd.DataFrame(points)
+    chart = (
+        alt.Chart(df)
+        .mark_line(point=True)
+        .encode(
+            x=alt.X("t:T", title="Time"),
+            y=alt.Y("score:Q", title="Score"),
+            tooltip=[alt.Tooltip("t:T", title="Time"), "score:Q"],
+        )
+        .properties(title=title, height=260)
+    )
+    st.altair_chart(chart, use_container_width=True)
+
+
+def _question_lookup(payload: dict) -> dict[str, dict]:
+    return {str(q.get("item_id", "")): q for q in payload.get("questions", [])}
+
+
 def main() -> None:
     set_page()
     apply_theme()
@@ -31,6 +112,15 @@ def main() -> None:
 
     heading("Live Map of the Room")
     st.caption("Signals, momentum, distribution, convergence, hesitation.")
+    log_event(
+        module="iceicebaby.overview",
+        event_type="page_view",
+        page="Overview",
+        player_id=str(st.session_state.get("player_page_id", "")),
+        session_id=str(st.session_state.get("session_id", "")),
+        device_id=str(st.session_state.get("anon_token", "")),
+        status="ok",
+    )
 
     repo = get_notion_repo()
     sessions = repo.list_sessions(limit=200) if repo else []
@@ -64,7 +154,11 @@ def main() -> None:
     log_event(
         module="iceicebaby.overview",
         event_type="overview_loaded",
+        page="Overview",
+        player_id=str(st.session_state.get("player_page_id", "")),
         session_id=str((session_map.get(selected_slug) or {}).get("id", "")),
+        device_id=str(st.session_state.get("anon_token", "")),
+        status="ok",
         value_label=str(selected_slug),
         metadata={"question_count": len(payload.get("questions", []))},
     )
@@ -84,21 +178,43 @@ def main() -> None:
     st.caption("Only logged-in participants are counted as active.")
 
     if show_debug_json:
-        with st.expander("Debug JSON", expanded=True):
+        with st.expander("Debug JSON", expanded=False):
             st.json(payload)
+    qmap = _question_lookup(payload)
+    st.subheader("Collective entry signal")
+    sig = qmap.get("ORGANISATION_SIGNAL")
+    if sig:
+        _render_bar("Organisation signal", sig.get("counts", {}), horizontal=False)
+        _render_signal_timeline("Organisation signal timeline", sig.get("timeline", []))
+    else:
+        st.caption("No organisation signal data yet.")
 
-    st.subheader("Chart-ready blocks")
-    for q in payload.get("questions", []):
-        with st.container(border=True):
-            st.markdown(f"**{q.get('item_id', 'UNKNOWN_ITEM')}**")
-            st.caption(
-                f"chart_type: {q.get('chart_type', '')} · question_type: {q.get('question_type', '')}"
-            )
-            if "counts" in q:
-                st.json(q.get("counts", {}))
-            elif "entries" in q:
-                st.json(q.get("entries", []))
-            else:
+    st.subheader("Emotional field")
+    for item_id, title in [
+        ("ARRIVAL_EMOTION", "Arrival emotion"),
+        ("ENVIRONMENT_CHANGE_EMOTION", "Emotion toward environmental change"),
+        ("SOCIETAL_CHANGE_EMOTION", "Emotion toward societal change"),
+    ]:
+        q = qmap.get(item_id)
+        if q:
+            _render_bar(title, q.get("counts", {}), horizontal=True)
+
+    st.subheader("Position and readiness")
+    for item_id, title in [
+        ("COLLABORATION_READINESS", "Collaboration readiness"),
+        ("PERSONAL_AGENCY", "Personal agency"),
+    ]:
+        q = qmap.get(item_id)
+        if q:
+            _render_bar(title, q.get("counts", {}), horizontal=True)
+
+    with st.expander("Developer blocks", expanded=False):
+        for q in payload.get("questions", []):
+            with st.container(border=True):
+                st.markdown(f"**{q.get('item_id', 'UNKNOWN_ITEM')}**")
+                st.caption(
+                    f"chart_type: {q.get('chart_type', '')} · question_type: {q.get('question_type', '')}"
+                )
                 st.json(q)
 
 

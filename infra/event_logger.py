@@ -108,10 +108,13 @@ def log_event(
     *,
     module: str,
     event_type: str,
+    page: str = "",
     player_id: str = "",
     session_id: str = "",
     item_id: str = "",
     value_label: str = "",
+    device_id: str = "",
+    status: str = "ok",
     metadata: Optional[Dict[str, Any]] = None,
     level: str = "INFO",
 ) -> None:
@@ -122,6 +125,9 @@ def log_event(
         "session_id": session_id,
         "item_id": item_id,
         "value_label": value_label,
+        "page": page,
+        "device_id": device_id,
+        "status": status,
         "metadata": metadata or {},
     }
     lvl = (level or "INFO").upper()
@@ -152,7 +158,16 @@ def log_event(
     item_prop = _find_prop(props, "item_id", "rich_text")
     value_label_prop = _find_prop(props, "value_label", "rich_text")
     metadata_prop = _find_prop(props, "metadata_json", "rich_text")
-    title_prop = _find_prop(props, "Name", "title")
+    page_prop = _find_prop(props, "page", "rich_text")
+    device_prop = _find_prop(props, "device_id", "rich_text")
+    status_prop = _find_prop(props, "status", "select") or _find_prop(
+        props, "status", "rich_text"
+    )
+    title_prop = (
+        _find_prop(props, "Event", "title")
+        or _find_prop(props, "Name", "title")
+        or _find_prop(props, "Title", "title")
+    )
 
     properties: Dict[str, Any] = {}
     now_iso = _now_iso()
@@ -177,6 +192,21 @@ def log_event(
         properties[value_label_prop] = {
             "rich_text": [{"type": "text", "text": {"content": value_label}}]
         }
+    if page_prop and page:
+        properties[page_prop] = {
+            "rich_text": [{"type": "text", "text": {"content": page}}]
+        }
+    if device_prop and device_id:
+        properties[device_prop] = {
+            "rich_text": [{"type": "text", "text": {"content": device_id}}]
+        }
+    if status_prop and status:
+        if props.get(status_prop, {}).get("type") == "select":
+            properties[status_prop] = {"select": {"name": str(status)}}
+        else:
+            properties[status_prop] = {
+                "rich_text": [{"type": "text", "text": {"content": str(status)}}]
+            }
     if metadata_prop and metadata is not None:
         properties[metadata_prop] = {
             "rich_text": [
@@ -187,11 +217,12 @@ def log_event(
             ]
         }
     if title_prop:
+        scope = page or session_id or "app"
         properties[title_prop] = {
             "title": [
                 {
                     "type": "text",
-                    "text": {"content": f"{event_type} · {now_iso[11:19]}"},
+                    "text": {"content": f"{event_type} · {scope}"},
                 }
             ]
         }

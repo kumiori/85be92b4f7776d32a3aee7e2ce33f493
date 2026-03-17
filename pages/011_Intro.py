@@ -230,9 +230,6 @@ def _render_first_signal_step(repo, authenticator) -> None:
             salt,
         )
         st.session_state["anon_token"] = anon_token
-        st.markdown(
-            "### This opening module collects the room's first signals: how we arrive, how we feel, and whether we want to continue together."
-        )
         current_session_code = "GLOBAL-SESSION"
         t_questions = time.perf_counter()
         pre_lobby_questions = sorted(
@@ -259,7 +256,10 @@ def _render_first_signal_step(repo, authenticator) -> None:
         module_done_key = f"pre_lobby_submitted:{pre_lobby_signature}"
         pre_signal_submitted = bool(st.session_state.get(module_done_key, False))
 
-        if pre_lobby_questions:
+        if pre_lobby_questions and not pre_signal_submitted:
+            st.markdown(
+                "### This opening module collects the room's first signals: how we arrive, how we feel, and whether we want to continue together."
+            )
             st.markdown("---")
             ui_sig_key = "pre_lobby_ui_sig"
             ui_idx_key = "pre_lobby_ui_idx"
@@ -401,11 +401,33 @@ def _render_first_signal_step(repo, authenticator) -> None:
                 if not session_id:
                     st.error("No active session found. Please refresh and try again.")
                     AUTH_LOGGER.warning("active session not found on signal submit")
+                    log_event(
+                        module="iceicebaby.responses",
+                        event_type="response_save_error",
+                        page="Intro",
+                        player_id=str(player_page_id or ""),
+                        session_id=str(session_id),
+                        item_id=PRE_SIGNAL_ID,
+                        status="error",
+                        metadata={"reason": "active_session_missing"},
+                        level="ERROR",
+                    )
                 elif not signal_repo:
                     st.error(
                         "Responses could not be saved because Database interaction storage is unavailable."
                     )
                     AUTH_LOGGER.error("notion write failure: signal repo unavailable")
+                    log_event(
+                        module="iceicebaby.responses",
+                        event_type="response_save_error",
+                        page="Intro",
+                        player_id=str(player_page_id or ""),
+                        session_id=str(session_id),
+                        item_id=PRE_SIGNAL_ID,
+                        status="error",
+                        metadata={"reason": "interaction_repo_unavailable"},
+                        level="ERROR",
+                    )
                 else:
                     with perf_timer(
                         "iceicebaby.responses",
@@ -450,6 +472,29 @@ def _render_first_signal_step(repo, authenticator) -> None:
                     )
                     st.success("✨ Signal recorded.")
                     st.balloons()
+        elif pre_signal_submitted:
+            st.success(
+                "Thank you for your signal. Your contribution has been recorded and added to the collective stream."
+            )
+            st.markdown(
+                """
+Your responses are used in aggregate form to help the group observe shared tendencies, discuss differences, and reflect collectively on possible next steps.
+"""
+            )
+            action_col1, action_col2 = st.columns(2)
+            with action_col1:
+                st.button(
+                    "Review or update my choices (coming soon)",
+                    use_container_width=True,
+                    disabled=True,
+                    key="intro-review-choices-disabled",
+                )
+            with action_col2:
+                st.page_link(
+                    "pages/08_Overview.py",
+                    label="Open global visualisation",
+                    use_container_width=True,
+                )
         if st.button(
             "Enter lobby",
             type="secondary",
@@ -488,6 +533,15 @@ def main() -> None:
     apply_theme()
     ensure_session_state()
     sidebar_debug_state()
+    log_event(
+        module="iceicebaby.sessions",
+        event_type="page_view",
+        page="Intro",
+        player_id=str(st.session_state.get("player_page_id", "")),
+        session_id=str(st.session_state.get("session_id", "")),
+        device_id=str(st.session_state.get("anon_token", "")),
+        status="ok",
+    )
     st.session_state.setdefault(INTRO_STEP_KEY, 0)
     st.session_state.setdefault(INTRO_ANIMATE_KEY, True)
 

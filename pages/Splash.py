@@ -345,6 +345,15 @@ def main() -> None:
     apply_theme()
     ensure_session_state()
     sidebar_debug_state()
+    log_event(
+        module="iceicebaby.sessions",
+        event_type="page_view",
+        page="Splash",
+        player_id=str(st.session_state.get("player_page_id", "")),
+        session_id=str(st.session_state.get("session_id", "")),
+        device_id=str(st.session_state.get("anon_token", "")),
+        status="ok",
+    )
 
     repo = get_notion_repo()
     authenticator = get_authenticator(repo)
