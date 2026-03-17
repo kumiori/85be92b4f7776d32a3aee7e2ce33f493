@@ -209,11 +209,14 @@ class NotionInteractionRepository(InteractionRepository):
         session_prop = self._find_prop("session", "relation")
         player_prop = self._find_prop("player", "relation")
         question_prop = self._find_prop("question", "relation")
+        question_id_prop = self._find_prop("question_id", "rich_text")
         item_prop = self._find_prop("item_id", "rich_text")
         value_json_prop = self._find_prop("value_json", "rich_text")
+        response_value_prop = self._find_prop("response_value", "rich_text")
         value_label_prop = self._find_prop("value_label", "rich_text")
         question_type_prop = self._find_prop("question_type", "select")
         score_prop = self._find_prop("score", "number")
+        timestamp_prop = self._find_prop("timestamp", "date")
         submitted_prop = self._find_prop("submitted_at", "date")
         created_prop = self._find_prop("created_at", "date")
         page_index_prop = self._find_prop("page_index", "number")
@@ -221,7 +224,9 @@ class NotionInteractionRepository(InteractionRepository):
         optional_text_prop = self._find_prop("optional_text", "rich_text")
         text_prop = self._find_prop("text_id", "rich_text")
         device_prop = self._find_prop("device_id", "rich_text")
+        access_key_prop = self._find_prop("access_key", "rich_text")
         title_prop = self._find_prop("Name", "title")
+        now_iso = _now_iso()
 
         properties: Dict[str, Any] = {}
         if session_prop:
@@ -231,8 +236,21 @@ class NotionInteractionRepository(InteractionRepository):
         if question_prop:
             q_page_id = self._resolve_question_page_id(question_id)
             properties[question_prop] = {"relation": [{"id": q_page_id}]} if q_page_id else {"relation": []}
+        if question_id_prop:
+            properties[question_id_prop] = {
+                "rich_text": [{"type": "text", "text": {"content": question_id}}]
+            }
         if item_prop:
             properties[item_prop] = {"rich_text": [{"type": "text", "text": {"content": question_id}}]}
+        response_value = value
+        if isinstance(value, dict):
+            response_value = value.get("answer", value.get("choice", value))
+        if response_value_prop:
+            properties[response_value_prop] = {
+                "rich_text": [
+                    {"type": "text", "text": {"content": json.dumps(response_value, ensure_ascii=False)}}
+                ]
+            }
         if value_json_prop:
             properties[value_json_prop] = {
                 "rich_text": [
@@ -261,14 +279,18 @@ class NotionInteractionRepository(InteractionRepository):
             properties[optional_text_prop] = {
                 "rich_text": [{"type": "text", "text": {"content": optional_text}}]
             }
+        if timestamp_prop:
+            properties[timestamp_prop] = {"date": {"start": now_iso}}
         if submitted_prop:
-            properties[submitted_prop] = {"date": {"start": _now_iso()}}
+            properties[submitted_prop] = {"date": {"start": now_iso}}
         if created_prop:
-            properties[created_prop] = {"date": {"start": _now_iso()}}
+            properties[created_prop] = {"date": {"start": now_iso}}
         if text_prop:
             properties[text_prop] = {"rich_text": [{"type": "text", "text": {"content": text_id}}]}
         if device_prop:
             properties[device_prop] = {"rich_text": [{"type": "text", "text": {"content": device_id}}]}
+        if access_key_prop:
+            properties[access_key_prop] = {"rich_text": [{"type": "text", "text": {"content": device_id}}]}
         if title_prop:
             properties[title_prop] = {"title": [{"type": "text", "text": {"content": f"{question_id} · {text_id}"}}]}
 
@@ -279,17 +301,21 @@ class NotionInteractionRepository(InteractionRepository):
 
     def get_responses(self, session_id: str) -> List[Dict[str, Any]]:
         session_prop = self._find_prop("session", "relation")
+        question_id_prop = self._find_prop("question_id", "rich_text")
         item_prop = self._find_prop("item_id", "rich_text")
         value_json_prop = self._find_prop("value_json", "rich_text")
+        response_value_prop = self._find_prop("response_value", "rich_text")
         value_label_prop = self._find_prop("value_label", "rich_text")
         question_type_prop = self._find_prop("question_type", "select")
         score_prop = self._find_prop("score", "number")
+        timestamp_prop = self._find_prop("timestamp", "date")
         submitted_prop = self._find_prop("submitted_at", "date")
         created_prop = self._find_prop("created_at", "date")
         text_prop = self._find_prop("text_id", "rich_text")
         device_prop = self._find_prop("device_id", "rich_text")
+        access_key_prop = self._find_prop("access_key", "rich_text")
         player_prop = self._find_prop("player", "relation")
-        if not session_prop or not item_prop or not value_json_prop:
+        if not session_prop or not value_json_prop:
             return []
 
         out: List[Dict[str, Any]] = []
@@ -317,10 +343,22 @@ class NotionInteractionRepository(InteractionRepository):
                         normalized_value = parsed.get("answer")
                     elif "choice" in parsed:
                         normalized_value = parsed.get("choice")
+                response_value_text = (
+                    _extract_rich_text(props, response_value_prop) if response_value_prop else ""
+                )
+                response_value: Any = normalized_value
+                if response_value_text:
+                    try:
+                        response_value = json.loads(response_value_text)
+                    except Exception:
+                        response_value = response_value_text
                 player_ids = []
                 pval = props.get(player_prop) if player_prop else None
                 if isinstance(pval, dict):
                     player_ids = [x.get("id") for x in pval.get("relation", []) if isinstance(x, dict)]
+                timestamp = None
+                if timestamp_prop and isinstance(props.get(timestamp_prop), dict):
+                    timestamp = (props.get(timestamp_prop) or {}).get("date", {}).get("start")
                 submitted = None
                 if submitted_prop and isinstance(props.get(submitted_prop), dict):
                     submitted = (props.get(submitted_prop) or {}).get("date", {}).get("start")
@@ -336,7 +374,11 @@ class NotionInteractionRepository(InteractionRepository):
                         "response_id": page.get("id"),
                         "session_id": session_id,
                         "player_id": player_ids[0] if player_ids else None,
-                        "item_id": _extract_rich_text(props, item_prop),
+                        "question_id": _extract_rich_text(props, question_id_prop)
+                        or _extract_rich_text(props, item_prop),
+                        "item_id": _extract_rich_text(props, item_prop)
+                        or _extract_rich_text(props, question_id_prop),
+                        "response_value": response_value,
                         "value": normalized_value,
                         "value_json": parsed,
                         "value_label": _extract_rich_text(props, value_label_prop) if value_label_prop else "",
@@ -344,6 +386,8 @@ class NotionInteractionRepository(InteractionRepository):
                         "score": score,
                         "text_id": _extract_rich_text(props, text_prop) if text_prop else "",
                         "device_id": _extract_rich_text(props, device_prop) if device_prop else "",
+                        "access_key": _extract_rich_text(props, access_key_prop) if access_key_prop else "",
+                        "timestamp": timestamp or submitted or created or page.get("created_time"),
                         "created_at": submitted or created or page.get("created_time"),
                     }
                 )

@@ -11,6 +11,7 @@ from infra.app_state import (
     remember_access,
     require_login,
 )
+from infra.event_logger import log_event
 from ui import (
     apply_theme,
     heading,
@@ -44,7 +45,42 @@ def main() -> None:
     )
 
     st.write("Quick actions")
-    st.button("Session 1 (live Thu 19 March)", disabled=True, use_container_width=True)
+    if st.button(
+        "Session 1 · Listening",
+        type="primary",
+        use_container_width=True,
+    ):
+        log_event(
+            module="iceicebaby.sessions",
+            event_type="session_switched",
+            player_id=str(st.session_state.get("player_page_id", "")),
+            session_id=str(st.session_state.get("session_id", "")),
+            value_label="SESSION-1",
+            metadata={"mode": "standard", "depth": 6},
+        )
+        st.query_params.clear()
+        st.query_params.update(
+            {"session": "SESSION-1", "mode": "standard", "depth": "6"}
+        )
+        st.switch_page("pages/30_audience_interaction_test.py")
+    if st.button(
+        "Session 1 · Extended mode",
+        type="secondary",
+        use_container_width=True,
+    ):
+        log_event(
+            module="iceicebaby.sessions",
+            event_type="session_switched",
+            player_id=str(st.session_state.get("player_page_id", "")),
+            session_id=str(st.session_state.get("session_id", "")),
+            value_label="SESSION-1",
+            metadata={"mode": "extended", "depth": 8},
+        )
+        st.query_params.clear()
+        st.query_params.update(
+            {"session": "SESSION-1", "mode": "extended", "depth": "8"}
+        )
+        st.switch_page("pages/30_audience_interaction_test.py")
     st.button("Session 2 (live Thu 19 March)", disabled=True, use_container_width=True)
     st.button("Session 3 (live Thu 19 March)", disabled=True, use_container_width=True)
 

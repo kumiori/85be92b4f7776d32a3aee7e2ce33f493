@@ -7,7 +7,10 @@ from typing import Any, Dict, Optional, Tuple
 import streamlit as st
 
 from infra.app_context import get_active_session, get_notion_repo, load_config
+from infra.event_logger import get_module_logger
 from repositories.interaction_repo import NotionInteractionRepository
+
+LOGGER = get_module_logger("iceicebaby.responses")
 
 
 def _slugify(value: str) -> str:
@@ -48,6 +51,7 @@ def _resolve_session(session_slug: Optional[str]) -> Optional[Dict[str, Any]]:
     active = get_active_session(repo)
     if active:
         return active
+    LOGGER.warning("active session not found; fallback to first available session")
     return sessions[0] if sessions else None
 
 
@@ -64,6 +68,7 @@ def normalize_response_row(
         try:
             parsed_json = json.loads(raw_json)
         except Exception:
+            LOGGER.warning("malformed response JSON for response_id=%s", notion_row.get("response_id", ""))
             parsed_json = {"parse_error": True, "raw": raw_json}
     else:
         parsed_json = {}
@@ -74,12 +79,16 @@ def normalize_response_row(
         "session_name": session_name,
         "player_id": notion_row.get("player_id"),
         "device_id": notion_row.get("device_id"),
-        "submitted_at": notion_row.get("created_at", ""),
-        "item_id": notion_row.get("item_id", ""),
+        "submitted_at": notion_row.get("timestamp", notion_row.get("created_at", "")),
+        "timestamp": notion_row.get("timestamp", notion_row.get("created_at", "")),
+        "question_id": notion_row.get("question_id", notion_row.get("item_id", "")),
+        "item_id": notion_row.get("item_id", notion_row.get("question_id", "")),
+        "response_value": notion_row.get("response_value", notion_row.get("value")),
         "value_label": notion_row.get("value_label", ""),
         "value_json": parsed_json,
         "question_type": notion_row.get("question_type", ""),
         "score": notion_row.get("score"),
+        "access_key": notion_row.get("access_key", ""),
     }
 
 
@@ -94,8 +103,9 @@ def fetch_session_responses(session_slug: Optional[str] = None) -> Tuple[Dict[st
     if not session:
         return {}, []
     session_id = str(session.get("id") or "")
-    session_name = str(session.get("session_code") or "Session")
-    normalized_slug = _slugify(session_name)
+    session_name = str(session.get("session_name") or session.get("session_code") or "Session")
+    session_slug_raw = str(session.get("session_id") or session.get("session_code") or session_name)
+    normalized_slug = _slugify(session_slug_raw)
     if not session_id:
         return {}, []
 

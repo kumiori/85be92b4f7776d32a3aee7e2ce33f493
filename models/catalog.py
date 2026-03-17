@@ -1,11 +1,37 @@
 from __future__ import annotations
 
 from models.questions import Question
+from models.sessions import session_spec_by_id
 
 QUESTION_CATALOG: list[Question] = [
     Question(
-        id="ORGANISATION_SIGNAL",
+        id="PRE_LOBBY_DEPTH",
+        session_id="GLOBAL-SESSION",
         category="integration",
+        context="A short path or a deeper one? You can select the depth of this first module using the slider below.",
+        prompt="Depth controls how far you go.",
+        qtype="control",
+        short_description="Use the slider to keep the interaction minimal or to explore a few more questions before entering the lobby.",
+        depth=0,
+        required=True,
+        visible_before_lobby=True,
+        order=1,
+        active=True,
+        response_mode="slider",
+        response_structure={
+            "min": 0,
+            "max": 5,
+            "default": 0,
+            "step": 1,
+            "help": "Use the slider to keep the interaction minimal or to explore a few more questions before entering the lobby.",
+            "explanation": "At minimal depth (0), you are invited to respond to only one key question. Higher levels unlock a few more short questions on emotion and interpretation.",
+        },
+    ),
+    Question(
+        id="ORGANISATION_SIGNAL",
+        session_id="GLOBAL-SESSION",
+        category="integration",
+        context="First collective entry signal before entering the lobby.",
         prompt="Should we organise another event and continue the conversation?",
         qtype="pre_signal",
         options=[
@@ -22,10 +48,21 @@ QUESTION_CATALOG: list[Question] = [
         visible_before_lobby=True,
         show_text_field=True,
         placeholder="Your condition or comment",
+        order=2,
+        active=True,
+        response_mode="signal",
+        response_structure=[
+            "Yes — let’s continue",
+            "Maybe — depending on conditions",
+            "No — stop here",
+        ],
+        is_collective_signal=True,
     ),
     Question(
         id="ARRIVAL_EMOTION",
+        session_id="GLOBAL-SESSION",
         category="perception",
+        context="Initial emotional state of the room.",
         prompt="What emotion did you bring with you today?",
         qtype="single",
         options=[
@@ -43,10 +80,28 @@ QUESTION_CATALOG: list[Question] = [
         depth=1,
         required=True,
         visible_before_lobby=True,
+        order=3,
+        active=True,
+        response_mode="tags",
+        response_structure=list(
+            [
+                "Curious",
+                "Hopeful",
+                "Concerned",
+                "Skeptical",
+                "Overwhelmed",
+                "Tired",
+                "Inspired",
+                "Neutral",
+                "Other",
+            ]
+        ),
     ),
     Question(
         id="ENVIRONMENT_CHANGE_EMOTION",
+        session_id="GLOBAL-SESSION",
         category="perception",
+        context="Affective framing of environmental transformation.",
         prompt="What emotion do you associate with changes in the natural world?",
         qtype="single",
         options=[
@@ -62,10 +117,15 @@ QUESTION_CATALOG: list[Question] = [
         depth=2,
         required=True,
         visible_before_lobby=True,
+        order=4,
+        active=True,
+        response_mode="tags",
     ),
     Question(
         id="SOCIETAL_CHANGE_EMOTION",
+        session_id="GLOBAL-SESSION",
         category="structure",
+        context="Affective framing of social and institutional transformation.",
         prompt="What emotion do you associate with societal change?",
         qtype="single",
         options=[
@@ -81,10 +141,15 @@ QUESTION_CATALOG: list[Question] = [
         depth=3,
         required=True,
         visible_before_lobby=True,
+        order=5,
+        active=True,
+        response_mode="tags",
     ),
     Question(
         id="COLLABORATION_READINESS",
+        session_id="GLOBAL-SESSION",
         category="agency",
+        context="Collective readiness to collaborate across differences.",
         prompt="Do you feel collaboration is possible across differences?",
         qtype="single",
         options=[
@@ -98,10 +163,15 @@ QUESTION_CATALOG: list[Question] = [
         visible_before_lobby=True,
         show_text_field=True,
         placeholder="Your condition or comment",
+        order=6,
+        active=True,
+        response_mode="choice",
     ),
     Question(
         id="PERSONAL_AGENCY",
+        session_id="GLOBAL-SESSION",
         category="agency",
+        context="Perceived personal agency in collective decisions.",
         prompt="Do you feel able to influence collective decisions?",
         qtype="single",
         options=[
@@ -114,10 +184,15 @@ QUESTION_CATALOG: list[Question] = [
         depth=5,
         required=True,
         visible_before_lobby=True,
+        order=7,
+        active=True,
+        response_mode="choice",
     ),
     Question(
         id="PERCEPTION_ENTRY",
+        session_id="GLOBAL-SESSION",
         category="perception",
+        context="Entry perception for the post-lobby interaction.",
         prompt="When you hear the word 'glacier', what comes first?",
         qtype="single",
         options=[
@@ -128,10 +203,14 @@ QUESTION_CATALOG: list[Question] = [
             "Warning",
             "Other",
         ],
+        order=100,
+        active=True,
     ),
     Question(
         id="PROXIMITY",
+        session_id="GLOBAL-SESSION",
         category="perception",
+        context="Self-positioning toward cryosphere impact.",
         prompt="Do glaciers feel distant or present in your life?",
         qtype="single",
         options=[
@@ -140,20 +219,28 @@ QUESTION_CATALOG: list[Question] = [
             "Personally connected",
             "Structurally linked to my future",
         ],
+        order=101,
+        active=True,
     ),
     Question(
         id="EPISTEMIC_FRAME",
+        session_id="GLOBAL-SESSION",
         category="structure",
+        context="Interpretive frame for system dynamics.",
         prompt="Which description feels closer to reality?",
         qtype="single",
         options=[
             "Gradual slope",
             "Threshold or tipping point",
         ],
+        order=102,
+        active=True,
     ),
     Question(
         id="IRREVERSIBILITY_AFFECT",
+        session_id="GLOBAL-SESSION",
         category="structure",
+        context="Emotional response to irreversible transitions.",
         prompt="Irreversibility makes me feel...",
         qtype="multi",
         options=[
@@ -165,10 +252,14 @@ QUESTION_CATALOG: list[Question] = [
             "Curiosity",
         ],
         max_select=2,
+        order=103,
+        active=True,
     ),
     Question(
         id="PRIORITY_AFTER_NO_RETURN",
+        session_id="GLOBAL-SESSION",
         category="agency",
+        context="Priority setting under irreversible conditions.",
         prompt="When reversal is no longer possible, what becomes most important?",
         qtype="single",
         options=[
@@ -178,10 +269,14 @@ QUESTION_CATALOG: list[Question] = [
             "Innovation",
             "Acceptance",
         ],
+        order=104,
+        active=True,
     ),
     Question(
         id="WHAT_ENABLES_ACTION",
+        session_id="GLOBAL-SESSION",
         category="agency",
+        context="Collective action enablers under uncertainty.",
         prompt="What helps societies act under uncertainty?",
         qtype="multi",
         options=[
@@ -193,10 +288,14 @@ QUESTION_CATALOG: list[Question] = [
             "Community belonging",
         ],
         max_select=2,
+        order=105,
+        active=True,
     ),
     Question(
         id="SHIFT_AFTER_PANEL",
+        session_id="GLOBAL-SESSION",
         category="integration",
+        context="Post-session framing shift.",
         prompt="After this session, glaciers feel more like...",
         qtype="single",
         options=[
@@ -206,13 +305,338 @@ QUESTION_CATALOG: list[Question] = [
             "Mirror of society",
             "Call to responsibility",
         ],
+        order=106,
+        active=True,
     ),
     Question(
         id="ONE_WORD_TRACE",
+        session_id="GLOBAL-SESSION",
         category="integration",
+        context="Minimal residual trace after interaction.",
         prompt="One word that remains with you.",
         qtype="text",
+        order=107,
+        active=True,
+        response_mode="text",
+        response_structure={"max_length": 200},
+    ),
+    Question(
+        id="IF_YOU_WERE_A_GLACIER",
+        session_id="SESSION-1",
+        category="integration",
+        context="Give glaciers a direct voice in first person.",
+        prompt="If you were a glacier, what would you say?",
+        qtype="text",
+        depth=1,
+        order=1,
+        active=True,
+        response_mode="text",
+        response_structure={"max_length": 200},
+    ),
+    Question(
+        id="GLACIER_EMOTIONS",
+        session_id="SESSION-1",
+        category="perception",
+        context="Capture emotional tones attached to glacier futures.",
+        prompt="Which emotions describe your relation to glaciers right now?",
+        qtype="multi",
+        options=[
+            "Curious",
+            "Concerned",
+            "Protective",
+            "Conflicted",
+            "Hopeful",
+            "Overwhelmed",
+        ],
+        max_select=3,
+        depth=1,
+        order=2,
+        active=True,
+        response_mode="tags",
+    ),
+    Question(
+        id="WORDS_TO_TAKE_WITH_YOU",
+        session_id="SESSION-1",
+        category="integration",
+        context="Collect key terms participants want to carry forward.",
+        prompt="What words do you want to take with you from this session?",
+        qtype="multi",
+        options=[
+            "Care",
+            "Repair",
+            "Justice",
+            "Responsibility",
+            "Imagination",
+            "Coordination",
+        ],
+        max_select=3,
+        depth=2,
+        order=3,
+        active=True,
+        response_mode="keywords",
+        response_structure={"max_tags": 5},
+    ),
+    Question(
+        id="SESSION2_PRIORITY_SIGNAL",
+        session_id="SESSION-2",
+        category="agency",
+        context="Priority signal for the second experimental module.",
+        prompt="For SESSION-2, what should we prioritize first?",
+        qtype="single",
+        options=[
+            "Shared understanding",
+            "Practical coordination",
+            "Policy translation",
+            "Local experimentation",
+        ],
+        depth=1,
+        order=1,
+        active=True,
+        response_mode="choice",
+    ),
+    Question(
+        id="SESSION2_OPEN_TRACE",
+        session_id="SESSION-2",
+        category="integration",
+        context="Short open trace to close SESSION-2.",
+        prompt="Name one condition needed to continue from SESSION-2.",
+        qtype="text",
+        depth=2,
+        order=2,
+        active=True,
+        response_mode="text",
+        response_structure={"max_length": 200},
+    ),
+    Question(
+        id="ART_ROLE_CRYOSPHERE",
+        session_id="SESSION-1",
+        category="art",
+        context="Art may help people approach cryospheric change through other channels than scientific exposition alone.",
+        prompt="What role can art play in relation to the cryosphere?",
+        qtype="multi",
+        options=[
+            "Awakening emotions",
+            "Making us reflect",
+            "Making us think outside the box",
+            "Attracting the attention of a wider public",
+        ],
+        short_description="How art can shape attention, reflection, and emotional engagement.",
+        order=1,
+        active=True,
+        response_mode="tags",
+        response_structure=[
+            "Awakening emotions",
+            "Making us reflect",
+            "Making us think outside the box",
+            "Attracting the attention of a wider public",
+        ],
+    ),
+    Question(
+        id="FEELING_IPCC_PASSAGE",
+        session_id="SESSION-1",
+        category="art",
+        context="Scientific reports often use formal, institutional language. This question asks how such language feels, rather than only what it says.",
+        prompt="How does this IPCC-style passage make you feel?",
+        qtype="multi",
+        options=[
+            "Concerned",
+            "Overwhelmed",
+            "Distant",
+            "Informed",
+            "Motivated",
+            "Numb",
+            "Curious",
+            "Other",
+        ],
+        short_description="Affective response to institutional scientific language.",
+        order=2,
+        active=True,
+        response_mode="tags",
+    ),
+    Question(
+        id="ENOUGH_ART_ON_CRYOSPHERE",
+        session_id="SESSION-1",
+        category="art",
+        context="The cryosphere is central to planetary change, yet its cultural presence may still be limited.",
+        prompt="Do you think there is enough artistic engagement with the cryosphere?",
+        qtype="single",
+        options=[
+            "Yes",
+            "Some, but not enough",
+            "Very little",
+            "Not at all",
+            "I don’t know",
+        ],
+        short_description="Perception of the artistic visibility of glaciers and the cryosphere.",
+        order=3,
+        active=True,
+        response_mode="choice",
+    ),
+    Question(
+        id="ART_IN_YOUR_WORK",
+        session_id="SESSION-1",
+        category="art",
+        context="Art and research can meet in many ways, from communication to method to collaboration.",
+        prompt="Have you ever engaged with art in your own work?",
+        qtype="single",
+        options=[
+            "Always",
+            "Often",
+            "Sometimes",
+            "Never",
+        ],
+        short_description="Personal relation between professional practice and art.",
+        order=4,
+        active=True,
+        response_mode="choice",
+    ),
+    Question(
+        id="ART_MORE_PROMINENT_CRYOSPHERE",
+        session_id="SESSION-1",
+        category="art",
+        context="If art is to play a stronger role in relation to the cryosphere, concrete conditions may be needed.",
+        prompt="How could art become more prominent in relation to the cryosphere?",
+        qtype="multi",
+        options=[
+            "Capacity building",
+            "More funding",
+            "Artist residencies",
+            "Closer collaboration with scientists",
+            "Public programming",
+            "Education",
+        ],
+        short_description="Possible levers to strengthen the role of art in cryosphere-related work.",
+        order=5,
+        active=True,
+        response_mode="tags",
+    ),
+    Question(
+        id="EMOTION_CONCEPTS_SYSTEMS",
+        session_id="SESSION-2",
+        category="concepts",
+        context="Words such as irreversibility, bifurcation, stability, and equilibrium describe system behaviour, but they also carry emotional charge.",
+        prompt="How do these ideas make you feel?",
+        qtype="multi",
+        options=[
+            "Irreversibility",
+            "Bifurcation",
+            "Stability",
+            "Equilibrium",
+        ],
+        short_description="Emotional relation to key concepts of system dynamics.",
+        order=1,
+        active=True,
+        response_mode="matrix_emotion",
+    ),
+    Question(
+        id="CLIMATE_COGNITIVE_BIASES",
+        session_id="SESSION-2",
+        category="cognition",
+        context="Recognition of climate change is shaped not only by information, but also by cognitive and emotional filters.",
+        prompt="Which obstacles most often prevent recognition of climate change?",
+        qtype="multi",
+        options=[
+            "Fear",
+            "Distance",
+            "Fatigue",
+            "Mistrust",
+            "Confusion",
+            "Conflicting interests",
+            "Hopelessness",
+        ],
+        short_description="Perceived cognitive and emotional obstacles to recognising climate change.",
+        order=2,
+        active=True,
+        response_mode="tags",
+    ),
+    Question(
+        id="APPROACH_TO_DENIAL",
+        session_id="SESSION-2",
+        category="cognition",
+        context="Different forms of disengagement may require different forms of response.",
+        prompt="If people deny change for different reasons, should the response also differ?",
+        qtype="single",
+        options=[
+            "Yes, approaches should differ",
+            "Partly",
+            "No, the same approach should work",
+            "I don’t know",
+        ],
+        short_description="Whether different emotional or cognitive barriers call for different forms of engagement.",
+        order=3,
+        active=True,
+        response_mode="choice",
+    ),
+    Question(
+        id="DIGNITY_OF_GLACIERS",
+        session_id="SESSION-2",
+        category="ethics",
+        context="Glaciers can be understood not only as objects of study, but also as entities carrying memory, relation, and value.",
+        prompt="Can glaciers be approached with dignity or even a form of personhood?",
+        qtype="single",
+        options=[
+            "Yes",
+            "Perhaps",
+            "No",
+            "I need to think about it",
+        ],
+        short_description="Ethical and symbolic relation to glaciers.",
+        order=4,
+        active=True,
+        response_mode="choice",
+    ),
+    Question(
+        id="ART_CONVEY_DIGNITY",
+        session_id="SESSION-2",
+        category="ethics",
+        context="Art may help shift glaciers from background scenery to subjects of relation, attention, and care.",
+        prompt="Can art convey the dignity of glaciers, and if so, why?",
+        qtype="multi",
+        options=[
+            "Because it connects to our emotions",
+            "Because it makes glaciers present",
+            "Because it reaches people beyond science",
+            "Because it changes the way we look",
+            "No, not really",
+        ],
+        short_description="Possible reasons why art may help convey the dignity of glaciers.",
+        order=5,
+        active=True,
+        response_mode="tags",
     ),
 ]
 
 QUESTION_BY_ID = {q.id: q for q in QUESTION_CATALOG}
+
+
+def questions_for_session(
+    session_code: str, *, include_inactive: bool = False
+) -> list[Question]:
+    code = (session_code or "").strip().upper()
+    items = [q for q in QUESTION_CATALOG if q.session_id.upper() == code]
+    if not include_inactive:
+        items = [q for q in items if q.active]
+    return sorted(items, key=lambda q: (q.order, q.depth, q.id))
+
+
+def catalog_session_codes() -> list[str]:
+    return sorted({q.session_id for q in QUESTION_CATALOG})
+
+
+def validate_question_catalog() -> list[str]:
+    errors: list[str] = []
+    seen: set[str] = set()
+    for q in QUESTION_CATALOG:
+        if q.id in seen:
+            errors.append(f"Duplicate question id: {q.id}")
+        seen.add(q.id)
+        if not session_spec_by_id(q.session_id):
+            errors.append(f"Unknown session_id on question {q.id}: {q.session_id}")
+        if q.order <= 0:
+            errors.append(f"Question {q.id} must have order > 0")
+        if (
+            q.response_type in {"choice", "tags", "keywords", "signal"}
+            and not q.options
+        ):
+            errors.append(f"Question {q.id} requires options for {q.response_type}")
+    return errors

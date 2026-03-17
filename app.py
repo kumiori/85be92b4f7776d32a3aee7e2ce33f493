@@ -1,6 +1,12 @@
 import streamlit as st
 
-from ui import apply_theme, heading, microcopy, set_page, display_centered_prompt
+from ui import (
+    apply_theme,
+    heading,
+    set_page,
+    display_centered_prompt,
+    render_event_details,
+)
 
 
 def main() -> None:
@@ -13,11 +19,7 @@ def main() -> None:
 ### Developed for the World Day for Glaciers at UNESCO, within the Decade of Action for Cryospheric Sciences (2024-2035).
 """
     )
-    st.markdown(
-        """
-Room XXX, March 19, 2026,  4pm. Organised by: ______, ______, ______, ______, and ______.
-"""
-    )
+    render_event_details()
     # microcopy("Use the sidebar or jump to the login page to start.")
     display_centered_prompt("One idea. With a <em>twist</em>.")
 
