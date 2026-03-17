@@ -26,6 +26,19 @@ def _extract_select_name(props: Dict[str, Any], name: str) -> str:
     return ""
 
 
+def _extract_date_start(props: Dict[str, Any], name: Optional[str]) -> Optional[str]:
+    if not name:
+        return None
+    value = props.get(name)
+    if not isinstance(value, dict):
+        return None
+    date_val = value.get("date")
+    if not isinstance(date_val, dict):
+        return None
+    start = date_val.get("start")
+    return str(start) if start else None
+
+
 def _resolve_data_source_id(client: Any, db_or_ds_id: str) -> str:
     data_sources_endpoint = getattr(client, "data_sources", None)
     ds_retrieve = getattr(data_sources_endpoint, "retrieve", None) if data_sources_endpoint else None
@@ -356,15 +369,9 @@ class NotionInteractionRepository(InteractionRepository):
                 pval = props.get(player_prop) if player_prop else None
                 if isinstance(pval, dict):
                     player_ids = [x.get("id") for x in pval.get("relation", []) if isinstance(x, dict)]
-                timestamp = None
-                if timestamp_prop and isinstance(props.get(timestamp_prop), dict):
-                    timestamp = (props.get(timestamp_prop) or {}).get("date", {}).get("start")
-                submitted = None
-                if submitted_prop and isinstance(props.get(submitted_prop), dict):
-                    submitted = (props.get(submitted_prop) or {}).get("date", {}).get("start")
-                created = None
-                if not submitted and created_prop and isinstance(props.get(created_prop), dict):
-                    created = (props.get(created_prop) or {}).get("date", {}).get("start")
+                timestamp = _extract_date_start(props, timestamp_prop)
+                submitted = _extract_date_start(props, submitted_prop)
+                created = _extract_date_start(props, created_prop) if not submitted else None
                 score = None
                 score_val = props.get(score_prop) if score_prop else None
                 if isinstance(score_val, dict):
