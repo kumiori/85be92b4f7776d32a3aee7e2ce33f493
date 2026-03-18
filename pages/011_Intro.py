@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import hashlib
 import time
-from datetime import datetime
 
 import streamlit as st
 
@@ -32,24 +31,14 @@ from services.presence import touch_player_presence
 from ui import (
     apply_auth_input_form_styles,
     apply_theme,
-    heading,
-    microcopy,
     set_page,
     sidebar_debug_state,
-    cracks_globe_block,
-    display_centered_prompt,
-    render_info_block,
 )
 
 PRE_SIGNAL_ID = "ORGANISATION_SIGNAL"
 PRE_LOBBY_RADIO_IDS = {"COLLABORATION_READINESS", "PERSONAL_AGENCY"}
 PRE_SIGNAL_TEXT_ID = "pre_lobby_signal_v0"
 PRE_LOBBY_MODULE_TEXT_ID = "pre_lobby_module_v1"
-PRE_SIGNAL_SCORE = {
-    "Yes — we need to develop collective dynamics": 1,
-    "Maybe — depending on conditions": 0,
-    "No — for other reasons, stop here": -1,
-}
 AUTH_LOGGER = get_module_logger("iceicebaby.auth")
 INTRO_STEP_KEY = "intro_step"
 INTRO_ANIMATE_KEY = "intro_animate_text"
@@ -124,7 +113,6 @@ def _build_interaction_repository(notion_repo) -> tuple[InteractionRepository, s
 
 
 def _render_first_signal_step(repo, authenticator) -> None:
-    display_centered_prompt("The first signal begins with you.")
     auth_cfg = get_auth_runtime_config()
     key_hash_prefix = hashlib.sha256(
         auth_cfg["cookie_key"].encode("utf-8")
@@ -198,9 +186,7 @@ def _render_first_signal_step(repo, authenticator) -> None:
                 metadata={"page": "011_Intro"},
             )
         st.session_state["_prev_auth_status"] = True
-        st.success(
-            f"Hello {display_name}. Before entering the lobby, we invite you to send a first signal."
-        )
+        st.success(f"Hello {display_name}.")
 
         with perf_timer("iceicebaby.auth", "active_session_lookup", page="011_Intro"):
             session = get_active_session(repo)
@@ -236,10 +222,9 @@ def _render_first_signal_step(repo, authenticator) -> None:
             [
                 q
                 for q in questions_for_session(current_session_code)
-                if q.visible_before_lobby
-                and q.qtype != "control"
+                if q.visible_before_lobby and q.qtype != "control"
             ],
-            key=lambda q: (q.depth, q.order, q.id),
+            key=lambda q: (q.order, q.id),
         )
         log_perf(
             "iceicebaby.responses",
@@ -257,10 +242,6 @@ def _render_first_signal_step(repo, authenticator) -> None:
         pre_signal_submitted = bool(st.session_state.get(module_done_key, False))
 
         if pre_lobby_questions and not pre_signal_submitted:
-            st.markdown(
-                "### This opening module collects the room's first signals: how we arrive, how we feel, and whether we want to continue together."
-            )
-            st.markdown("---")
             ui_sig_key = "pre_lobby_ui_sig"
             ui_idx_key = "pre_lobby_ui_idx"
             ui_answers_key = "pre_lobby_ui_answers"
@@ -545,7 +526,6 @@ def main() -> None:
     st.session_state.setdefault(INTRO_STEP_KEY, 0)
     st.session_state.setdefault(INTRO_ANIMATE_KEY, True)
 
-    heading("<center>Glaciers, Listening to Society</center>")
     t_repo = time.perf_counter()
     repo = get_notion_repo()
     log_perf(
@@ -565,6 +545,9 @@ def main() -> None:
     )
 
     step = int(st.session_state.get(INTRO_STEP_KEY, 0))
+    if step == 1:
+        st.session_state[INTRO_STEP_KEY] = 2
+        st.rerun()
     is_returning = bool(
         st.session_state.get("authentication_status")
         or st.session_state.get("player_page_id")
@@ -582,24 +565,14 @@ def main() -> None:
 
     animate = bool(st.session_state.get(INTRO_ANIMATE_KEY, True))
     if step == 0:
-        display_centered_prompt("A moment before deciding.")
-        # spinner for .5 sec
-        with st.spinner("Consider this..."):
-            time.sleep(4.5)
-
         _render_streamed_paragraph(
-            "### Transitions in nature rarely announce themselves clearly. Signals accumulate. Tensions build, energy stores. Then systems shift.",
+            "### To act in the Decade of Action for Cryospheric Sciences (2025–2034), we need multiple languages and new coordination experiments.",
             key="step0-p1",
             animate=animate,
         )
         _render_streamed_paragraph(
-            "### Understanding these transitions is a scientific challenge. Acting through them is a collective one.",
+            "### Acting through transitions is a collective challenge.",
             key="step0-p2",
-            animate=animate,
-        )
-        _render_streamed_paragraph(
-            "### To act in the Decade of Action for Cryospheric Sciences (2025–2034), we need new languages and new coordination experiments.",
-            key="step0-p3",
             animate=animate,
         )
         left, right = st.columns([1, 1.4])
@@ -617,44 +590,6 @@ def main() -> None:
                 type="primary",
                 use_container_width=True,
                 key="intro-step0-next",
-            ):
-                st.session_state[INTRO_STEP_KEY] = 1
-                st.rerun()
-        return
-
-    if step == 1:
-        st.markdown("### Decision signals")
-        st.caption("collective experiment")
-        _render_streamed_paragraph(
-            "### New problems require new forms of interaction. Today we speak through the arts and sciences.",
-            key="step1-p1",
-            animate=animate,
-        )
-        _render_streamed_paragraph(
-            "### This platform explores how groups perceive signals, exchange perspectives, and form decisions together.",
-            key="step1-p2",
-            animate=animate,
-        )
-        _render_streamed_paragraph(
-            "### What happens next depends on the signals we generate here.",
-            key="step1-p3",
-            animate=animate,
-        )
-        left, right = st.columns([1, 1.4])
-        with left:
-            if st.button(
-                "Back to access page",
-                type="secondary",
-                use_container_width=True,
-                key="intro-step1-back",
-            ):
-                st.switch_page("pages/Splash.py")
-        with right:
-            if st.button(
-                "I am curious about this experiment",
-                type="primary",
-                use_container_width=True,
-                key="intro-step1-next",
             ):
                 st.session_state[INTRO_STEP_KEY] = 2
                 st.rerun()

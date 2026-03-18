@@ -1,6 +1,7 @@
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Literal, Optional
+import os
 
 import json
 
@@ -34,6 +35,8 @@ _sticky_count = 0
 
 
 def _initial_sidebar_state() -> str:
+    if _is_production_runtime():
+        return "collapsed"
     ui_cfg = st.secrets.get("ui", {})
     explicit = str(ui_cfg.get("sidebar_state", "")).strip().lower()
     if explicit in {"expanded", "collapsed", "auto"}:
@@ -51,6 +54,37 @@ def _initial_sidebar_state() -> str:
     return "expanded"
 
 
+def _is_production_runtime() -> bool:
+    env_raw = str(
+        os.getenv("APP_ENV")
+        or os.getenv("ENV")
+        or os.getenv("ENVIRONMENT")
+        or ""
+    ).strip().lower()
+    if env_raw in {"prod", "production", "live"}:
+        return True
+
+    # Streamlit Community Cloud / hosted runtime heuristic.
+    cwd = os.getcwd()
+    home = str(os.getenv("HOME", ""))
+    if cwd.startswith("/mount/src/") or home == "/home/adminuser":
+        return True
+    return False
+
+
+def _apply_production_shell_css() -> None:
+    st.markdown(
+        """
+<style>
+div[data-testid="stSidebarNav"] { display: none !important; }
+[data-testid="collapsedControl"] { display: none !important; }
+[data-testid="stHeader"] { display: none !important; }
+</style>
+""",
+        unsafe_allow_html=True,
+    )
+
+
 def set_page() -> None:
     st.set_page_config(
         page_title=settings.app_title,
@@ -58,6 +92,8 @@ def set_page() -> None:
         layout="centered",
         initial_sidebar_state=_initial_sidebar_state(),
     )
+    if _is_production_runtime():
+        _apply_production_shell_css()
 
 
 def apply_theme() -> None:
