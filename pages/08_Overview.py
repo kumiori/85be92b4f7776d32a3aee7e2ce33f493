@@ -47,9 +47,9 @@ def _render_bar(
             alt.Chart(df)
             .mark_bar()
             .encode(
-                x=alt.X("value:Q", title="Count"),
+                x=alt.X("value:Q", title="Count", axis=alt.Axis(format="d")),
                 y=alt.Y("id:N", sort="-x", title=None),
-                tooltip=["id:N", "value:Q"],
+                tooltip=["id:N", alt.Tooltip("value:Q", format=".0f")],
             )
             .properties(title=title, height=height)
         )
@@ -59,12 +59,12 @@ def _render_bar(
             .mark_bar()
             .encode(
                 x=alt.X("id:N", sort="-y", title=None),
-                y=alt.Y("value:Q", title="Count"),
-                tooltip=["id:N", "value:Q"],
+                y=alt.Y("value:Q", title="Count", axis=alt.Axis(format="d")),
+                tooltip=["id:N", alt.Tooltip("value:Q", format=".0f")],
             )
             .properties(title=title, height=height)
         )
-    st.altair_chart(chart, use_container_width=True)
+    st.altair_chart(chart, width="stretch")
 
 
 def _render_signal_timeline(title: str, timeline: list[dict]) -> None:
@@ -89,12 +89,12 @@ def _render_signal_timeline(title: str, timeline: list[dict]) -> None:
         .mark_circle(size=180)
         .encode(
             x=alt.X("t:T", title="Time"),
-            y=alt.Y("score:Q", title="Score"),
-            tooltip=[alt.Tooltip("t:T", title="Time"), "score:Q"],
+            y=alt.Y("score:Q", title="Score", axis=alt.Axis(format="d")),
+            tooltip=[alt.Tooltip("t:T", title="Time"), alt.Tooltip("score:Q", format=".0f")],
         )
         .properties(title=title, height=260)
     )
-    st.altair_chart(chart, use_container_width=True)
+    st.altair_chart(chart, width="stretch")
 
 
 def _render_signal_glyphs(counts: dict) -> None:

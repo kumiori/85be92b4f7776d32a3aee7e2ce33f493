@@ -36,7 +36,18 @@ from ui import (
 )
 
 PRE_SIGNAL_ID = "ORGANISATION_SIGNAL"
-PRE_LOBBY_RADIO_IDS = {"COLLABORATION_READINESS", "PERSONAL_AGENCY"}
+CONTACT_METHOD_ID = "CONTACT_METHOD"
+FINAL_FEEDBACK_ID = "FINAL_FEEDBACK"
+EMOTION_QUESTION_IDS = {
+    "ARRIVAL_EMOTION",
+    "ENVIRONMENT_CHANGE_EMOTION",
+    "SOCIETAL_CHANGE_EMOTION",
+}
+PRE_LOBBY_RADIO_IDS = {
+    "COLLABORATION_READINESS",
+    "PERSONAL_AGENCY",
+    CONTACT_METHOD_ID,
+}
 PRE_SIGNAL_TEXT_ID = "pre_lobby_signal_v0"
 PRE_LOBBY_MODULE_TEXT_ID = "pre_lobby_module_v1"
 AUTH_LOGGER = get_module_logger("iceicebaby.auth")
@@ -186,7 +197,10 @@ def _render_first_signal_step(repo, authenticator) -> None:
                 metadata={"page": "011_Intro"},
             )
         st.session_state["_prev_auth_status"] = True
-        st.success(f"Hello {display_name}.")
+        hello_key = f"intro_hello_shown:{st.session_state.get('player_page_id') or display_name}"
+        if not st.session_state.get(hello_key, False):
+            st.success(f"Hello {display_name}.")
+            st.session_state[hello_key] = True
 
         with perf_timer("iceicebaby.auth", "active_session_lookup", page="011_Intro"):
             session = get_active_session(repo)
@@ -258,7 +272,20 @@ def _render_first_signal_step(repo, authenticator) -> None:
             )
 
             def _is_valid(qid: str) -> bool:
-                choice_val = answers.get(qid, {}).get("choice", "")
+                answer = answers.get(qid, {})
+                choice_val = answer.get("choice", "")
+                if qid == CONTACT_METHOD_ID:
+                    choice_text = str(choice_val or "").strip().lower()
+                    if not choice_text:
+                        return False
+                    if (
+                        "dont want to be in touch" in choice_text
+                        or "don't want to be in touch" in choice_text
+                    ):
+                        return True
+                    return bool(str(answer.get("contact_value", "") or "").strip())
+                if qid == FINAL_FEEDBACK_ID:
+                    return bool(str(choice_val or "").strip())
                 if isinstance(choice_val, list):
                     return len(choice_val) > 0
                 return str(choice_val or "").strip() != ""
@@ -283,8 +310,28 @@ def _render_first_signal_step(repo, authenticator) -> None:
             st.markdown(f"### {q.prompt}")
             if q.short_description:
                 st.caption(q.short_description)
+            if q.id in EMOTION_QUESTION_IDS:
+                st.caption("Multiple choices are possible.")
 
-            if q.depth == 0 or q.id in PRE_LOBBY_RADIO_IDS:
+            comment_existing = str(answers.get(q.id, {}).get("comment", "") or "")
+            contact_existing = str(answers.get(q.id, {}).get("contact_value", "") or "")
+            comment = comment_existing
+            contact_value = contact_existing
+            choice: str | list[str] = ""
+
+            if q.id == FINAL_FEEDBACK_ID:
+                rating = st.feedback(
+                    "faces",
+                    key=f"pre-lobby-feedback-intro-{q.id}",
+                )
+                choice = "" if rating is None else f"faces:{int(rating)}"
+                comment = st.text_area(
+                    "Optional comment",
+                    value=comment_existing,
+                    placeholder="Share one line of feedback",
+                    key=f"pre-lobby-feedback-comment-intro-{q.id}",
+                )
+            elif q.depth == 0 or q.id in PRE_LOBBY_RADIO_IDS:
                 options = ["Select an option"] + (q.options or [])
                 existing_choice = str(answers.get(q.id, {}).get("choice", "") or "")
                 selected_idx = (
@@ -315,9 +362,6 @@ def _render_first_signal_step(repo, authenticator) -> None:
                     )
                     or []
                 )
-
-            comment_existing = str(answers.get(q.id, {}).get("comment", "") or "")
-            comment = comment_existing
             maybe_selected = False
             other_selected = False
             if isinstance(choice, list):
@@ -327,7 +371,35 @@ def _render_first_signal_step(repo, authenticator) -> None:
                 maybe_selected = "maybe" in str(choice).lower()
                 other_selected = choice == "Other"
 
-            if q.show_text_field and (maybe_selected or other_selected):
+            if q.id == CONTACT_METHOD_ID and isinstance(choice, str) and choice:
+                choice_txt = choice.strip().lower()
+                if choice_txt == "email":
+                    contact_value = st.text_input(
+                        "Email",
+                        value=contact_existing,
+                        placeholder="name@example.org",
+                        key=f"pre-lobby-contact-email-intro-{q.id}",
+                    ).strip()
+                elif (
+                    "dont want to be in touch" in choice_txt
+                    or "don't want to be in touch" in choice_txt
+                ):
+                    contact_value = ""
+                else:
+                    contact_value = st.text_input(
+                        "Phone",
+                        value=contact_existing,
+                        placeholder="+33 ...",
+                        key=f"pre-lobby-contact-phone-intro-{q.id}",
+                    ).strip()
+            elif q.id in EMOTION_QUESTION_IDS and other_selected:
+                comment = st.text_input(
+                    "If you selected Other, specify",
+                    value=comment_existing,
+                    placeholder="Your emotion",
+                    key=f"pre-lobby-other-intro-{q.id}",
+                )
+            elif q.show_text_field and (maybe_selected or other_selected):
                 comment = st.text_input(
                     "Condition or comment",
                     value=comment_existing,
@@ -338,10 +410,15 @@ def _render_first_signal_step(repo, authenticator) -> None:
                 "choice": choice,
                 "score": _signal_score(choice) if q.id == PRE_SIGNAL_ID else None,
                 "comment": comment.strip(),
+                "contact_value": contact_value,
                 "type": "pre_signal" if q.depth == 0 else "pre_lobby",
                 "question_type": "signal"
                 if q.depth == 0
-                else ("multi" if isinstance(choice, list) else "single"),
+                else (
+                    "feedback"
+                    if q.id == FINAL_FEEDBACK_ID
+                    else ("multi" if isinstance(choice, list) else "single")
+                ),
                 "page_index": idx + 1,
                 "depth": q.depth,
             }
@@ -354,7 +431,7 @@ def _render_first_signal_step(repo, authenticator) -> None:
             with back_col:
                 if st.button(
                     "Back",
-                    use_container_width=True,
+                    width="stretch",
                     disabled=idx == 0,
                     key="pre-lobby-back-intro",
                 ):
@@ -363,7 +440,7 @@ def _render_first_signal_step(repo, authenticator) -> None:
             with next_col:
                 if st.button(
                     "Next",
-                    use_container_width=True,
+                    width="stretch",
                     disabled=idx >= total - 1 or not _is_valid(q.id),
                     key="pre-lobby-next-intro",
                 ):
@@ -373,7 +450,7 @@ def _render_first_signal_step(repo, authenticator) -> None:
                 submit_module = st.button(
                     "Send signal again" if pre_signal_submitted else "Send signal",
                     type="primary",
-                    use_container_width=True,
+                    width="stretch",
                     disabled=idx != total - 1 or answered < total,
                     key="pre-lobby-submit-intro",
                 )
@@ -454,6 +531,10 @@ def _render_first_signal_step(repo, authenticator) -> None:
                     st.success("✨ Signal recorded.")
                     st.balloons()
         elif pre_signal_submitted:
+            done_balloon_key = f"{module_done_key}:thankyou_balloons"
+            if not st.session_state.get(done_balloon_key, False):
+                st.balloons()
+                st.session_state[done_balloon_key] = True
             st.success(
                 "Thank you for your signal. Your contribution has been recorded and added to the collective stream."
             )
@@ -466,7 +547,7 @@ Your responses are used in aggregate form to help the group observe shared tende
             with action_col1:
                 st.button(
                     "Review or update my choices (coming soon)",
-                    use_container_width=True,
+                    width="stretch",
                     disabled=True,
                     key="intro-review-choices-disabled",
                 )
@@ -474,12 +555,12 @@ Your responses are used in aggregate form to help the group observe shared tende
                 st.page_link(
                     "pages/08_Overview.py",
                     label="Open global visualisation",
-                    use_container_width=True,
+                    width="stretch",
                 )
         if st.button(
             "Enter lobby",
             type="secondary",
-            use_container_width=True,
+            width="stretch",
             disabled=not pre_signal_submitted,
             key="intro-enter-lobby",
         ):
@@ -499,13 +580,13 @@ Your responses are used in aggregate form to help the group observe shared tende
             )
             st.switch_page("pages/02_Home.py")
         if not pre_signal_submitted:
-            st.warning("Send a signal above before entering the lobby.")
+            st.warning("Integrate your perspectives before discussing collectively.")
         authenticator.logout(button_name="Logout", location="main")
     elif authentication_status is False:
         st.session_state["_prev_auth_status"] = False
     else:
         st.session_state["_prev_auth_status"] = None
-        st.info("Authentication status: Offline")
+        st.info("Connection status: Offline")
         st.caption("Use the access key form above to log in.")
 
 
@@ -557,7 +638,7 @@ def main() -> None:
         if st.button(
             "Skip intro and go to first signal",
             type="secondary",
-            use_container_width=True,
+            width="stretch",
             key="intro-skip",
         ):
             st.session_state[INTRO_STEP_KEY] = 2
@@ -580,7 +661,7 @@ def main() -> None:
             if st.button(
                 "Back",
                 type="secondary",
-                use_container_width=True,
+                width="stretch",
                 key="intro-step0-back",
             ):
                 st.switch_page("pages/Splash.py")
@@ -588,7 +669,7 @@ def main() -> None:
             if st.button(
                 "I would like to explore this",
                 type="primary",
-                use_container_width=True,
+                width="stretch",
                 key="intro-step0-next",
             ):
                 st.session_state[INTRO_STEP_KEY] = 2

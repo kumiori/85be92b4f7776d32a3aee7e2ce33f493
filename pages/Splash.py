@@ -44,7 +44,7 @@ All answers remain anonymous and associated only with your key.
     if st.button(
         "Understood, let's create the key",
         type="primary",
-        use_container_width=True,
+        width="stretch",
         key="splash-open-mint-form",
     ):
         st.session_state[SHOW_MINT_FORM_KEY] = True
@@ -106,7 +106,7 @@ def _render_mint_panel(authenticator: Any) -> None:
             mint_submit = st.form_submit_button(
                 "Generate Access Key",
                 type="primary",
-                use_container_width=True,
+                width="stretch",
             )
 
         if not mint_submit:
@@ -190,13 +190,13 @@ A unique access key has been created for you. Store it safely.
         data=mint_result.get("pdf_bytes", b""),
         file_name=mint_result.get("filename", "iceicebaby-key.pdf"),
         mime="application/pdf",
-        use_container_width=True,
+        width="stretch",
         key="splash-mint-download-pdf",
     )
     if st.button(
         "Login now",
         type="primary",
-        use_container_width=True,
+        width="stretch",
         key="splash-go-login-after-mint",
     ):
         st.session_state["login_access_key_prefill"] = str(

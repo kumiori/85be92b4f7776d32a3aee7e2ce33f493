@@ -271,7 +271,7 @@ def main() -> None:
             if st.button(
                 "Continue with selected depth",
                 type="secondary",
-                use_container_width=True,
+                width="stretch",
                 key="pre-lobby-depth-continue",
             ):
                 st.session_state[depth_confirm_key] = depth_sig
@@ -395,7 +395,7 @@ def main() -> None:
             with back_col:
                 if st.button(
                     "Back",
-                    use_container_width=True,
+                    width="stretch",
                     disabled=idx == 0,
                     key="pre-lobby-back",
                 ):
@@ -404,7 +404,7 @@ def main() -> None:
             with next_col:
                 if st.button(
                     "Next",
-                    use_container_width=True,
+                    width="stretch",
                     disabled=idx >= total - 1 or not _is_valid(q.id),
                     key="pre-lobby-next",
                 ):
@@ -414,7 +414,7 @@ def main() -> None:
                 submit_module = st.button(
                     "Send signal again" if pre_signal_submitted else "Send signal",
                     type="primary",
-                    use_container_width=True,
+                    width="stretch",
                     disabled=idx != total - 1 or answered < total,
                     key="pre-lobby-submit",
                 )
@@ -468,7 +468,7 @@ def main() -> None:
         if st.button(
             "Enter lobby",
             type="secondary",
-            use_container_width=True,
+            width="stretch",
             disabled=not pre_signal_submitted,
         ):
             ok, err = touch_player_presence(

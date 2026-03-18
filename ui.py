@@ -186,12 +186,12 @@ def primary_button(
     label: str, key: Optional[str] = None, disabled: bool = False
 ) -> bool:
     return st.button(
-        label, key=key, type="primary", disabled=disabled, use_container_width=True
+        label, key=key, type="primary", disabled=disabled, width="stretch"
     )
 
 
 def small_button(label: str, key: Optional[str] = None, disabled: bool = False) -> bool:
-    return st.button(label, key=key, disabled=disabled, use_container_width=True)
+    return st.button(label, key=key, disabled=disabled, width="stretch")
 
 
 def card_block(
