@@ -8,6 +8,7 @@ import streamlit as st
 
 from infra.app_context import get_notion_repo, load_config
 from infra.event_logger import log_event, get_module_logger
+from models.catalog import QUESTION_BY_ID
 from services.aggregator import get_overview_payload
 from services.presence import count_active_users
 from ui import apply_theme, heading, set_page, sidebar_debug_state
@@ -46,9 +47,9 @@ def _render_bar(
             alt.Chart(df)
             .mark_bar()
             .encode(
-                x=alt.X("value:Q", title="Count"),
+                x=alt.X("value:Q", title="Count", axis=alt.Axis(format="d")),
                 y=alt.Y("id:N", sort="-x", title=None),
-                tooltip=["id:N", "value:Q"],
+                tooltip=["id:N", alt.Tooltip("value:Q", format=".0f")],
             )
             .properties(title=title, height=height)
         )
@@ -58,19 +59,19 @@ def _render_bar(
             .mark_bar()
             .encode(
                 x=alt.X("id:N", sort="-y", title=None),
-                y=alt.Y("value:Q", title="Count"),
-                tooltip=["id:N", "value:Q"],
+                y=alt.Y("value:Q", title="Count", axis=alt.Axis(format="d")),
+                tooltip=["id:N", alt.Tooltip("value:Q", format=".0f")],
             )
             .properties(title=title, height=height)
         )
-    st.altair_chart(chart, use_container_width=True)
+    st.altair_chart(chart, width="stretch")
 
 
 def _render_signal_timeline(title: str, timeline: list[dict]) -> None:
     points = []
     for item in timeline or []:
         t = item.get("t")
-        y = item.get("score")
+        y = item.get("cumulative", item.get("score"))
         if t is None or y is None:
             continue
         try:
@@ -85,19 +86,69 @@ def _render_signal_timeline(title: str, timeline: list[dict]) -> None:
     df = pd.DataFrame(points)
     chart = (
         alt.Chart(df)
-        .mark_line(point=True)
+        .mark_circle(size=180)
         .encode(
             x=alt.X("t:T", title="Time"),
-            y=alt.Y("score:Q", title="Score"),
-            tooltip=[alt.Tooltip("t:T", title="Time"), "score:Q"],
+            y=alt.Y("score:Q", title="Score", axis=alt.Axis(format="d")),
+            tooltip=[alt.Tooltip("t:T", title="Time"), alt.Tooltip("score:Q", format=".0f")],
         )
         .properties(title=title, height=260)
     )
-    st.altair_chart(chart, use_container_width=True)
+    st.altair_chart(chart, width="stretch")
+
+
+def _render_signal_glyphs(counts: dict) -> None:
+    yes_n = int((counts or {}).get("yes", 0))
+    maybe_n = int((counts or {}).get("maybe", 0))
+    no_n = int((counts or {}).get("no", 0))
+
+    def _block(color: str, n: int) -> str:
+        if n <= 0:
+            return ""
+        circles = "".join(
+            f"<span style='display:inline-block;width:42px;height:42px;border-radius:50%;background:{color};margin:3px;'></span>"
+            for _ in range(n)
+        )
+        return f"<span style='display:inline-flex;flex-wrap:wrap;max-width:100%;margin-right:10px'>{circles}</span>"
+
+    html = (
+        "<div style='display:flex;flex-wrap:wrap;align-items:center;gap:8px'>"
+        f"{_block('#2e7d32', yes_n)}"
+        f"{_block('#fbc02d', maybe_n)}"
+        f"{_block('#c62828', no_n)}"
+        "</div>"
+    )
+    st.markdown(html, unsafe_allow_html=True)
+    st.caption("Legend: green = yes · yellow = maybe · red = no")
 
 
 def _question_lookup(payload: dict) -> dict[str, dict]:
     return {str(q.get("item_id", "")): q for q in payload.get("questions", [])}
+
+
+def _question_order(item_id: str) -> int:
+    q = QUESTION_BY_ID.get(str(item_id or ""))
+    if not q:
+        return 9999
+    try:
+        return int(getattr(q, "order", 9999) or 9999)
+    except Exception:
+        return 9999
+
+
+def _question_title(item_id: str, fallback: str = "") -> str:
+    q = QUESTION_BY_ID.get(str(item_id or ""))
+    if q and getattr(q, "prompt", None):
+        return str(q.prompt)
+    return fallback or str(item_id or "Question")
+
+
+def _render_question_prompt(item_id: str) -> None:
+    q = QUESTION_BY_ID.get(item_id)
+    if q:
+        st.caption(f"Question: {q.prompt}")
+    else:
+        st.caption(f"Question ID: {item_id}")
 
 
 def main() -> None:
@@ -180,33 +231,58 @@ def main() -> None:
     if show_debug_json:
         with st.expander("Debug JSON", expanded=False):
             st.json(payload)
-    qmap = _question_lookup(payload)
-    st.subheader("Collective entry signal")
-    sig = qmap.get("ORGANISATION_SIGNAL")
-    if sig:
-        _render_bar("Organisation signal", sig.get("counts", {}), horizontal=False)
-        _render_signal_timeline("Organisation signal timeline", sig.get("timeline", []))
-    else:
-        st.caption("No organisation signal data yet.")
+    ordered_questions = sorted(
+        payload.get("questions", []),
+        key=lambda q: (
+            _question_order(str(q.get("item_id", ""))),
+            str(q.get("item_id", "")),
+        ),
+    )
 
-    st.subheader("Emotional field")
-    for item_id, title in [
-        ("ARRIVAL_EMOTION", "Arrival emotion"),
-        ("ENVIRONMENT_CHANGE_EMOTION", "Emotion toward environmental change"),
-        ("SOCIETAL_CHANGE_EMOTION", "Emotion toward societal change"),
-    ]:
-        q = qmap.get(item_id)
-        if q:
-            _render_bar(title, q.get("counts", {}), horizontal=True)
+    st.subheader("Session signals (question order)")
+    if not ordered_questions:
+        st.caption("No aggregated question data yet.")
 
-    st.subheader("Position and readiness")
-    for item_id, title in [
-        ("COLLABORATION_READINESS", "Collaboration readiness"),
-        ("PERSONAL_AGENCY", "Personal agency"),
-    ]:
-        q = qmap.get(item_id)
-        if q:
-            _render_bar(title, q.get("counts", {}), horizontal=True)
+    for q in ordered_questions:
+        item_id = str(q.get("item_id", ""))
+        chart_type = str(q.get("chart_type", ""))
+        with st.container(border=True):
+            if item_id == "ORGANISATION_SIGNAL":
+                st.markdown("**Collective entry signal**")
+                _render_question_prompt(item_id)
+                _render_signal_glyphs(q.get("counts", {}))
+                _render_signal_timeline(
+                    "Collective signal over time", q.get("timeline", [])
+                )
+                continue
+
+            _render_question_prompt(item_id)
+
+            if chart_type in {
+                "emotion_frequency",
+                "choice_distribution",
+                "signal_distribution",
+            }:
+                _render_bar(
+                    _question_title(item_id, item_id),
+                    q.get("counts", {}),
+                    horizontal=True,
+                )
+                continue
+
+            if chart_type == "latest_text":
+                st.markdown(f"**{_question_title(item_id, item_id)}**")
+                entries = q.get("entries", []) or []
+                if not entries:
+                    st.caption("No text entries yet.")
+                for entry in entries[:10]:
+                    st.markdown(f"- {str(entry.get('text') or '').strip()}")
+                continue
+
+            st.caption(
+                f"No dedicated renderer for chart_type='{chart_type}'. Showing raw block."
+            )
+            st.json(q)
 
     with st.expander("Developer blocks", expanded=False):
         for q in payload.get("questions", []):

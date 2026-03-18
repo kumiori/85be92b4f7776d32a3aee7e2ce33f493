@@ -136,19 +136,13 @@ def _resolve_data_source_id(client: Client, database_or_source_id: str) -> str:
     if not clean_id:
         return ""
 
-    data_sources_endpoint = getattr(client, "data_sources", None)
-    ds_retrieve = (
-        getattr(data_sources_endpoint, "retrieve", None)
-        if data_sources_endpoint
-        else None
-    )
-    if callable(ds_retrieve):
-        try:
-            _execute_with_retry(ds_retrieve, clean_id)
-            return clean_id
-        except Exception:
-            pass
+    def _is_not_found(err: Exception) -> bool:
+        status = getattr(err, "status", None)
+        code = str(getattr(err, "code", "") or "").lower()
+        return status == 404 or "object_not_found" in code
 
+    # Prefer databases.retrieve first: in this app most configured IDs are database IDs.
+    # This avoids the expensive data_sources 404 -> databases fallback on every lookup.
     databases_endpoint = getattr(client, "databases", None)
     db_retrieve = (
         getattr(databases_endpoint, "retrieve", None) if databases_endpoint else None
@@ -161,6 +155,27 @@ def _resolve_data_source_id(client: Client, database_or_source_id: str) -> str:
                 ds_id = _clean_notion_id(data_sources[0].get("id"))
                 if ds_id:
                     return ds_id
+            # If no linked data source is exposed, keep the original id.
+            return clean_id
+        except APIResponseError as err:  # type: ignore[misc]
+            if not _is_not_found(err):
+                raise
+        except Exception:
+            pass
+
+    data_sources_endpoint = getattr(client, "data_sources", None)
+    ds_retrieve = (
+        getattr(data_sources_endpoint, "retrieve", None)
+        if data_sources_endpoint
+        else None
+    )
+    if callable(ds_retrieve):
+        try:
+            _execute_with_retry(ds_retrieve, clean_id)
+            return clean_id
+        except APIResponseError as err:  # type: ignore[misc]
+            if not _is_not_found(err):
+                raise
         except Exception:
             pass
 
@@ -1588,8 +1603,19 @@ class NotionRepo:
             {"property": session_prop, "relation": {"contains": session_id}}
         ]
         if status:
-            status_prop = self._prop_name(db_id, "status", "select")
-            filters.append({"property": status_prop, "select": {"equals": status}})
+            resolved_status = self._resolve_question_status(status, db_id)
+            if resolved_status:
+                status_prop = self._prop_name(db_id, "status", "select")
+                status_meta = (self._db_props(db_id).get(status_prop) or {})
+                status_type = status_meta.get("type", "select")
+                if status_type == "status":
+                    filters.append(
+                        {"property": status_prop, "status": {"equals": resolved_status}}
+                    )
+                else:
+                    filters.append(
+                        {"property": status_prop, "select": {"equals": resolved_status}}
+                    )
         response = _cached_query(
             self.client,
             db_id,
@@ -1605,9 +1631,17 @@ class NotionRepo:
     def list_listed_questions(
         self, session_id: str, questions_db_id: Optional[str] = None
     ) -> List[Dict[str, Any]]:
-        return self.list_questions(
-            session_id, status="responded", questions_db_id=questions_db_id
-        )
+        # Defensive path for Admin export:
+        # avoid server-side status filtering to prevent schema option mismatches
+        # (e.g. legacy "responded" vs current select/status options).
+        items = self.list_questions(session_id, status=None, questions_db_id=questions_db_id)
+        listed_statuses = {"approved", "responded", "listed"}
+        out: List[Dict[str, Any]] = []
+        for item in items:
+            status_val = str(item.get("status") or "").strip().lower()
+            if status_val in listed_statuses:
+                out.append(item)
+        return out
 
     def get_question_by_id(
         self, question_id: str, questions_db_id: Optional[str] = None
@@ -1642,9 +1676,40 @@ class NotionRepo:
         question_id: str,
         questions_db_id: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
+        db_id = self._questions_db_id(questions_db_id)
+        resolved_status = self._resolve_question_status("approved", db_id) or "approved"
         return self.update_question_status(
-            question_id, "responded", questions_db_id=questions_db_id
+            question_id, resolved_status, questions_db_id=questions_db_id
         )
+
+    def _question_status_options(self, db_id: str) -> List[str]:
+        status_prop = self._prop_name(db_id, "status", "select")
+        status_meta = (self._db_props(db_id).get(status_prop) or {})
+        status_type = status_meta.get("type")
+        if status_type == "status":
+            options = (status_meta.get("status") or {}).get("options", [])
+        else:
+            options = (status_meta.get("select") or {}).get("options", [])
+        out: List[str] = []
+        for opt in options or []:
+            name = str((opt or {}).get("name") or "").strip()
+            if name:
+                out.append(name)
+        return out
+
+    def _resolve_question_status(self, requested: str, db_id: str) -> Optional[str]:
+        req = str(requested or "").strip()
+        if not req:
+            return None
+        if req.lower() == "responded":
+            req = "approved"
+        options = self._question_status_options(db_id)
+        if not options:
+            return req
+        option_map = {opt.lower(): opt for opt in options}
+        if req.lower() in option_map:
+            return option_map[req.lower()]
+        return None
 
     def increment_question_upvote(
         self,

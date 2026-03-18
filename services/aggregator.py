@@ -9,6 +9,17 @@ from services.presence import count_active_users
 from services.response_reader import fetch_session_responses
 
 
+def normalize_org_signal(label: str) -> str:
+    text = str(label or "").strip().lower()
+    if "yes" in text:
+        return "yes"
+    if "maybe" in text:
+        return "maybe"
+    if "no" in text:
+        return "no"
+    return "unknown"
+
+
 def _extract_choice(payload: Any) -> Any:
     if isinstance(payload, dict):
         if "answer" in payload:
@@ -70,6 +81,68 @@ def aggregate_question(rows_for_item: list[Dict[str, Any]]) -> Dict[str, Any]:
     latest_rows = _latest_rows(rows_for_item)
 
     if qtype == "signal":
+        if item_id == "ORGANISATION_SIGNAL":
+            label_counts = Counter()
+            timeline_events: list[Dict[str, Any]] = []
+            for row in latest_rows:
+                payload = row.get("value_json")
+                choice = row.get("response_value")
+                if choice in (None, "", []):
+                    choice = _extract_choice(payload)
+                bucket = normalize_org_signal(
+                    str(choice or row.get("value_label") or "unknown")
+                )
+                label_counts[bucket] += 1
+
+            for row in rows_for_item:
+                payload = row.get("value_json")
+                choice = row.get("response_value")
+                if choice in (None, "", []):
+                    choice = _extract_choice(payload)
+                bucket = normalize_org_signal(
+                    str(choice or row.get("value_label") or "unknown")
+                )
+                t = str(row.get("submitted_at", "") or "")
+                if not t:
+                    continue
+                score = 1 if bucket == "yes" else (0 if bucket == "maybe" else (-1 if bucket == "no" else 0))
+                timeline_events.append({"t": t, "score": score, "bucket": bucket})
+
+            timeline_events.sort(key=lambda x: x.get("t", ""))
+            cumulative = 0
+            cumulative_timeline: list[Dict[str, Any]] = []
+            for ev in timeline_events:
+                cumulative += int(ev.get("score", 0))
+                cumulative_timeline.append(
+                    {
+                        "t": ev.get("t"),
+                        "score": ev.get("score"),
+                        "bucket": ev.get("bucket"),
+                        "cumulative": cumulative,
+                    }
+                )
+
+            return {
+                "item_id": item_id,
+                "question_type": "signal",
+                "chart_type": "signal_distribution",
+                "n_responses": len(latest_rows),
+                "n_events": len(rows_for_item),
+                "counts": {
+                    "yes": int(label_counts.get("yes", 0)),
+                    "maybe": int(label_counts.get("maybe", 0)),
+                    "no": int(label_counts.get("no", 0)),
+                    "unknown": int(label_counts.get("unknown", 0)),
+                },
+                "scores": {
+                    "sum": cumulative_timeline[-1]["cumulative"]
+                    if cumulative_timeline
+                    else 0,
+                    "n_scored": len(cumulative_timeline),
+                },
+                "timeline": cumulative_timeline,
+            }
+
         label_counts = Counter()
         scores: list[float] = []
         timeline: list[Dict[str, Any]] = []

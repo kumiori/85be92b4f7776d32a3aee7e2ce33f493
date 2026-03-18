@@ -46,7 +46,7 @@ presence:
 intro:
     streaming:
         # Base delay per token (seconds). Increase for slower reading.
-        base_delay_s: 0.3
+        base_delay_s: 0.2
         # Extra pause multiplier when token ends with punctuation.
         punctuation_pause_coef:
             comma: 1.8
