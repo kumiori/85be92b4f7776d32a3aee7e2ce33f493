@@ -1,9 +1,11 @@
 from contextlib import contextmanager
+from datetime import datetime
 from pathlib import Path
 from typing import Literal, Optional
 import os
 
 import json
+import time
 
 import streamlit as st
 
@@ -438,6 +440,119 @@ def sidebar_debug_state() -> None:
             reset_notion_repo_cache()
             st.toast("Notion cache cleared. Reload the page.")
     # st.components.v1.html(html, height=size_px + 20, scrolling=False)
+
+
+def _now_hhmmss() -> str:
+    return datetime.now().strftime("%H:%M:%S")
+
+
+def update_sidebar_task(task: str, *, done: bool = False) -> None:
+    title = str(task or "").strip() or "Idle"
+    st.session_state["sidebar_current_task"] = title
+    if done:
+        st.session_state["sidebar_last_task"] = title
+        st.session_state["sidebar_last_task_at"] = _now_hhmmss()
+
+
+def push_sidebar_timing(label: str, elapsed_ms: float) -> None:
+    try:
+        ms = float(elapsed_ms)
+    except Exception:
+        return
+    timings = st.session_state.get("sidebar_timings")
+    if not isinstance(timings, list):
+        timings = []
+    timings.append(
+        {
+            "label": str(label or "task"),
+            "ms": round(ms, 1),
+            "at": _now_hhmmss(),
+        }
+    )
+    # Keep the latest 12 timings only.
+    st.session_state["sidebar_timings"] = timings[-12:]
+
+
+def begin_sidebar_timing(label: str) -> float:
+    st.session_state["sidebar_current_timing_label"] = str(label or "task")
+    return time.perf_counter()
+
+
+def end_sidebar_timing(started_at: float, label: str | None = None) -> None:
+    elapsed_ms = (time.perf_counter() - float(started_at)) * 1000.0
+    push_sidebar_timing(label or st.session_state.get("sidebar_current_timing_label") or "task", elapsed_ms)
+
+
+def _short_access_key_label(access_key: str) -> str:
+    key = str(access_key or "").strip()
+    if not key:
+        return "—"
+    try:
+        from infra.key_codec import hex_to_emoji, split_emoji_symbols
+
+        emoji = hex_to_emoji(key)
+        symbols = split_emoji_symbols(emoji)
+        if len(symbols) >= 4:
+            return "".join(symbols[-4:])
+        return emoji
+    except Exception:
+        return key[-8:] if len(key) > 8 else key
+
+
+def render_orientation_sidebar(
+    *,
+    session_name: str = "",
+    session_description: str = (
+        "This session explores how individual signals form collective decisions."
+    ),
+    question_index: int | None = None,
+    question_total: int | None = None,
+    responses_submitted: int | None = None,
+    sessions_participated: int | None = None,
+) -> None:
+    with st.sidebar:
+        st.markdown("#### Session")
+        st.caption(session_name or "GLOBAL SESSION")
+        if session_description:
+            st.caption(session_description)
+        if question_index is not None and question_total:
+            st.caption(f"Question {question_index} / {question_total}")
+
+        st.divider()
+        st.markdown("#### You")
+        st.caption(f"Key: {_short_access_key_label(st.session_state.get('player_access_key', ''))}")
+        st.caption(f"Name: {st.session_state.get('player_name') or '—'}")
+        if responses_submitted is None:
+            responses_submitted = int(
+                st.session_state.get("sidebar_responses_submitted", 0) or 0
+            )
+        if sessions_participated is None:
+            sessions_participated = int(
+                st.session_state.get("sidebar_sessions_participated", 1) or 1
+            )
+        st.caption(f"Responses: {responses_submitted}")
+        st.caption(f"Sessions: {sessions_participated}")
+
+        st.divider()
+        st.markdown("#### System")
+        st.caption("Your responses are anonymous and linked only to your key.")
+        st.caption("You can return later to continue your trajectory.")
+        status = "connected" if st.session_state.get("authentication_status") else "offline"
+        st.caption(f"Status: {status}")
+        st.caption(f"Last activity: {st.session_state.get('sidebar_last_task_at') or '—'}")
+
+        current_task = str(st.session_state.get("sidebar_current_task") or "Idle")
+        with st.expander(f"Task · {current_task}", expanded=False):
+            st.caption(f"Current: {current_task}")
+            st.caption(f"Last: {st.session_state.get('sidebar_last_task') or '—'}")
+            st.caption(f"Last at: {st.session_state.get('sidebar_last_task_at') or '—'}")
+            timings = st.session_state.get("sidebar_timings")
+            if isinstance(timings, list) and timings:
+                st.caption("Timings (latest)")
+                for row in reversed(timings[-6:]):
+                    st.caption(
+                        f"{row.get('label', 'task')}: {row.get('ms', '—')} ms ({row.get('at', '—')})"
+                    )
 
 
 def morph3_defaults() -> dict:

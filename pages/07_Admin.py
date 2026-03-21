@@ -7,6 +7,8 @@ from datetime import datetime
 from pathlib import Path
 from collections import defaultdict
 from datetime import timezone, timedelta
+import hashlib
+import time
 
 import streamlit as st
 import yaml
@@ -33,8 +35,12 @@ from models.catalog import (
 from models.sessions import session_spec_by_id
 from repositories.interaction_repo import NotionInteractionRepository
 from ui import apply_theme, heading, microcopy, set_page, sidebar_debug_state
+from ui import render_orientation_sidebar, update_sidebar_task
+from ui import begin_sidebar_timing, end_sidebar_timing
 
 ADMIN_LOGGER = get_module_logger("iceicebaby.admin")
+ADMIN_PLAYERS_CACHE_TTL_S = 1200.0
+ADMIN_CONTACT_CACHE_TTL_S = 600.0
 
 
 def _is_admin(role: str) -> bool:
@@ -97,6 +103,32 @@ def _normalise_identity_token(value: str) -> str:
     return " ".join(str(value or "").strip().lower().split())
 
 
+def _is_hex_key_like(value: str) -> bool:
+    txt = str(value or "").strip()
+    if len(txt) != 32:
+        return False
+    return all(ch in "0123456789abcdefABCDEF" for ch in txt)
+
+
+def _display_player_name(player: Dict[str, Any]) -> str:
+    nickname = str(player.get("nickname") or "").strip()
+    access_key = str(player.get("access_key") or "").strip()
+    if not nickname:
+        return "🧊"
+    if _is_hex_key_like(nickname) and (not access_key or nickname.upper() == access_key.upper()):
+        return "🧊"
+    return nickname
+
+
+def _player_name_sort_key(player: Dict[str, Any]) -> tuple[str, str]:
+    display = _display_player_name(player)
+    if display != "🧊":
+        return ("0", display.lower())
+    seed = str(player.get("access_key") or player.get("id") or "")
+    digest = hashlib.sha256(seed.encode("utf-8")).hexdigest()
+    return ("1", digest)
+
+
 def _load_players_for_reconciliation(repo) -> List[Dict[str, Any]]:
     """
     Return all players from the players DB using the cleanest available path.
@@ -125,35 +157,127 @@ def _load_players_for_reconciliation(repo) -> List[Dict[str, Any]]:
     return out
 
 
-def _build_interaction_repository_for_admin(repo) -> NotionInteractionRepository:
+def _interaction_responses_db_id() -> str:
     notion_cfg = st.secrets.get("notion", {})
-    db_id = (
+    return str(
         notion_cfg.get("ice_interaction_responses_db_id")
         or notion_cfg.get("interaction_responses_db_id")
         or notion_cfg.get("ice_responses_db_id")
         or ""
     )
+
+
+@st.cache_data(ttl=ADMIN_PLAYERS_CACHE_TTL_S, show_spinner=False)
+def _load_players_shared_cache(_cache_key: str) -> List[Dict[str, Any]]:
+    repo = get_notion_repo()
+    return _load_players_for_reconciliation(repo)
+
+
+@st.cache_data(ttl=ADMIN_CONTACT_CACHE_TTL_S, show_spinner=False)
+def _load_contact_preferences_shared_cache(
+    _cache_key: str,
+    session_id: str,
+) -> List[Dict[str, Any]]:
+    repo = get_notion_repo()
+    db_id = _interaction_responses_db_id()
     if not db_id:
-        raise ValueError("Missing interaction responses DB id in secrets.")
-    return NotionInteractionRepository(repo, str(db_id))
+        return []
+    interaction_repo = NotionInteractionRepository(repo, db_id)
+    return interaction_repo.get_responses_by_item(session_id, "CONTACT_METHOD")
+
+
+def _clear_admin_caches() -> None:
+    _load_players_shared_cache.clear()
+    _load_contact_preferences_shared_cache.clear()
+    for key in list(st.session_state.keys()):
+        if key.startswith("admin_players_cache_v2") or key.startswith("admin_contact_prefs_v2:"):
+            st.session_state.pop(key, None)
+
+
+def _get_players_cached(repo, *, force: bool = False, ttl_s: float = ADMIN_PLAYERS_CACHE_TTL_S) -> List[Dict[str, Any]]:
+    key = "admin_players_cache_v2"
+    now_ts = time.time()
+    cached = st.session_state.get(key)
+    if (
+        not force
+        and isinstance(cached, dict)
+        and (now_ts - float(cached.get("ts", 0.0)) < ttl_s)
+        and isinstance(cached.get("players"), list)
+    ):
+        return cached.get("players", [])
+    if force:
+        _clear_admin_caches()
+    players_db_id = str(repo._players_db_id(None))  # noqa: SLF001
+    players = _load_players_shared_cache(players_db_id)
+    st.session_state[key] = {"ts": now_ts, "players": players}
+    return players
+
+
+def _get_contact_preferences_cached(
+    repo,
+    session_id: str,
+    *,
+    force: bool = False,
+    ttl_s: float = ADMIN_CONTACT_CACHE_TTL_S,
+) -> List[Dict[str, Any]]:
+    key = f"admin_contact_prefs_v2:{session_id}"
+    now_ts = time.time()
+    cached = st.session_state.get(key)
+    if (
+        not force
+        and isinstance(cached, dict)
+        and (now_ts - float(cached.get("ts", 0.0)) < ttl_s)
+        and isinstance(cached.get("responses"), list)
+    ):
+        return cached.get("responses", [])
+    if force:
+        _clear_admin_caches()
+    interaction_db_id = _interaction_responses_db_id()
+    if not interaction_db_id:
+        responses: List[Dict[str, Any]] = []
+    else:
+        responses = _load_contact_preferences_shared_cache(interaction_db_id, session_id)
+    st.session_state[key] = {"ts": now_ts, "responses": responses}
+    return responses
 
 
 def _render_players_dashboard(repo, session_id: str) -> None:
     st.subheader("Players dashboard")
     st.caption("Live view of players and contact preferences.")
+    refresh_players = st.button(
+        "Refresh players data",
+        type="secondary",
+        width="stretch",
+        key="admin-refresh-players-cache",
+    )
+    if refresh_players:
+        _clear_admin_caches()
+        st.toast("Admin caches refreshed.", icon="♻️")
+    t0 = begin_sidebar_timing("players_load")
     try:
-        players = _load_players_for_reconciliation(repo)
+        players = _get_players_cached(
+            repo,
+            force=False,
+            ttl_s=ADMIN_PLAYERS_CACHE_TTL_S,
+        )
     except Exception as exc:
+        end_sidebar_timing(t0, "players_load_error")
         st.error(f"Could not load players dashboard: {exc}")
         return
+    end_sidebar_timing(t0, "players_load")
     if not players:
         st.info("No players found.")
         return
 
     contact_by_player: Dict[str, Dict[str, str]] = {}
+    t1 = begin_sidebar_timing("contact_preferences_load")
     try:
-        interaction_repo = _build_interaction_repository_for_admin(repo)
-        responses = interaction_repo.get_responses(session_id)
+        responses = _get_contact_preferences_cached(
+            repo,
+            session_id,
+            force=False,
+            ttl_s=ADMIN_CONTACT_CACHE_TTL_S,
+        )
         for row in responses:
             item_id = str(row.get("item_id") or row.get("question_id") or "")
             if item_id != "CONTACT_METHOD":
@@ -180,15 +304,16 @@ def _render_players_dashboard(repo, session_id: str) -> None:
     except Exception:
         # Keep dashboard available even if interaction response read fails.
         pass
+    end_sidebar_timing(t1, "contact_preferences_load")
 
     rows = []
-    names = []
+    name_tokens: List[tuple[str, tuple[str, str]]] = []
     no_contact_count = 0
     with_contact_pref = 0
     for p in players:
         pid = str(p.get("id") or "")
-        nickname = str(p.get("nickname") or "")
-        names.append(nickname or pid)
+        nickname = _display_player_name(p)
+        name_tokens.append((nickname or pid, _player_name_sort_key(p)))
         contact = contact_by_player.get(pid, {})
         method = str(contact.get("method") or "")
         detail = str(contact.get("contact_value") or "")
@@ -213,7 +338,9 @@ def _render_players_dashboard(repo, session_id: str) -> None:
     c2.metric("With contact preference", with_contact_pref)
     c3.metric("No contact requested", no_contact_count)
     with st.expander("All player names", expanded=True):
-        st.write(", ".join(sorted(set(n for n in names if n))))
+        ordered_names = [name for name, _ in sorted(name_tokens, key=lambda x: x[1]) if name]
+        st.write(", ".join(ordered_names))
+        st.caption("🧊 indicates anonymous player")
     st.dataframe(rows, width="stretch")
 
 
@@ -248,12 +375,24 @@ This module only flags candidates. It does not merge or delete records.
         st.info("Duplicate detection is idle. Click 'Run duplicate detection' to execute.")
         return
 
+    refresh_before_scan = st.checkbox(
+        "Force refresh player cache before scan",
+        value=False,
+        key="admin-dup-refresh-before-scan",
+    )
+    t2 = begin_sidebar_timing("duplicate_detection")
     try:
         with st.spinner("Scanning players for potential duplicates..."):
-            players = _load_players_for_reconciliation(repo)
+            players = _get_players_cached(
+                repo,
+                force=bool(refresh_before_scan),
+                ttl_s=ADMIN_PLAYERS_CACHE_TTL_S,
+            )
     except Exception as exc:
+        end_sidebar_timing(t2, "duplicate_detection_error")
         st.error(f"Could not load players for duplicate detection: {exc}")
         return
+    end_sidebar_timing(t2, "duplicate_detection")
     st.caption(f"Loaded players: {len(players)}")
     if not players:
         st.caption("No players found.")
@@ -905,6 +1044,12 @@ def main() -> None:
                 x="state",
                 y="count",
             )
+
+    update_sidebar_task("Admin overview", done=True)
+    render_orientation_sidebar(
+        session_name=str(st.session_state.get("session_title") or "GLOBAL SESSION"),
+        session_description="Admin console for sessions, players, and duplicate reconciliation.",
+    )
 
 
 if __name__ == "__main__":

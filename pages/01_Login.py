@@ -33,8 +33,10 @@ from ui import (
     apply_theme,
     heading,
     microcopy,
+    render_orientation_sidebar,
     set_page,
     sidebar_debug_state,
+    update_sidebar_task,
     cracks_globe_block,
     display_centered_prompt,
     render_event_details,
@@ -248,6 +250,7 @@ def main() -> None:
             st.session_state[ui_idx_key] = idx
             q = pre_lobby_questions[idx]
             progress_slot = st.empty()
+            update_sidebar_task(f"Question {idx + 1}/{total}: {q.id}")
 
             st.markdown(f"### {q.prompt}")
             if q.short_description:
@@ -316,6 +319,13 @@ def main() -> None:
             }
             st.session_state[ui_answers_key] = answers
             answered = sum(1 for item in pre_lobby_questions if _is_valid(item.id))
+            st.session_state["sidebar_responses_submitted"] = answered
+            render_orientation_sidebar(
+                session_name=str(st.session_state.get("session_title") or "GLOBAL SESSION"),
+                question_index=idx + 1,
+                question_total=total,
+                responses_submitted=answered,
+            )
             with progress_slot.container():
                 st.progress(answered / total if total else 0.0)
                 st.caption(f"Progress: {answered} / {total} answered")
@@ -328,6 +338,7 @@ def main() -> None:
                     disabled=idx == 0,
                     key="pre-lobby-back",
                 ):
+                    update_sidebar_task("Back", done=True)
                     st.session_state[ui_idx_key] = max(0, idx - 1)
                     st.rerun()
             with next_col:
@@ -337,6 +348,7 @@ def main() -> None:
                     disabled=idx >= total - 1 or not _is_valid(q.id),
                     key="pre-lobby-next",
                 ):
+                    update_sidebar_task("Next", done=True)
                     st.session_state[ui_idx_key] = min(total - 1, idx + 1)
                     st.rerun()
             with submit_col:
@@ -386,6 +398,7 @@ def main() -> None:
                         st.toast(f"Presence update failed: {err}", icon="⚠️")
                     st.session_state[module_done_key] = True
                     pre_signal_submitted = True
+                    update_sidebar_task("Signal submitted", done=True)
                     log_event(
                         module="iceicebaby.responses",
                         event_type="signal_submit",
@@ -408,6 +421,7 @@ def main() -> None:
             width="stretch",
             disabled=not pre_signal_submitted,
         ):
+            update_sidebar_task("Enter lobby", done=True)
             ok, err = touch_player_presence(
                 str(player_page_id or ""),
                 page="enter_lobby",
@@ -428,10 +442,16 @@ def main() -> None:
         authenticator.logout(button_name="Logout", location="main")
     elif authentication_status is False:
         st.session_state["_prev_auth_status"] = False
+        render_orientation_sidebar(
+            session_name=str(st.session_state.get("session_title") or "GLOBAL SESSION"),
+        )
     else:
         st.session_state["_prev_auth_status"] = None
         st.info("Authentication status: Offline")
         st.caption("Use the access key form above to log in.")
+        render_orientation_sidebar(
+            session_name=str(st.session_state.get("session_title") or "GLOBAL SESSION"),
+        )
 
 
 if __name__ == "__main__":
