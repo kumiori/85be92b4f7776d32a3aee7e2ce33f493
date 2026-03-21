@@ -5,6 +5,8 @@ from io import StringIO
 from typing import Any, Dict, List
 from datetime import datetime
 from pathlib import Path
+from collections import defaultdict
+from datetime import timezone, timedelta
 
 import streamlit as st
 import yaml
@@ -22,12 +24,14 @@ from infra.event_logger import (
     log_event,
     role_claim_cooldown_state,
 )
+from infra.notion_repo import _cached_query
 from models.catalog import (
     catalog_session_codes,
     questions_for_session,
     validate_question_catalog,
 )
 from models.sessions import session_spec_by_id
+from repositories.interaction_repo import NotionInteractionRepository
 from ui import apply_theme, heading, microcopy, set_page, sidebar_debug_state
 
 ADMIN_LOGGER = get_module_logger("iceicebaby.admin")
@@ -87,6 +91,310 @@ def _session_sort_key(session: Dict[str, Any]) -> tuple[int, int, str]:
     order = int(session.get("session_order") or (spec.session_order if spec else 999))
     rank = 0 if code.upper() == "GLOBAL-SESSION" else 1
     return rank, order, code.upper()
+
+
+def _normalise_identity_token(value: str) -> str:
+    return " ".join(str(value or "").strip().lower().split())
+
+
+def _load_players_for_reconciliation(repo) -> List[Dict[str, Any]]:
+    """
+    Return all players from the players DB using the cleanest available path.
+
+    Preferred: public repo.list_all_players().
+    Fallback: direct paginated DB scan (still cached via _cached_query).
+    """
+    if hasattr(repo, "list_all_players"):
+        return repo.list_all_players(limit=500)
+
+    db_id = repo._players_db_id(None)  # noqa: SLF001
+    out: List[Dict[str, Any]] = []
+    next_cursor = None
+    while True:
+        query_kwargs = {"page_size": 100}
+        if next_cursor:
+            query_kwargs["start_cursor"] = next_cursor
+        payload = _cached_query(repo.client, db_id, **query_kwargs)
+        for page in payload.get("results", []):
+            out.append(repo._normalize_player(page, players_db_id=db_id))  # noqa: SLF001
+        if not payload.get("has_more"):
+            break
+        next_cursor = payload.get("next_cursor")
+        if not next_cursor:
+            break
+    return out
+
+
+def _build_interaction_repository_for_admin(repo) -> NotionInteractionRepository:
+    notion_cfg = st.secrets.get("notion", {})
+    db_id = (
+        notion_cfg.get("ice_interaction_responses_db_id")
+        or notion_cfg.get("interaction_responses_db_id")
+        or notion_cfg.get("ice_responses_db_id")
+        or ""
+    )
+    if not db_id:
+        raise ValueError("Missing interaction responses DB id in secrets.")
+    return NotionInteractionRepository(repo, str(db_id))
+
+
+def _render_players_dashboard(repo, session_id: str) -> None:
+    st.subheader("Players dashboard")
+    st.caption("Live view of players and contact preferences.")
+    try:
+        players = _load_players_for_reconciliation(repo)
+    except Exception as exc:
+        st.error(f"Could not load players dashboard: {exc}")
+        return
+    if not players:
+        st.info("No players found.")
+        return
+
+    contact_by_player: Dict[str, Dict[str, str]] = {}
+    try:
+        interaction_repo = _build_interaction_repository_for_admin(repo)
+        responses = interaction_repo.get_responses(session_id)
+        for row in responses:
+            item_id = str(row.get("item_id") or row.get("question_id") or "")
+            if item_id != "CONTACT_METHOD":
+                continue
+            pid = str(row.get("player_id") or "").strip()
+            if not pid:
+                continue
+            payload = row.get("value_json") if isinstance(row.get("value_json"), dict) else {}
+            method = str(
+                (payload or {}).get("choice")
+                or row.get("response_value")
+                or row.get("value_label")
+                or ""
+            ).strip()
+            contact_value = str((payload or {}).get("contact_value") or "").strip()
+            timestamp = str(row.get("timestamp") or row.get("created_at") or "")
+            prev = contact_by_player.get(pid)
+            if (not prev) or (timestamp >= str(prev.get("timestamp") or "")):
+                contact_by_player[pid] = {
+                    "method": method,
+                    "contact_value": contact_value,
+                    "timestamp": timestamp,
+                }
+    except Exception:
+        # Keep dashboard available even if interaction response read fails.
+        pass
+
+    rows = []
+    names = []
+    no_contact_count = 0
+    with_contact_pref = 0
+    for p in players:
+        pid = str(p.get("id") or "")
+        nickname = str(p.get("nickname") or "")
+        names.append(nickname or pid)
+        contact = contact_by_player.get(pid, {})
+        method = str(contact.get("method") or "")
+        detail = str(contact.get("contact_value") or "")
+        if method:
+            with_contact_pref += 1
+        if "don't want to be in touch" in method.lower() or "dont want to be in touch" in method.lower():
+            no_contact_count += 1
+        rows.append(
+            {
+                "name": nickname,
+                "role": str(p.get("role") or ""),
+                "email": str(p.get("email") or ""),
+                "last_activity": str(p.get("last_joined_on") or p.get("created_at") or ""),
+                "contact_preference": method,
+                "contact_detail": detail,
+            }
+        )
+    rows.sort(key=lambda r: (str(r.get("name") or "").lower(), str(r.get("last_activity") or "")))
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Players", len(rows))
+    c2.metric("With contact preference", with_contact_pref)
+    c3.metric("No contact requested", no_contact_count)
+    with st.expander("All player names", expanded=True):
+        st.write(", ".join(sorted(set(n for n in names if n))))
+    st.dataframe(rows, width="stretch")
+
+
+def _render_duplicate_players_panel(repo) -> None:
+    st.subheader("Potential duplicate players")
+    st.caption("Detected as suspected aliases only. No automatic merge is performed.")
+    st.markdown(
+        """
+**Flagging rule (explicit definition)**
+
+Define `norm(x) = lower(trim(collapse_spaces(x)))`.
+
+A candidate group `G` means: a set of player profiles suspected to refer to the same person.
+
+A set `G` is flagged as *suspected duplicate* iff `|G| ≥ 2` and at least one of:
+
+1. `norm(nickname_i) = norm(nickname_j)` for some `i ≠ j`
+2. `norm(email_i) = norm(email_j)` for some `i ≠ j`, with non-empty email
+
+This module only flags candidates. It does not merge or delete records.
+"""
+    )
+    run_key = "admin_run_duplicate_detection"
+    c1, c2 = st.columns(2)
+    with c1:
+        if st.button("Run duplicate detection", type="primary", width="stretch"):
+            st.session_state[run_key] = True
+    with c2:
+        if st.button("Clear results", type="secondary", width="stretch"):
+            st.session_state[run_key] = False
+    if not st.session_state.get(run_key, False):
+        st.info("Duplicate detection is idle. Click 'Run duplicate detection' to execute.")
+        return
+
+    try:
+        with st.spinner("Scanning players for potential duplicates..."):
+            players = _load_players_for_reconciliation(repo)
+    except Exception as exc:
+        st.error(f"Could not load players for duplicate detection: {exc}")
+        return
+    st.caption(f"Loaded players: {len(players)}")
+    if not players:
+        st.caption("No players found.")
+        return
+
+    def _safe_dt(raw: str) -> datetime | None:
+        txt = str(raw or "").strip()
+        if not txt:
+            return None
+        try:
+            return datetime.fromisoformat(txt.replace("Z", "+00:00"))
+        except Exception:
+            return None
+
+    now_utc = datetime.now(timezone.utc)
+    with_last_activity = 0
+    active_24h = 0
+    latest_rows = []
+    for p in players:
+        last_raw = str(p.get("last_joined_on") or p.get("created_at") or "")
+        last_dt = _safe_dt(last_raw)
+        if last_dt is not None:
+            with_last_activity += 1
+            if (now_utc - last_dt) <= timedelta(hours=24):
+                active_24h += 1
+        latest_rows.append(
+            {
+                "player_id": str(p.get("id") or ""),
+                "nickname": str(p.get("nickname") or ""),
+                "role": str(p.get("role") or ""),
+                "last_activity": last_raw,
+            }
+        )
+
+    stat1, stat2, stat3 = st.columns(3)
+    stat1.metric("Players loaded", len(players))
+    stat2.metric("With last activity", with_last_activity)
+    stat3.metric("Active in last 24h", active_24h)
+    latest_rows.sort(key=lambda r: r["last_activity"], reverse=True)
+    with st.expander("Player activity snapshot", expanded=False):
+        st.dataframe(latest_rows[:30], width="stretch")
+
+    by_nickname: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    by_email: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    for p in players:
+        nick = _normalise_identity_token(str(p.get("nickname") or ""))
+        mail = _normalise_identity_token(str(p.get("email") or ""))
+        if nick:
+            by_nickname[nick].append(p)
+        if mail:
+            by_email[mail].append(p)
+
+    candidates_by_group: Dict[str, Dict[str, Any]] = {}
+
+    def _add_group(reason: str, key: str, members: List[Dict[str, Any]]) -> None:
+        if len(members) < 2:
+            return
+        ids = sorted(str(m.get("id") or "") for m in members if m.get("id"))
+        group_key = "|".join(ids)
+        if not group_key:
+            return
+        if group_key not in candidates_by_group:
+            candidates_by_group[group_key] = {
+                "reasons": [],
+                "match_keys": [],
+                "members": members,
+            }
+        candidates_by_group[group_key]["reasons"].append(reason)
+        candidates_by_group[group_key]["match_keys"].append(key)
+
+    for key, members in by_nickname.items():
+        _add_group("same nickname", key, members)
+    for key, members in by_email.items():
+        _add_group("same email", key, members)
+
+    candidates = list(candidates_by_group.values())
+    candidates.sort(
+        key=lambda c: (
+            -len(c.get("members", [])),
+            ",".join(sorted(set(c.get("reasons", [])))),
+            ",".join(sorted(set(c.get("match_keys", [])))),
+        )
+    )
+
+    if not candidates:
+        st.success("No obvious duplicate candidates detected.")
+        return
+
+    for idx, candidate in enumerate(candidates, start=1):
+        reasons = sorted(set(candidate.get("reasons", [])))
+        match_keys = sorted(set(candidate.get("match_keys", [])))
+        members = candidate["members"]
+        title = (
+            f"Candidate {idx} · reasons: {', '.join(reasons)} · "
+            f"keys: {', '.join(match_keys)}"
+        )
+        with st.expander(title, expanded=False):
+            rows = []
+            for m in members:
+                rows.append(
+                    {
+                        "player_id": str(m.get("id") or ""),
+                        "nickname": str(m.get("nickname") or ""),
+                        "email": str(m.get("email") or ""),
+                        "role": str(m.get("role") or ""),
+                        "created_at": str(m.get("created_at") or ""),
+                        "last_joined_on": str(m.get("last_joined_on") or ""),
+                    }
+                )
+            st.dataframe(rows, width="stretch")
+            c1, c2, c3 = st.columns(3)
+            with c1:
+                if st.button(
+                    "Mark unrelated (session)",
+                    key=f"dup-unrelated-{idx}",
+                    width="stretch",
+                ):
+                    st.session_state[f"dup_ignore_{'|'.join(match_keys)}"] = True
+                    st.toast("Marked as unrelated for this admin session.", icon="✅")
+            with c2:
+                if st.button(
+                    "Invite merge confirmation",
+                    key=f"dup-invite-{idx}",
+                    width="stretch",
+                    type="secondary",
+                ):
+                    log_event(
+                        module="iceicebaby.roles",
+                        event_type="duplicate_merge_invite",
+                        player_id=str(st.session_state.get("player_page_id", "")),
+                        session_id=str(st.session_state.get("session_id", "")),
+                        metadata={
+                            "reasons": reasons,
+                            "match_keys": match_keys,
+                            "candidate_ids": [str(m.get("id") or "") for m in members],
+                        },
+                    )
+                    st.toast("Merge invitation event logged.", icon="📨")
+            with c3:
+                st.caption("Status")
+                st.info("suspected")
 
 
 def _render_sessions_panel(repo) -> None:
@@ -278,7 +586,7 @@ def main() -> None:
     st.sidebar.markdown(f"**Session ID:** {st.session_state.get('session_id', 'N/A')}")
     # debug show session state in sidebar
     st.sidebar.markdown("**Session State:**")
-    st.sidebar.json(st.session_state)
+    st.sidebar.json(st.session_state, expanded=False)
     role = st.session_state.get("player_role", "None")
     if not _is_admin(role):
         st.error("Admin access only.")
@@ -424,6 +732,8 @@ def main() -> None:
                         )
 
     _render_sessions_panel(repo)
+    _render_players_dashboard(repo, str(session_id))
+    _render_duplicate_players_panel(repo)
 
     st.subheader("Question catalogue (legacy statements import)")
     upload = st.file_uploader("Upload JSON or YAML", type=["json", "yaml", "yml"])

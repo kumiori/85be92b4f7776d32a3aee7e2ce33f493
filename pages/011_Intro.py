@@ -545,11 +545,10 @@ Your responses are used in aggregate form to help the group observe shared tende
             )
             action_col1, action_col2 = st.columns(2)
             with action_col1:
-                st.button(
-                    "Review or update my choices (coming soon)",
+                st.page_link(
+                    "pages/09_Player.py",
+                    label="Open your trajectory",
                     width="stretch",
-                    disabled=True,
-                    key="intro-review-choices-disabled",
                 )
             with action_col2:
                 st.page_link(

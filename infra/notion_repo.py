@@ -382,6 +382,12 @@ class NotionRepo:
             return bool(value.get("checkbox"))
         return default
 
+    def _normalize_email(self, props: Dict[str, Any], name: str) -> str:
+        value = props.get(name)
+        if value and value.get("type") == "email":
+            return str(value.get("email") or "")
+        return ""
+
     def _normalize_relation_ids(self, props: Dict[str, Any], name: str) -> List[str]:
         value = props.get(name)
         if value and value.get("type") == "relation":
@@ -891,6 +897,34 @@ class NotionRepo:
             for page in response.get("results", [])
         ]
 
+    def list_all_players(
+        self,
+        *,
+        players_db_id: Optional[str] = None,
+        limit: int = 300,
+    ) -> List[Dict[str, Any]]:
+        db_id = self._players_db_id(players_db_id)
+        remaining = max(1, int(limit))
+        out: List[Dict[str, Any]] = []
+        next_cursor: Optional[str] = None
+        while remaining > 0:
+            page_size = min(100, remaining)
+            kwargs: Dict[str, Any] = {"page_size": page_size}
+            if next_cursor:
+                kwargs["start_cursor"] = next_cursor
+            payload = _cached_query(self.client, db_id, **kwargs)
+            results = payload.get("results", [])
+            out.extend(
+                [self._normalize_player(page, players_db_id=db_id) for page in results]
+            )
+            remaining -= len(results)
+            if not payload.get("has_more"):
+                break
+            next_cursor = payload.get("next_cursor")
+            if not next_cursor:
+                break
+        return out
+
     def find_players_by_emoji_suffix(
         self, suffix: str, length: int = 4, players_db_id: Optional[str] = None
     ) -> List[Dict[str, Any]]:
@@ -990,6 +1024,15 @@ class NotionRepo:
                 )
         if self._prop_exists(db_id, "preferred_mode"):
             player["preferred_mode"] = self._normalize_select(props, "preferred_mode")
+        if self._prop_exists(db_id, "email"):
+            if props.get("email", {}).get("type") == "email":
+                player["email"] = self._normalize_email(props, "email")
+            else:
+                player["email"] = self._normalize_rich_text(props, "email")
+        if self._prop_exists(db_id, "intent"):
+            player["intent"] = self._normalize_rich_text(props, "intent")
+        elif self._prop_exists(db_id, "motivation"):
+            player["intent"] = self._normalize_rich_text(props, "motivation")
 
         # Some Notion query payloads can omit/reshape select properties.
         # Re-read the page directly and trust that payload for role when available.
@@ -1037,6 +1080,55 @@ class NotionRepo:
             except Exception:
                 return None
         return None
+
+    def update_player_metadata(
+        self,
+        player_id: str,
+        *,
+        nickname: Optional[str] = None,
+        intent: Optional[str] = None,
+        email: Optional[str] = None,
+        consent_play: Optional[bool] = None,
+        consent_research: Optional[bool] = None,
+        players_db_id: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        player = self.get_player_by_id(player_id, players_db_id=players_db_id)
+        if not player:
+            return None
+        db_id = self._players_db_id(players_db_id)
+        props: Dict[str, Any] = {}
+        if nickname is not None:
+            if self._prop_exists(db_id, "nickname"):
+                props.update(self._build_rich_text("nickname", nickname))
+            elif self._prop_exists(db_id, "nickname_title"):
+                props.update(self._build_title("nickname_title", nickname))
+            elif self._prop_exists(db_id, "Name"):
+                props.update(self._build_title("Name", nickname))
+        if intent is not None:
+            if self._prop_exists(db_id, "intent"):
+                props.update(self._build_rich_text("intent", intent))
+            elif self._prop_exists(db_id, "motivation"):
+                props.update(self._build_rich_text("motivation", intent))
+        if email is not None and self._prop_exists(db_id, "email"):
+            email_meta = self._db_props(db_id).get("email") or {}
+            if email_meta.get("type") == "email":
+                props["email"] = {"email": email}
+            else:
+                props.update(self._build_rich_text("email", email))
+        if consent_play is not None:
+            if self._prop_exists(db_id, "consented"):
+                props.update(self._build_checkbox("consented", consent_play))
+        if consent_research is not None and self._prop_exists(db_id, "consent_research"):
+            props.update(self._build_checkbox("consent_research", consent_research))
+        if not props:
+            return player
+        page = _execute_with_retry(
+            self.client.pages.update,
+            page_id=player["id"],
+            properties=props,
+        )
+        _clear_query_cache()
+        return self._normalize_player(page, players_db_id=db_id)
 
     def set_player_role(
         self,
