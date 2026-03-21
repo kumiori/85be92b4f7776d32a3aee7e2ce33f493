@@ -12,10 +12,7 @@ from config import settings
 EVENT_DATE = "19 March 2026"
 EVENT_TIME = "16:00-17:30 (CET)"
 EVENT_ROOM = "Room XI, UNESCO Headquarters"
-EVENT_ORGANISERS = (
-    "Ignacio Palomo, Andrés León Baldelli, Leopold Bouzard, "
-    "Véronique Dansereau, Jean-François Delhom, Bruno Doucey"
-)
+EVENT_ORGANISERS = " Leopold Bouzard, Véronique Dansereau, Jean-François Delhom, Bruno Doucey,  Andrés León Baldelli, Ignacio Palomo"
 MARGINS = {
     "top": "2.875rem",
     "bottom": "0",
@@ -55,12 +52,11 @@ def _initial_sidebar_state() -> str:
 
 
 def _is_production_runtime() -> bool:
-    env_raw = str(
-        os.getenv("APP_ENV")
-        or os.getenv("ENV")
-        or os.getenv("ENVIRONMENT")
-        or ""
-    ).strip().lower()
+    env_raw = (
+        str(os.getenv("APP_ENV") or os.getenv("ENV") or os.getenv("ENVIRONMENT") or "")
+        .strip()
+        .lower()
+    )
     if env_raw in {"prod", "production", "live"}:
         return True
 
@@ -115,10 +111,8 @@ def microcopy(text: str) -> None:
 def render_event_details() -> None:
     st.markdown(
         f"""
-Date: {EVENT_DATE}  
-Time: {EVENT_TIME}  
-{EVENT_ROOM}  
-Organisers and co-organisers: {EVENT_ORGANISERS}
+Date: {EVENT_DATE} {EVENT_ROOM}    
+Panel (alphabetical): {EVENT_ORGANISERS}.
 """
     )
 
@@ -185,9 +179,7 @@ def sticky_container(
 def primary_button(
     label: str, key: Optional[str] = None, disabled: bool = False
 ) -> bool:
-    return st.button(
-        label, key=key, type="primary", disabled=disabled, width="stretch"
-    )
+    return st.button(label, key=key, type="primary", disabled=disabled, width="stretch")
 
 
 def small_button(label: str, key: Optional[str] = None, disabled: bool = False) -> bool:

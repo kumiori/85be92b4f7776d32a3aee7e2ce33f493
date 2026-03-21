@@ -27,7 +27,7 @@ def main() -> None:
         """
     ### irreversibility <br /> <small>/ˌɪr.ɪˌvɜː.səˈbɪ.lɪ.ti/</small>, <br /> <small>/ir-ih-ver-suh-BIL-ih-tee/</small> <br /> _ 
     ### _(property.)_ Anchors action in the present, where choice _still_ exists. 
-    ### This space is where traces & decisions are made visible. _Then_ action follows. 
+    ### This space is where traces & decisions were made visible. _Then_ action follows. 
     """,
         unsafe_allow_html=True,
     )

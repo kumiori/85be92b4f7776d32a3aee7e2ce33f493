@@ -202,27 +202,14 @@ def _render_first_signal_step(repo, authenticator) -> None:
             st.success(f"Hello {display_name}.")
             st.session_state[hello_key] = True
 
-        with perf_timer("iceicebaby.auth", "active_session_lookup", page="011_Intro"):
-            session = get_active_session(repo)
-        if session:
-            set_session(session.get("id", ""), session.get("session_code", "Session"))
+        session = None
+        if not st.session_state.get("session_id"):
+            with perf_timer("iceicebaby.auth", "active_session_lookup", page="011_Intro"):
+                session = get_active_session(repo)
+            if session:
+                set_session(session.get("id", ""), session.get("session_code", "Session"))
         session_id = st.session_state.get("session_id", "")
         player_page_id = st.session_state.get("player_page_id", "")
-        signal_repo: InteractionRepository | None = None
-        storage_error = ""
-        try:
-            with perf_timer(
-                "iceicebaby.responses", "interaction_repo_init", page="011_Intro"
-            ):
-                signal_repo, _ = _build_interaction_repository(repo)
-        except Exception as exc:
-            storage_error = str(exc)
-            AUTH_LOGGER.error("schema mismatch: %s", storage_error)
-            st.error(
-                "Interaction storage is not available in Notion. "
-                f"Fix Database settings/schema to proceed. Details: {storage_error}"
-            )
-
         salt = st.secrets.get("anon_salt", "iceicebaby")
         anon_token = mint_anon_token(
             st.session_state.get("session_id", ""),
@@ -306,6 +293,7 @@ def _render_first_signal_step(repo, authenticator) -> None:
             idx = min(st.session_state.get(ui_idx_key, 0), max(total - 1, 0))
             st.session_state[ui_idx_key] = idx
             q = pre_lobby_questions[idx]
+            progress_slot = st.empty()
 
             st.markdown(f"### {q.prompt}")
             if q.short_description:
@@ -424,8 +412,9 @@ def _render_first_signal_step(repo, authenticator) -> None:
             }
             st.session_state[ui_answers_key] = answers
             answered = sum(1 for item in pre_lobby_questions if _is_valid(item.id))
-            st.progress(answered / total if total else 0.0)
-            st.caption(f"Progress: {answered} / {total} answered")
+            with progress_slot.container():
+                st.progress(answered / total if total else 0.0)
+                st.caption(f"Progress: {answered} / {total} answered")
 
             back_col, next_col, submit_col = st.columns(3)
             with back_col:
@@ -470,23 +459,34 @@ def _render_first_signal_step(repo, authenticator) -> None:
                         metadata={"reason": "active_session_missing"},
                         level="ERROR",
                     )
-                elif not signal_repo:
-                    st.error(
-                        "Responses could not be saved because Database interaction storage is unavailable."
-                    )
-                    AUTH_LOGGER.error("notion write failure: signal repo unavailable")
-                    log_event(
-                        module="iceicebaby.responses",
-                        event_type="response_save_error",
-                        page="Intro",
-                        player_id=str(player_page_id or ""),
-                        session_id=str(session_id),
-                        item_id=PRE_SIGNAL_ID,
-                        status="error",
-                        metadata={"reason": "interaction_repo_unavailable"},
-                        level="ERROR",
-                    )
                 else:
+                    signal_repo: InteractionRepository | None = None
+                    try:
+                        with perf_timer(
+                            "iceicebaby.responses",
+                            "interaction_repo_init",
+                            page="011_Intro",
+                        ):
+                            signal_repo, _ = _build_interaction_repository(repo)
+                    except Exception as exc:
+                        storage_error = str(exc)
+                        AUTH_LOGGER.error("schema mismatch: %s", storage_error)
+                        st.error(
+                            "Interaction storage is not available in Notion. "
+                            f"Fix Database settings/schema to proceed. Details: {storage_error}"
+                        )
+                        log_event(
+                            module="iceicebaby.responses",
+                            event_type="response_save_error",
+                            page="Intro",
+                            player_id=str(player_page_id or ""),
+                            session_id=str(session_id),
+                            item_id=PRE_SIGNAL_ID,
+                            status="error",
+                            metadata={"reason": "interaction_repo_unavailable"},
+                            level="ERROR",
+                        )
+                        return
                     with perf_timer(
                         "iceicebaby.responses",
                         "pre_lobby_save_batch",
