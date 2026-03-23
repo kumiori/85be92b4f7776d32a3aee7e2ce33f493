@@ -33,8 +33,10 @@ from ui import (
     apply_theme,
     heading,
     microcopy,
+    render_orientation_sidebar,
     set_page,
     sidebar_debug_state,
+    update_sidebar_task,
     cracks_globe_block,
     display_centered_prompt,
     render_event_details,
@@ -83,35 +85,6 @@ def main() -> None:
 """
     )
     render_event_details()
-    display_centered_prompt("A moment before deciding.")
-    st.markdown(
-        """
-### Transitions in nature rarely announce themselves clearly. Signals accumulate. Tensions build, energy stores. Then systems shift. 
-#### Understanding these transitions is a scientific challenge. Acting through them is a collective one.
-### To act in the decade Decade of Action for Cryospheric Sciences (2025–2034), we need new languages and new coordination experiments.
-        """
-    )
-    st.divider()
-    locations_md = []
-    for category, entries in CRYOSPHERE_CRACKS.items():
-        regions = ", ".join(entry["Region"] for entry in entries)
-        locations_md.append(f"- **{category}**: {regions}")
-
-    render_info_block(
-        left_title="Decision signals",
-        left_subtitle="collective experiment",
-        right_content="\n".join(
-            [
-                "#### New problems require new forms of interaction. Today we speak through the arts and sciences.",
-                "",
-                "#### This platform explores how groups perceive signals, exchange perspectives, and form decisions together.",
-                "",
-                "#### What happens _next_ depends on the signals we generate here.",
-                "",
-            ]
-        ),
-    )
-    display_centered_prompt("The first signal begins with you.")
     repo = get_notion_repo()
     authenticator = get_authenticator(repo)
     auth_cfg = get_auth_runtime_config()
@@ -196,23 +169,15 @@ def main() -> None:
         # st.info(
         #     "Your session cookie is active. You can continue directly to the lobby."
         # )
-        session = get_active_session(repo)
-        if session:
-            set_session(session.get("id", ""), session.get("session_code", "Session"))
+        session = None
+        if not st.session_state.get("session_id"):
+            session = get_active_session(repo)
+            if session:
+                set_session(
+                    session.get("id", ""), session.get("session_code", "Session")
+                )
         session_id = st.session_state.get("session_id", "")
         player_page_id = st.session_state.get("player_page_id", "")
-        signal_repo: InteractionRepository | None = None
-        signal_backend = "notion"
-        storage_error = ""
-        try:
-            signal_repo, signal_backend = _build_interaction_repository(repo)
-        except Exception as exc:
-            storage_error = str(exc)
-            AUTH_LOGGER.error("schema mismatch: %s", storage_error)
-            st.error(
-                "Interaction storage is not available in Notion. "
-                f"Fix Database settings/schema to proceed. Details: {storage_error}"
-            )
         salt = st.secrets.get("anon_salt", "iceicebaby")
         anon_token = mint_anon_token(
             st.session_state.get("session_id", ""),
@@ -223,20 +188,6 @@ def main() -> None:
         st.markdown(
             "### This opening module collects the room's first signals: how we arrive, how we feel, and whether we want to continue together."
         )
-        st.markdown(
-            "#### A short path or a deeper one? You can select the depth of this first module using the slider below."
-        )
-        pre_lobby_depth = st.slider(
-            "Depth controls how far you go.",
-            min_value=0,
-            max_value=5,
-            value=0,
-            step=1,
-            help="Use the slider to keep the interaction minimal or to explore a few more questions before entering the lobby.",
-        )
-        st.markdown(
-            "At minimal depth (0), you are invited to respond to only one key question. Higher levels unlock a few more short questions on emotion and interpretation."
-        )
         current_session_code = (
             str(st.session_state.get("session_title", "") or "").strip()
             or str((session or {}).get("session_code", "") or "").strip()
@@ -246,39 +197,17 @@ def main() -> None:
             [
                 q
                 for q in questions_for_session(current_session_code)
-                if q.visible_before_lobby and q.depth <= pre_lobby_depth
+                if q.visible_before_lobby and q.qtype != "control"
             ],
-            key=lambda q: (q.depth, q.order, q.id),
-        )
-        signal_count = sum(1 for q in pre_lobby_questions if q.depth == 0)
-        emotional_count = sum(1 for q in pre_lobby_questions if q.depth >= 1)
-        st.caption(
-            f"Selected depth [{pre_lobby_depth}]: includes "
-            f"{signal_count} signal question and {emotional_count} emotional question(s)."
+            key=lambda q: (q.order, q.id),
         )
         pre_lobby_signature = (
-            f"{session_id}:{player_page_id}:{pre_lobby_depth}:"
+            f"{session_id}:{player_page_id}:"
             f"{','.join(q.id for q in pre_lobby_questions)}"
         )
         module_done_key = f"pre_lobby_submitted:{pre_lobby_signature}"
         pre_signal_submitted = bool(st.session_state.get(module_done_key, False))
-        depth_confirm_key = "pre_lobby_depth_confirm_sig"
-        depth_sig = f"{session_id}:{player_page_id}:{pre_lobby_depth}"
-        depth_confirmed = st.session_state.get(depth_confirm_key) == depth_sig
-
-        if pre_lobby_questions and not depth_confirmed:
-            st.markdown("---")
-            if st.button(
-                "Continue with selected depth",
-                type="secondary",
-                width="stretch",
-                key="pre-lobby-depth-continue",
-            ):
-                st.session_state[depth_confirm_key] = depth_sig
-                st.rerun()
-            st.info("Confirm depth first, then continue to the first question.")
-
-        if pre_lobby_questions and depth_confirmed:
+        if pre_lobby_questions:
             st.markdown("---")
             # st.subheader("Ice breaker")
 
@@ -320,6 +249,8 @@ def main() -> None:
             idx = min(st.session_state.get(ui_idx_key, 0), max(total - 1, 0))
             st.session_state[ui_idx_key] = idx
             q = pre_lobby_questions[idx]
+            progress_slot = st.empty()
+            update_sidebar_task(f"Question {idx + 1}/{total}: {q.id}")
 
             st.markdown(f"### {q.prompt}")
             if q.short_description:
@@ -388,8 +319,16 @@ def main() -> None:
             }
             st.session_state[ui_answers_key] = answers
             answered = sum(1 for item in pre_lobby_questions if _is_valid(item.id))
-            st.progress(answered / total if total else 0.0)
-            st.caption(f"Progress: {answered} / {total} answered")
+            st.session_state["sidebar_responses_submitted"] = answered
+            render_orientation_sidebar(
+                session_name=str(st.session_state.get("session_title") or "GLOBAL SESSION"),
+                question_index=idx + 1,
+                question_total=total,
+                responses_submitted=answered,
+            )
+            with progress_slot.container():
+                st.progress(answered / total if total else 0.0)
+                st.caption(f"Progress: {answered} / {total} answered")
 
             back_col, next_col, submit_col = st.columns(3)
             with back_col:
@@ -399,6 +338,7 @@ def main() -> None:
                     disabled=idx == 0,
                     key="pre-lobby-back",
                 ):
+                    update_sidebar_task("Back", done=True)
                     st.session_state[ui_idx_key] = max(0, idx - 1)
                     st.rerun()
             with next_col:
@@ -408,6 +348,7 @@ def main() -> None:
                     disabled=idx >= total - 1 or not _is_valid(q.id),
                     key="pre-lobby-next",
                 ):
+                    update_sidebar_task("Next", done=True)
                     st.session_state[ui_idx_key] = min(total - 1, idx + 1)
                     st.rerun()
             with submit_col:
@@ -423,12 +364,19 @@ def main() -> None:
                 if not session_id:
                     st.error("No active session found. Please refresh and try again.")
                     AUTH_LOGGER.warning("active session not found on signal submit")
-                elif not signal_repo:
-                    st.error(
-                        "Responses could not be saved because Database interaction storage is unavailable."
-                    )
-                    AUTH_LOGGER.error("notion write failure: signal repo unavailable")
                 else:
+                    signal_repo: InteractionRepository | None = None
+                    storage_error = ""
+                    try:
+                        signal_repo, _ = _build_interaction_repository(repo)
+                    except Exception as exc:
+                        storage_error = str(exc)
+                        AUTH_LOGGER.error("schema mismatch: %s", storage_error)
+                        st.error(
+                            "Interaction storage is not available in Notion. "
+                            f"Fix Database settings/schema to proceed. Details: {storage_error}"
+                        )
+                        return
                     for item in pre_lobby_questions:
                         signal_repo.save_response(
                             session_id=session_id,
@@ -450,17 +398,19 @@ def main() -> None:
                         st.toast(f"Presence update failed: {err}", icon="⚠️")
                     st.session_state[module_done_key] = True
                     pre_signal_submitted = True
+                    update_sidebar_task("Signal submitted", done=True)
                     log_event(
                         module="iceicebaby.responses",
                         event_type="signal_submit",
                         player_id=str(player_page_id or ""),
                         session_id=str(session_id),
                         item_id=PRE_SIGNAL_ID,
-                        value_label=str(answers.get(PRE_SIGNAL_ID, {}).get("choice", "")),
+                        value_label=str(
+                            answers.get(PRE_SIGNAL_ID, {}).get("choice", "")
+                        ),
                         metadata={
                             "answered": answered,
                             "total": total,
-                            "depth": pre_lobby_depth,
                         },
                     )
                     st.success(f"✨ Signal recorded.")
@@ -471,6 +421,7 @@ def main() -> None:
             width="stretch",
             disabled=not pre_signal_submitted,
         ):
+            update_sidebar_task("Enter lobby", done=True)
             ok, err = touch_player_presence(
                 str(player_page_id or ""),
                 page="enter_lobby",
@@ -491,10 +442,16 @@ def main() -> None:
         authenticator.logout(button_name="Logout", location="main")
     elif authentication_status is False:
         st.session_state["_prev_auth_status"] = False
+        render_orientation_sidebar(
+            session_name=str(st.session_state.get("session_title") or "GLOBAL SESSION"),
+        )
     else:
         st.session_state["_prev_auth_status"] = None
         st.info("Authentication status: Offline")
         st.caption("Use the access key form above to log in.")
+        render_orientation_sidebar(
+            session_name=str(st.session_state.get("session_title") or "GLOBAL SESSION"),
+        )
 
 
 if __name__ == "__main__":

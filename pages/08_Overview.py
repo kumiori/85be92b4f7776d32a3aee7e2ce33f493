@@ -30,14 +30,30 @@ def _counts_rows(counts: dict) -> list[dict]:
     return rows
 
 
+def _feedback_label(raw: str) -> str:
+    token = str(raw or "").strip().lower()
+    mapping = {
+        "faces:0": "😞 Very difficult",
+        "faces:1": "🙁 Difficult",
+        "faces:2": "😐 Mixed",
+        "faces:3": "🙂 Positive",
+        "faces:4": "😄 Very positive",
+    }
+    return mapping.get(token, raw)
+
+
 def _render_bar(
     title: str,
     counts: dict,
     *,
     horizontal: bool = True,
     height: int = 260,
+    label_transform=None,
 ) -> None:
     rows = _counts_rows(counts)
+    if label_transform:
+        for row in rows:
+            row["id"] = str(label_transform(row["id"]))
     if not rows:
         st.caption(f"{title}: no data yet.")
         return
@@ -194,9 +210,11 @@ def main() -> None:
         "Session",
         options=options,
         index=default_index,
+        key="session",
         format_func=lambda slug: (session_map.get(slug) or {}).get(
             "session_code", slug
         ),
+        bind="query-params",
     )
 
     payload = get_overview_payload(selected_slug)
@@ -263,11 +281,17 @@ def main() -> None:
                 "choice_distribution",
                 "signal_distribution",
             }:
+                label_transform = _feedback_label if item_id == "FINAL_FEEDBACK" else None
                 _render_bar(
                     _question_title(item_id, item_id),
                     q.get("counts", {}),
                     horizontal=True,
+                    label_transform=label_transform,
                 )
+                if item_id == "FINAL_FEEDBACK":
+                    st.caption(
+                        "Feedback scale: 😞 very difficult · 🙁 difficult · 😐 mixed · 🙂 positive · 😄 very positive"
+                    )
                 continue
 
             if chart_type == "latest_text":
