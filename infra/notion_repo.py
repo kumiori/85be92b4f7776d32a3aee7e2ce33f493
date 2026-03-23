@@ -1034,23 +1034,8 @@ class NotionRepo:
         elif self._prop_exists(db_id, "motivation"):
             player["intent"] = self._normalize_rich_text(props, "motivation")
 
-        # Some Notion query payloads can omit/reshape select properties.
-        # Re-read the page directly and trust that payload for role when available.
-        if player.get("id"):
-            try:
-                raw_page = _execute_with_retry(
-                    self.client.pages.retrieve, page_id=player["id"]
-                )
-                raw_props = (
-                    raw_page.get("properties", {}) if isinstance(raw_page, dict) else {}
-                )
-                direct_role = _extract_role_name(raw_props) or self._normalize_select(
-                    raw_props, "role"
-                )
-                if direct_role:
-                    player["role"] = direct_role
-            except Exception:
-                pass
+        # IMPORTANT: keep this function lightweight for list queries.
+        # Do not call pages.retrieve per row here (would cause N+1 API calls).
         return player
 
     def get_player_by_id(
@@ -1059,6 +1044,33 @@ class NotionRepo:
         """Public accessor for a player lookup by UUID/access key."""
         player = self._find_player_by_id(player_id, players_db_id=players_db_id)
         if player:
+            # For single-player fetches (auth/profile), we can afford a direct retrieve
+            # to resolve role accurately when query payload is partial.
+            role_val = str(player.get("role") or "").strip().lower()
+            if role_val in {"", "none", "unknown"} and player.get("id"):
+                try:
+                    raw_page = _execute_with_retry(
+                        self.client.pages.retrieve, page_id=player["id"]
+                    )
+                    raw_props = (
+                        raw_page.get("properties", {})
+                        if isinstance(raw_page, dict)
+                        else {}
+                    )
+                    role_value = raw_props.get("role")
+                    direct_role = None
+                    if isinstance(role_value, dict):
+                        sel = role_value.get("select")
+                        if isinstance(sel, dict):
+                            direct_role = sel.get("name")
+                        if not direct_role:
+                            stat = role_value.get("status")
+                            if isinstance(stat, dict):
+                                direct_role = stat.get("name")
+                    if direct_role:
+                        player["role"] = str(direct_role)
+                except Exception:
+                    pass
             return player
         # Fallback: allow direct player page id lookups for session rehydration/debug.
         if "-" in str(player_id):

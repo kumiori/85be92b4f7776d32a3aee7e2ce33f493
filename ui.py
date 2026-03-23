@@ -70,6 +70,10 @@ def _is_production_runtime() -> bool:
     return False
 
 
+def is_production_runtime() -> bool:
+    return _is_production_runtime()
+
+
 def _apply_production_shell_css() -> None:
     st.markdown(
         """

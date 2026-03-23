@@ -210,9 +210,11 @@ def main() -> None:
         "Session",
         options=options,
         index=default_index,
+        key="session",
         format_func=lambda slug: (session_map.get(slug) or {}).get(
             "session_code", slug
         ),
+        bind="query-params",
     )
 
     payload = get_overview_payload(selected_slug)
