@@ -11,21 +11,64 @@ import streamlit.components.v1 as components
 from infra.event_logger import log_event
 from services.aggregator import get_overview_payload
 from services.presence import count_active_users
-from ui import apply_theme, set_page
+from ui import apply_theme, set_page, stylable_container
 
 COPY_PATH = Path("data/unesco-opening.txt")
+GLOBAL_SESSION_SLUG = "global-session"
 IMAGE_URLS = [
     "https://i.postimg.cc/c1zZQRmx/Delhom-JF-031825.jpg",
     "https://i.postimg.cc/ryHcS1Jq/Delhom-JF-032452.jpg",
     "https://i.postimg.cc/3rq7gXBh/Delhom-JF-032659.jpg",
     "https://i.postimg.cc/SQPqW6rq/Delhom-JF-033442.jpg",
 ]
-GLOBAL_SESSION_SLUG = "global-session"
 SOUNDCLOUD_EMBED = """
 <iframe width="100%" height="120" scrolling="no" frameborder="no" allow="autoplay"
 src="https://w.soundcloud.com/player/?url=https%3A//api.soundcloud.com/tracks/soundcloud%253Atracks%253A2286855149&color=%23ff5500&auto_play=false">
 </iframe>
 """.strip()
+
+SECTION_KEYS = {
+    "1. OPENING — reframed incipit": "opening",
+    "PANEL (integrated, not dominant)": "panel",
+    "2. CORE OBJECTIVE — call to action": "core_objective",
+    "3. TRANSITION — introducing the method": "method",
+    "4. ARRIVAL — initial conditions": "arrival",
+    "5. INTERPRETATION — first signal": "arrival_interpretation",
+    "6. DEEPENING — environmental change": "environment",
+    "7. SOCIETAL PROJECTION — shift in tone": "societal",
+    "8. DECISION PIVOT — collective signal": "decision",
+    "9. META — interpretation of signals": "meta",
+    "10. CLOSING TRANSITION": "closing",
+}
+
+SOUND_BLOCK = {
+    "title": "Have you ever heard the voice of a glacier?",
+    "subtitle": "Have you ever heard how it cracks at night and how it collapses in the daylight?",
+    "quote": (
+        "In the words of Liz Macedo, Guardian of the Ishinca Hut in Peru, "
+        "\“It is as if the mountain is screaming. The roar of the falling ice makes me think "
+        "Tocllaraju is crying for help.\”"
+    ),
+    "prompt": (
+        "We ask you a question that may or may not guide our and your next steps, "
+        "a question that our daughters, sons, and grandchildren will surely ask us: "
+        "What did we do, when we knew?"
+    ),
+}
+
+GLACIER_THEME = {
+    "bg_top": "#eef5fb",
+    "bg_bottom": "#dde9f2",
+    "paper": "rgba(255, 255, 255, 0.78)",
+    "paper_soft": "rgba(255, 255, 255, 0.58)",
+    "ink": "#132434",
+    "muted": "#607384",
+    "accent": "#2c6fa3",
+    "serif": "#6c7888",
+    "rule": "rgba(19, 36, 52, 0.12)",
+    "chip_bg": "rgba(44, 111, 163, 0.10)",
+    "chip_fg": "#20577f",
+}
 
 EMOTION_CLUSTER_ORDER = [
     "Curiosity and openness",
@@ -82,150 +125,113 @@ EMOTION_CLUSTER_COLOURS = {
 }
 
 
-def _inject_css() -> None:
+def _apply_page_css() -> None:
+    palette = GLACIER_THEME
     st.markdown(
-        """
+        f"""
 <style>
-.unesco-open-shell {
-  display: grid;
-  gap: 4.75rem;
-}
-.unesco-open-hero {
-  padding: 3.2rem 2.1rem;
-  border-radius: 22px;
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT@9..144,300..700,0..100&family=Space+Grotesk:wght@400;500;700&display=swap');
+
+:root {{
+  --unesco-bg-top: {palette['bg_top']};
+  --unesco-bg-bottom: {palette['bg_bottom']};
+  --unesco-paper: {palette['paper']};
+  --unesco-paper-soft: {palette['paper_soft']};
+  --unesco-ink: {palette['ink']};
+  --unesco-muted: {palette['muted']};
+  --unesco-accent: {palette['accent']};
+  --unesco-serif: {palette['serif']};
+  --unesco-rule: {palette['rule']};
+  --unesco-chip-bg: {palette['chip_bg']};
+  --unesco-chip-fg: {palette['chip_fg']};
+}}
+
+html, body, [data-testid="stAppViewContainer"] {{
   background:
-    radial-gradient(circle at top right, rgba(120, 180, 220, 0.18), transparent 28%),
-    linear-gradient(135deg, #e8f1f8 0%, #f8fbfd 52%, #eef5ef 100%);
-  border: 1px solid rgba(14, 30, 60, 0.08);
-}
-.unesco-open-title {
-  margin: 0;
-  font-size: 3rem;
-  line-height: 0.98;
-  font-weight: 820;
-  letter-spacing: -0.03em;
-}
-.unesco-open-subtitle {
-  margin: 0.75rem 0 0 0;
-  font-size: 1.2rem;
-  line-height: 1.45;
-  font-weight: 530;
-  max-width: 50rem;
-}
-.unesco-open-meta {
-  margin-top: 1.2rem;
-  font-size: 0.95rem;
-  line-height: 1.55;
-  max-width: 48rem;
-}
-.unesco-open-section {
-  margin-top: 1.2rem;
-}
-.unesco-open-heading {
-  margin: 0 0 0.8rem 0;
-  font-size: 1.55rem;
-  line-height: 1.15;
-  font-weight: 760;
-}
-.unesco-open-body {
+    radial-gradient(circle at top, rgba(255,255,255,0.68), transparent 26%),
+    linear-gradient(180deg, var(--unesco-bg-top) 0%, var(--unesco-bg-bottom) 100%);
+}}
+
+.block-container {{
+  max-width: 1220px !important;
+  padding-top: 2.4rem !important;
+  padding-bottom: 5rem !important;
+}}
+
+[data-testid="stHeadingWithActionElements"] h1,
+[data-testid="stHeadingWithActionElements"] h2,
+[data-testid="stHeadingWithActionElements"] h3,
+[data-testid="stMarkdownContainer"],
+[data-testid="stCaptionContainer"],
+[data-testid="stMetricLabel"],
+[data-testid="stMetricValue"],
+[data-testid="stMetricDelta"] {{
+  font-family: "Space Grotesk", "Avenir Next", "Segoe UI", sans-serif;
+  color: var(--unesco-ink);
+}}
+
+.unesco-kicker {{
+  font-family: "Fraunces", Georgia, serif;
+  font-size: 1.18rem;
+  line-height: 1.14;
+  color: var(--unesco-serif);
+}}
+
+.unesco-body {{
   font-size: 1.08rem;
-  line-height: 1.72;
-  font-weight: 430;
-  max-width: 58rem;
-}
-.unesco-open-highlight {
-  font-size: 1.32rem;
-  line-height: 1.45;
-  font-weight: 620;
-  max-width: 52rem;
-}
-.unesco-open-interpret {
-  padding: 1.1rem 1.25rem;
-  border-left: 3px solid rgba(46, 125, 50, 0.45);
-  border-radius: 10px;
-  background: rgba(245, 250, 246, 0.88);
-}
-.unesco-open-centred {
-  text-align: centre;
-}
-.unesco-open-chip {
-  display: inline-block;
-  margin-right: 0.5rem;
-  margin-bottom: 0.45rem;
-  padding: 0.22rem 0.58rem;
+  line-height: 1.62;
+  max-width: 62ch;
+  letter-spacing: -0.01em;
+}}
+
+.unesco-accent {{
+  font-family: "Fraunces", Georgia, serif;
+  color: var(--unesco-accent);
+}}
+
+.unesco-note {{
+  font-family: "Fraunces", Georgia, serif;
+  font-size: 1.04rem;
+  line-height: 1.5;
+  color: var(--unesco-muted);
+}}
+
+.unesco-token code {{
+  font-family: ui-monospace, "SFMono-Regular", monospace;
+  padding: 0.08rem 0.32rem;
   border-radius: 999px;
-  border: 1px solid rgba(60, 80, 120, 0.18);
-  background: rgba(245, 248, 255, 1);
-  font-size: 0.92rem;
-}
-.unesco-open-grid-note {
-  display: grid;
-  gap: 1rem;
-}
-.unesco-open-gallery {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 1rem;
-}
-.unesco-open-cta {
-  padding: 1.2rem;
-  border-radius: 14px;
-  border: 1px solid rgba(14, 30, 60, 0.08);
-  background: #f7fafc;
-  text-align: centre;
-}
-.block-container {
-  max-width: 1180px !important;
-}
-@media (max-width: 900px) {
-  .unesco-open-title {
-    font-size: 2.35rem;
-  }
-  .unesco-open-gallery {
-    grid-template-columns: 1fr;
-  }
-}
+  background: var(--unesco-chip-bg);
+  color: var(--unesco-chip-fg);
+}}
+
+.unesco-centre {{
+  text-align: center;
+}}
+
+div[data-testid="stImage"] img {{
+  border-radius: 0 !important;
+}}
 </style>
 """,
         unsafe_allow_html=True,
     )
 
 
-def _load_copy() -> Dict[str, str]:
+def _load_text_blocks() -> Dict[str, List[str]]:
     if not COPY_PATH.exists():
-        return {}
+        return {key: [] for key in SECTION_KEYS.values()}
     raw = COPY_PATH.read_text(encoding="utf-8").strip()
-    blocks = [part.strip() for part in raw.split("⸻") if part.strip()]
-    mapping: Dict[str, str] = {}
-    for block in blocks:
-        lines = [line.rstrip() for line in block.splitlines()]
-        key = ""
-        body_lines: List[str] = []
-        for idx, line in enumerate(lines):
-            stripped = line.strip()
-            if idx == 0 and stripped:
-                key = stripped
-                continue
-            body_lines.append(line)
-        if key:
-            mapping[key] = "\n".join(body_lines).strip()
-    return mapping
-
-
-def _paragraphs(text: str) -> List[str]:
-    if not text:
-        return []
-    return [para.strip() for para in text.split("\n\n") if para.strip()]
-
-
-def _data_chip(label: str, value: Any) -> str:
-    return f"<span class='unesco-open-chip'>{label}: <code>{value}</code></span>"
-
-
-def _counts_df(counts: Dict[str, int]) -> pd.DataFrame:
-    rows = [{"label": str(k), "value": int(v)} for k, v in (counts or {}).items()]
-    rows.sort(key=lambda row: row["value"], reverse=True)
-    return pd.DataFrame(rows)
+    chunks = [chunk.strip() for chunk in raw.split("⸻") if chunk.strip()]
+    blocks: Dict[str, List[str]] = {key: [] for key in SECTION_KEYS.values()}
+    for chunk in chunks:
+        lines = [line.rstrip() for line in chunk.splitlines()]
+        heading = lines[0].strip() if lines else ""
+        block_key = SECTION_KEYS.get(heading)
+        if not block_key:
+            continue
+        body = "\n".join(lines[1:]).strip()
+        blocks[block_key] = [paragraph.strip() for paragraph in body.split("\n\n") if paragraph.strip()]
+    return blocks
 
 
 def _emotion_cluster(label: str) -> str:
@@ -238,464 +244,423 @@ def _emotion_cluster(label: str) -> str:
         return "Curiosity and openness"
     if "engag" in token or "hope" in token or "inspir" in token:
         return "Engagement"
-    if any(
-        marker in token
-        for marker in [
-            "fear",
-            "anx",
-            "anger",
-            "sad",
-            "concern",
-            "urg",
-            "conflict",
-            "overwhelm",
-            "grief",
-            "powerless",
-            "scept",
-            "skept",
-            "uncertain",
-        ]
-    ):
+    if any(marker in token for marker in ["fear", "anx", "anger", "sad", "concern", "urg", "conflict", "overwhelm", "grief", "powerless", "scept", "skept", "uncertain"]):
         return "Tension and conflict"
     return "Other"
 
 
-def _render_emotion_field(title: str, counts: Dict[str, int]) -> None:
+def _counts_df(counts: Dict[str, int]) -> pd.DataFrame:
+    rows = [{"label": str(k), "value": int(v)} for k, v in (counts or {}).items()]
+    rows.sort(key=lambda row: row["value"], reverse=True)
+    return pd.DataFrame(rows)
+
+
+def _normalise_org_signal_counts(counts: Dict[str, int]) -> Dict[str, int]:
+    buckets = {"yes": 0, "maybe": 0, "no": 0}
+    for label, count in (counts or {}).items():
+        text = str(label or "").strip().lower()
+        if "yes" in text:
+            buckets["yes"] += int(count)
+        elif "maybe" in text:
+            buckets["maybe"] += int(count)
+        elif "no" in text:
+            buckets["no"] += int(count)
+    return buckets
+
+
+def _render_prose(paragraphs: List[str], *, accent_first: bool = False) -> None:
+    for idx, paragraph in enumerate(paragraphs):
+        if idx == 0 and accent_first:
+            st.markdown(
+                f"<p class='unesco-accent' style='font-size:1.6rem;line-height:1.12;margin:0 0 1rem 0;'>{paragraph}</p>",
+                unsafe_allow_html=True,
+            )
+        else:
+            st.markdown(f"<p class='unesco-body'>{paragraph}</p>", unsafe_allow_html=True)
+
+
+def _render_data_tokens(metrics: Dict[str, Any]) -> None:
+    st.markdown(
+        "<p class='unesco-body unesco-token'>"
+        f"<code>{metrics['responses']} responses</code> "
+        f"<code>{metrics['participants']} participants</code> "
+        f"<code>{metrics['active_24h']} active in the last 24h</code>"
+        "</p>",
+        unsafe_allow_html=True,
+    )
+
+
+def render_hero() -> None:
+    with stylable_container(
+        key="unesco-hero",
+        css_styles="""
+background: linear-gradient(135deg, rgba(255,255,255,0.84), rgba(241,248,252,0.76));
+border: 1px solid rgba(19,36,52,0.10);
+border-radius: 28px;
+padding: 48px 44px 44px;
+box-shadow: 0 14px 40px rgba(27,21,14,0.06);
+margin-bottom: 40px;
+""",
+    ):
+        st.markdown("<div class='unesco-kicker'>UNESCO-opening</div>", unsafe_allow_html=True)
+        st.title("Art for the Cryosphere")
+        st.markdown(
+            "<p class='unesco-accent' style='font-size:1.7rem;line-height:1.08;margin-top:-0.35rem;'>A collective experiment at UNESCO</p>",
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            "<p class='unesco-body'>19 March 2026 · 16:00–17:30 (CET) · Room XI, UNESCO Headquarters</p>",
+            unsafe_allow_html=True,
+        )
+
+
+def render_opening(blocks: Dict[str, List[str]]) -> None:
+    with stylable_container(
+        key="unesco-opening-text",
+        css_styles="""
+background: rgba(255,255,255,0.62);
+border: 1px solid rgba(19,36,52,0.08);
+border-radius: 22px;
+padding: 34px;
+margin-bottom: 40px;
+""",
+    ):
+        st.caption("Opening")
+        _render_prose(blocks["opening"])
+        if blocks["panel"]:
+            st.markdown("<p class='unesco-note'>The session connected the voices and works of:</p>", unsafe_allow_html=True)
+            _render_prose(blocks["panel"])
+
+
+def render_full_image(url: str) -> None:
+    st.image(url, width="stretch")
+    st.markdown("<div style='height:2.5rem;'></div>", unsafe_allow_html=True)
+
+
+def render_core_objective(blocks: Dict[str, List[str]]) -> None:
+    with stylable_container(
+        key="unesco-core-objective",
+        css_styles="""
+background: rgba(255,255,255,0.72);
+border: 1px solid rgba(19,36,52,0.08);
+border-radius: 20px;
+padding: 34px;
+margin-bottom: 40px;
+""",
+    ):
+        st.caption("From observation to coordination")
+        if blocks["core_objective"]:
+            _render_prose(blocks["core_objective"][:-1])
+            st.markdown(
+                f"<p class='unesco-accent' style='font-size:1.5rem;line-height:1.14;margin:0;'>{blocks['core_objective'][-1]}</p>",
+                unsafe_allow_html=True,
+            )
+
+
+def render_sound_prompt() -> None:
+    left, right = st.columns([1.1, 0.9], vertical_alignment="top")
+    with left:
+        with stylable_container(
+            key="unesco-sound-text",
+            css_styles="""
+background: rgba(255,255,255,0.74);
+border: 1px solid rgba(19,36,52,0.08);
+border-radius: 20px;
+padding: 34px;
+""",
+        ):
+            st.caption("Listening")
+            st.subheader(SOUND_BLOCK["title"])
+            st.markdown(
+                f"<p class='unesco-accent' style='font-size:1.35rem;line-height:1.14;margin-top:-0.15rem;'>{SOUND_BLOCK['subtitle']}</p>",
+                unsafe_allow_html=True,
+            )
+            st.markdown(f"<p class='unesco-body'>{SOUND_BLOCK['quote']}</p>", unsafe_allow_html=True)
+            st.markdown(f"<p class='unesco-body'>{SOUND_BLOCK['prompt']}</p>", unsafe_allow_html=True)
+    with right:
+        with stylable_container(
+            key="unesco-sound-embed",
+            css_styles="""
+background: rgba(255,255,255,0.58);
+border: 1px solid rgba(19,36,52,0.08);
+border-radius: 20px;
+padding: 24px 24px 18px;
+""",
+        ):
+            st.caption("Sound")
+            components.html(SOUNDCLOUD_EMBED, height=140)
+    st.markdown("<div style='height:2.5rem;'></div>", unsafe_allow_html=True)
+
+
+def render_method(blocks: Dict[str, List[str]], metrics: Dict[str, Any]) -> None:
+    with stylable_container(
+        key="unesco-method",
+        css_styles="""
+background: rgba(255,255,255,0.72);
+border: 1px solid rgba(19,36,52,0.08);
+border-radius: 20px;
+padding: 34px;
+margin-bottom: 40px;
+""",
+    ):
+        st.caption("Method and participation")
+        _render_prose(blocks["method"])
+        _render_data_tokens(metrics)
+
+
+def _render_emotion_chart(title: str, counts: Dict[str, int]) -> None:
     if not counts:
         st.caption(f"{title}: no data yet.")
         return
-
     labels = sorted(
         counts.keys(),
         key=lambda item: (
-            EMOTION_CLUSTER_ORDER.index(_emotion_cluster(item))
-            if _emotion_cluster(item) in EMOTION_CLUSTER_ORDER
-            else 999,
+            EMOTION_CLUSTER_ORDER.index(_emotion_cluster(item)) if _emotion_cluster(item) in EMOTION_CLUSTER_ORDER else 999,
             -int(counts.get(item, 0)),
             str(item).lower(),
         ),
     )
-    dot_rows: List[Dict[str, Any]] = []
+    rows: List[Dict[str, Any]] = []
     max_count = 0
     for label in labels:
         cluster = _emotion_cluster(label)
         count = int(counts.get(label, 0))
         max_count = max(max_count, count)
         for i in range(1, count + 1):
-            dot_rows.append(
-                {"emotion": label, "cluster": cluster, "x": i, "count": count}
-            )
-
-    dots_df = pd.DataFrame(dot_rows)
-    labels_df = pd.DataFrame(
-        [
-            {
-                "emotion": label,
-                "count": int(counts.get(label, 0)),
-                "x": max_count + 0.45,
-            }
-            for label in labels
-        ]
-    )
-    height = max(280, 32 * len(labels))
-
+            rows.append({"emotion": label, "cluster": cluster, "x": i, "count": count})
+    dots_df = pd.DataFrame(rows)
+    labels_df = pd.DataFrame([
+        {"emotion": label, "count": int(counts.get(label, 0)), "x": max_count + 0.45}
+        for label in labels
+    ])
+    height = max(260, 34 * len(labels))
     base = alt.Chart(dots_df).encode(
-        y=alt.Y(
-            "emotion:N", sort=labels, title=None, axis=alt.Axis(labelOverlap=False)
-        ),
-        x=alt.X(
-            "x:Q",
-            title=None,
-            axis=alt.Axis(labels=False, ticks=False, domain=False, grid=False),
-            scale=alt.Scale(domain=[0, max_count + 1]),
-        ),
+        y=alt.Y("emotion:N", sort=labels, title=None, axis=alt.Axis(labelOverlap=False)),
+        x=alt.X("x:Q", title=None, axis=alt.Axis(labels=False, ticks=False, domain=False, grid=False), scale=alt.Scale(domain=[0, max_count + 1])),
         color=alt.Color(
             "cluster:N",
-            scale=alt.Scale(
-                domain=list(EMOTION_CLUSTER_COLOURS.keys()),
-                range=list(EMOTION_CLUSTER_COLOURS.values()),
-            ),
+            scale=alt.Scale(domain=list(EMOTION_CLUSTER_COLOURS.keys()), range=list(EMOTION_CLUSTER_COLOURS.values())),
             legend=alt.Legend(title="Emotion family"),
         ),
-        tooltip=[
-            alt.Tooltip("emotion:N", title="Emotion"),
-            alt.Tooltip("cluster:N", title="Family"),
-            alt.Tooltip("count:Q", title="Count", format=".0f"),
-        ],
+        tooltip=[alt.Tooltip("emotion:N", title="Emotion"), alt.Tooltip("cluster:N", title="Family"), alt.Tooltip("count:Q", title="Count", format=".0f")],
     )
-
-    dots = base.mark_circle(size=250, opacity=0.78)
-    counts_layer = (
-        alt.Chart(labels_df)
-        .mark_text(align="left", baseline="middle", dx=4, color="#444444")
-        .encode(
-            y=alt.Y(
-                "emotion:N", sort=labels, title=None, axis=alt.Axis(labelOverlap=False)
-            ),
-            x=alt.X("x:Q", scale=alt.Scale(domain=[0, max_count + 1])),
-            text=alt.Text("count:Q", format=".0f"),
-        )
+    dots = base.mark_circle(size=220, opacity=0.8)
+    numbers = alt.Chart(labels_df).mark_text(align="left", baseline="middle", dx=4, color="#444444").encode(
+        y=alt.Y("emotion:N", sort=labels, title=None, axis=alt.Axis(labelOverlap=False)),
+        x=alt.X("x:Q", scale=alt.Scale(domain=[0, max_count + 1])),
+        text=alt.Text("count:Q", format=".0f"),
     )
-    chart = (dots + counts_layer).properties(title=title, height=height)
-    st.altair_chart(chart, width="stretch")
+    st.altair_chart((dots + numbers).properties(title=title, height=height), width="stretch")
 
 
-def _render_signal_glyphs(counts: Dict[str, int]) -> None:
-    yes_n = int(counts.get("yes", 0))
-    maybe_n = int(counts.get("maybe", 0))
-    no_n = int(counts.get("no", 0))
+def _render_signal_line(counts: Dict[str, int]) -> None:
+    buckets = _normalise_org_signal_counts(counts)
 
-    def _block(colour: str, n: int) -> str:
-        if n <= 0:
-            return ""
-        circles = "".join(
-            f"<span style='display:inline-block;width:36px;height:36px;border-radius:50%;background:{colour};margin:4px;'></span>"
-            for _ in range(n)
+    def circles(colour: str, count: int) -> str:
+        return "".join(
+            f"<span style='display:inline-block;width:24px;height:24px;border-radius:50%;background:{colour};margin:0 6px 8px 0;'></span>"
+            for _ in range(max(0, count))
         )
-        return f"<span style='display:inline-flex;flex-wrap:wrap;justify-content:center;max-width:100%;'>{circles}</span>"
 
     st.markdown(
-        (
-            "<div style='display:flex;justify-content:center;flex-wrap:wrap;align-items:center;gap:10px'>"
-            f"{_block('#2e7d32', yes_n)}"
-            f"{_block('#fbc02d', maybe_n)}"
-            f"{_block('#c62828', no_n)}"
-            "</div>"
-        ),
+        "<div class='unesco-centre' style='margin:0.5rem 0 0.75rem 0;'>"
+        f"<div>{circles('#2e7d32', buckets['yes'])}{circles('#fbc02d', buckets['maybe'])}{circles('#c62828', buckets['no'])}</div>"
+        f"<p class='unesco-body unesco-token' style='max-width:none;'><code>yes: {buckets['yes']}</code> <code>maybe: {buckets['maybe']}</code> <code>no: {buckets['no']}</code></p>"
+        "</div>",
         unsafe_allow_html=True,
     )
 
 
-def _render_choice_chart(title: str, counts: Dict[str, int]) -> None:
-    if not counts:
-        st.caption(f"{title}: no data yet.")
-        return
-    df = _counts_df(counts)
-    chart = (
-        alt.Chart(df)
-        .mark_bar()
-        .encode(
-            x=alt.X("value:Q", title="Count", axis=alt.Axis(format="d")),
-            y=alt.Y("label:N", sort="-x", title=None),
-            tooltip=["label:N", alt.Tooltip("value:Q", format=".0f")],
-        )
-        .properties(title=title, height=max(220, 34 * len(df)))
-    )
-    st.altair_chart(chart, width="stretch")
+def render_text_and_data(title: str, paragraphs: List[str], render_data, *, data_left: bool = False) -> None:
+    left, right = st.columns([1.25, 1], vertical_alignment="top")
+    text_col, data_col = (right, left) if data_left else (left, right)
+    with text_col:
+        with stylable_container(
+            key=f"{title.lower().replace(' ', '-')}-text",
+            css_styles="""
+background: rgba(255,255,255,0.72);
+border: 1px solid rgba(19,36,52,0.08);
+border-radius: 20px;
+padding: 32px;
+height: 100%;
+""",
+        ):
+            st.caption(title)
+            _render_prose(paragraphs)
+    with data_col:
+        with stylable_container(
+            key=f"{title.lower().replace(' ', '-')}-data",
+            css_styles="""
+background: rgba(255,255,255,0.58);
+border: 1px solid rgba(19,36,52,0.08);
+border-radius: 20px;
+padding: 28px;
+height: 100%;
+""",
+        ):
+            render_data()
+    st.markdown("<div style='height:2.5rem;'></div>", unsafe_allow_html=True)
 
 
-def _full_image(url: str) -> None:
-    st.image(url, width="stretch")
+def render_interpretation(paragraphs: List[str]) -> None:
+    with stylable_container(
+        key="unesco-interpretation",
+        css_styles="""
+background: rgba(255,255,255,0.7);
+border-left: 4px solid rgba(44,111,163,0.45);
+border-radius: 18px;
+padding: 30px 32px;
+margin-bottom: 40px;
+""",
+    ):
+        st.caption("First signal")
+        _render_prose(paragraphs)
 
 
-def _render_paragraph_block(
-    title: str, paragraphs: List[str], *, narrow: bool = False
-) -> None:
-    st.markdown("<section class='unesco-open-section'>", unsafe_allow_html=True)
-    st.markdown(
-        f"<div class='unesco-open-heading'>{title}</div>", unsafe_allow_html=True
-    )
-    body_cls = "unesco-open-body"
-    if narrow:
-        st.markdown(
-            "<div style='max-width:48rem;margin:0 auto;'>", unsafe_allow_html=True
-        )
-    for para in paragraphs:
-        st.markdown(f"<div class='{body_cls}'>{para}</div>", unsafe_allow_html=True)
-        st.markdown("<div style='height:0.95rem'></div>", unsafe_allow_html=True)
-    if narrow:
+def render_decision(blocks: Dict[str, List[str]], counts: Dict[str, int]) -> None:
+    with stylable_container(
+        key="unesco-decision",
+        css_styles="""
+background: rgba(255,255,255,0.8);
+border: 1px solid rgba(19,36,52,0.10);
+border-radius: 24px;
+padding: 38px 34px;
+margin-bottom: 40px;
+""",
+    ):
+        st.markdown("<div class='unesco-centre'>", unsafe_allow_html=True)
+        st.caption("Decision pivot")
+        st.subheader("Should we continue?")
+        _render_signal_line(counts)
+        _render_prose(blocks["decision"])
         st.markdown("</div>", unsafe_allow_html=True)
-    st.markdown("</section>", unsafe_allow_html=True)
 
 
-def _render_two_column_text_data(
-    *,
-    title: str,
-    paragraphs: List[str],
-    render_data,
-    data_left: bool = False,
-) -> None:
-    st.markdown("<section class='unesco-open-section'>", unsafe_allow_html=True)
-    left, right = st.columns([1.55, 1], vertical_alignment="top")
-    if data_left:
-        left, right = right, left
-    with left:
-        if not data_left:
-            st.markdown(
-                f"<div class='unesco-open-heading'>{title}</div>",
-                unsafe_allow_html=True,
-            )
-            for para in paragraphs:
-                st.markdown(
-                    f"<div class='unesco-open-body'>{para}</div>",
-                    unsafe_allow_html=True,
-                )
-                st.markdown(
-                    "<div style='height:0.95rem'></div>", unsafe_allow_html=True
-                )
-        else:
-            render_data()
-    with right:
-        if not data_left:
-            render_data()
-        else:
-            st.markdown(
-                f"<div class='unesco-open-heading'>{title}</div>",
-                unsafe_allow_html=True,
-            )
-            for para in paragraphs:
-                st.markdown(
-                    f"<div class='unesco-open-body'>{para}</div>",
-                    unsafe_allow_html=True,
-                )
-                st.markdown(
-                    "<div style='height:0.95rem'></div>", unsafe_allow_html=True
-                )
-    st.markdown("</section>", unsafe_allow_html=True)
+def render_meta(blocks: Dict[str, List[str]]) -> None:
+    with stylable_container(
+        key="unesco-meta",
+        css_styles="""
+background: rgba(255,255,255,0.72);
+border: 1px solid rgba(19,36,52,0.08);
+border-radius: 20px;
+padding: 34px;
+margin-bottom: 40px;
+""",
+    ):
+        st.caption("Meta interpretation")
+        _render_prose(blocks["meta"])
+
+
+def render_gallery() -> None:
+    st.caption("Images and traces")
+    cols = st.columns(3)
+    for idx, url in enumerate(IMAGE_URLS[1:]):
+        with cols[idx % 3]:
+            st.image(url, width="stretch")
+    st.markdown("<div style='height:2.5rem;'></div>", unsafe_allow_html=True)
+
+
+def render_closing(blocks: Dict[str, List[str]]) -> None:
+    with stylable_container(
+        key="unesco-closing",
+        css_styles="""
+background: rgba(255,255,255,0.7);
+border: 1px solid rgba(19,36,52,0.08);
+border-radius: 20px;
+padding: 34px;
+margin-bottom: 32px;
+""",
+    ):
+        st.caption("Closing reflection")
+        _render_prose(blocks["closing"], accent_first=True)
+
+
+def render_action_block() -> None:
+    with stylable_container(
+        key="unesco-actions",
+        css_styles="""
+background: rgba(255,255,255,0.78);
+border: 1px solid rgba(19,36,52,0.10);
+border-radius: 24px;
+padding: 28px;
+margin-bottom: 24px;
+""",
+    ):
+        st.markdown("<div class='unesco-centre'>", unsafe_allow_html=True)
+        st.caption("Continue")
+        st.subheader("This is an entry, not a conclusion.")
+        st.markdown(
+            "<p class='unesco-body' style='max-width:48ch;margin:0 auto 1.5rem auto;'>Bring this format elsewhere, return to the platform, or contact the organisers to continue the experiment.</p>",
+            unsafe_allow_html=True,
+        )
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            st.button("Start a new session", type="secondary", width="stretch", disabled=True)
+        with c2:
+            st.page_link("pages/01_Login.py", label="Join the platform", icon=":material/login:")
+        with c3:
+            st.button("Contact organisers", type="tertiary", width="stretch", disabled=True)
+        st.markdown("</div>", unsafe_allow_html=True)
 
 
 def main() -> None:
     set_page()
     apply_theme()
-    _inject_css()
+    _apply_page_css()
 
-    copy_map = _load_copy()
+    blocks = _load_text_blocks()
     payload = get_overview_payload(GLOBAL_SESSION_SLUG)
-    question_map = {
-        str(q.get("item_id") or ""): q for q in payload.get("questions", []) or []
+    question_map = {str(q.get("item_id") or ""): q for q in payload.get("questions", []) or []}
+    metrics = {
+        "responses": int(payload.get("response_count", 0)),
+        "participants": int(payload.get("participant_count", 0)),
+        "active_24h": int(count_active_users(24 * 60, session_id="")),
     }
-    response_count = int(payload.get("response_count", 0))
-    participant_count = int(payload.get("participant_count", 0))
-    active_24h = int(count_active_users(24 * 60, session_id=""))
 
-    opening = _paragraphs(copy_map.get("1. OPENING — reframed incipit", ""))
-    panel = _paragraphs(copy_map.get("PANEL (integrated, not dominant)", ""))
-    core_objective = _paragraphs(copy_map.get("2. CORE OBJECTIVE — call to action", ""))
-    transition = _paragraphs(copy_map.get("3. TRANSITION — introducing the method", ""))
-    arrival = _paragraphs(copy_map.get("4. ARRIVAL — initial conditions", ""))
-    arrival_interpret = _paragraphs(
-        copy_map.get("5. INTERPRETATION — first signal", "")
+    render_hero()
+    render_opening(blocks)
+    render_full_image(IMAGE_URLS[0])
+    render_core_objective(blocks)
+    render_sound_prompt()
+    render_method(blocks, metrics)
+    render_text_and_data(
+        "Arrival emotions",
+        blocks["arrival"],
+        lambda: _render_emotion_chart("Arrival emotions", question_map.get("ARRIVAL_EMOTION", {}).get("counts", {})),
     )
-    environmental = _paragraphs(copy_map.get("6. DEEPENING — environmental change", ""))
-    societal = _paragraphs(copy_map.get("7. SOCIETAL PROJECTION — shift in tone", ""))
-    decision = _paragraphs(copy_map.get("8. DECISION PIVOT — collective signal", ""))
-    meta = _paragraphs(copy_map.get("9. META — interpretation of signals", ""))
-    closing = _paragraphs(copy_map.get("10. CLOSING TRANSITION", ""))
-
-    st.markdown("<div class='unesco-open-shell'>", unsafe_allow_html=True)
-
-    st.markdown(
-        """
-<section class="unesco-open-hero">
-  <h1 class="unesco-open-title">Art for the Cryosphere</h1>
-  <p class="unesco-open-subtitle">A collective experiment at UNESCO</p>
-  <div class="unesco-open-meta">
-    19 March 2026 · 16:00–17:30 (CET) · Room XI, UNESCO Headquarters
-  </div>
-</section>
-""",
-        unsafe_allow_html=True,
-    )
-
-    _render_paragraph_block(
-        "Opening",
-        opening + panel,
-    )
-
-    _full_image(IMAGE_URLS[0])
-
-    st.markdown("<section class='unesco-open-section'>", unsafe_allow_html=True)
-    st.markdown(
-        "<div class='unesco-open-heading'>From observation to coordination</div>",
-        unsafe_allow_html=True,
-    )
-    for para in core_objective[:-1]:
-        st.markdown(
-            f"<div class='unesco-open-body'>{para}</div>", unsafe_allow_html=True
-        )
-        st.markdown("<div style='height:0.95rem'></div>", unsafe_allow_html=True)
-    if core_objective:
-        st.markdown(
-            f"<div class='unesco-open-highlight'>{core_objective[-1]}</div>",
-            unsafe_allow_html=True,
-        )
-    st.markdown("</section>", unsafe_allow_html=True)
-
-    st.markdown("<section class='unesco-open-section'>", unsafe_allow_html=True)
-    st.markdown(
-        "<div class='unesco-open-heading'>Have you ever heard the voice of a glacier?</div>",
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        "<div class='unesco-open-highlight'>"
-        "Have you ever heard how it cracks at night and how it collapses in the daylight?"
-        "</div>",
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        "<div class='unesco-open-body'>"
-        "In the words of Liz Macedo, Guardian of the Ishinca Hut in Peru, "
-        "“It is as if the mountain is screaming. The roar of the falling ice makes me think "
-        "Tocllaraju is crying for help.”"
-        "</div>",
-        unsafe_allow_html=True,
-    )
-    st.markdown("<div style='height:1rem'></div>", unsafe_allow_html=True)
-    st.markdown(
-        "<div class='unesco-open-body'>"
-        "We ask you a question that may or may not guide our and your next steps, a question "
-        "that our daughters, sons, and grandchildren will surely ask us: "
-        "<strong>What did we do, when we knew?</strong>"
-        "</div>",
-        unsafe_allow_html=True,
-    )
-    st.markdown("<div style='height:1.5rem'></div>", unsafe_allow_html=True)
-    components.html(SOUNDCLOUD_EMBED, height=140)
-    st.markdown("</section>", unsafe_allow_html=True)
-
-    st.markdown("<section class='unesco-open-section'>", unsafe_allow_html=True)
-    st.markdown(
-        "<div class='unesco-open-heading'>Method and participation</div>",
-        unsafe_allow_html=True,
-    )
-    for para in transition:
-        st.markdown(
-            f"<div class='unesco-open-body'>{para}</div>", unsafe_allow_html=True
-        )
-        st.markdown("<div style='height:0.95rem'></div>", unsafe_allow_html=True)
-    st.markdown(
-        _data_chip("Responses", response_count)
-        + _data_chip("Participants", participant_count)
-        + _data_chip("Active in last 24h", active_24h),
-        unsafe_allow_html=True,
-    )
-    st.markdown("</section>", unsafe_allow_html=True)
-
-    def _arrival_data() -> None:
-        _render_emotion_field(
-            "Arrival emotions",
-            question_map.get("ARRIVAL_EMOTION", {}).get("counts", {}),
-        )
-
-    _render_two_column_text_data(
-        title="Arrival emotions",
-        paragraphs=arrival,
-        render_data=_arrival_data,
-        data_left=False,
-    )
-
-    st.markdown("<section class='unesco-open-section'>", unsafe_allow_html=True)
-    st.markdown(
-        "<div class='unesco-open-interpret'>",
-        unsafe_allow_html=True,
-    )
-    for para in arrival_interpret:
-        st.markdown(
-            f"<div class='unesco-open-body'>{para}</div>", unsafe_allow_html=True
-        )
-    st.markdown("</div></section>", unsafe_allow_html=True)
-
-    _full_image(IMAGE_URLS[1])
-
-    def _environment_data() -> None:
-        _render_emotion_field(
+    render_interpretation(blocks["arrival_interpretation"])
+    render_full_image(IMAGE_URLS[1])
+    render_text_and_data(
+        "Environmental change",
+        blocks["environment"],
+        lambda: _render_emotion_chart(
             "Emotion toward environmental change",
             question_map.get("ENVIRONMENT_CHANGE_EMOTION", {}).get("counts", {}),
-        )
-
-    _render_two_column_text_data(
-        title="Deepening",
-        paragraphs=environmental,
-        render_data=_environment_data,
+        ),
         data_left=True,
     )
-
-    def _societal_data() -> None:
-        _render_emotion_field(
+    render_text_and_data(
+        "Societal projection",
+        blocks["societal"],
+        lambda: _render_emotion_chart(
             "Emotion toward societal change",
             question_map.get("SOCIETAL_CHANGE_EMOTION", {}).get("counts", {}),
-        )
-
-    _render_two_column_text_data(
-        title="Societal projection",
-        paragraphs=societal,
-        render_data=_societal_data,
-        data_left=False,
+        ),
     )
-
-    st.markdown("<section class='unesco-open-section'>", unsafe_allow_html=True)
-    st.markdown(
-        "<div class='unesco-open-heading'>Decision pivot</div>", unsafe_allow_html=True
-    )
-    st.markdown(
-        "<div class='unesco-open-body'>Should we continue?</div>",
-        unsafe_allow_html=True,
-    )
-    signal_counts = question_map.get("ORGANISATION_SIGNAL", {}).get("counts", {})
-    _render_signal_glyphs(signal_counts)
-    st.markdown(
-        _data_chip("yes", int(signal_counts.get("yes", 0)))
-        + _data_chip("maybe", int(signal_counts.get("maybe", 0)))
-        + _data_chip("no", int(signal_counts.get("no", 0))),
-        unsafe_allow_html=True,
-    )
-    for para in decision:
-        st.markdown(
-            f"<div class='unesco-open-body'>{para}</div>",
-            unsafe_allow_html=True,
-        )
-    st.markdown("</section>", unsafe_allow_html=True)
-
-    _full_image(IMAGE_URLS[2])
-
-    _render_paragraph_block("Signals as a field", meta, narrow=False)
-
-    st.markdown("<section class='unesco-open-section'>", unsafe_allow_html=True)
-    st.markdown(
-        "<div class='unesco-open-heading'>Images and traces</div>",
-        unsafe_allow_html=True,
-    )
-    st.markdown("<div class='unesco-open-gallery'>", unsafe_allow_html=True)
-    # for url in IMAGE_URLS[3:]:
-    st.image(IMAGE_URLS[3], width="stretch")
-    st.markdown("</div></section>", unsafe_allow_html=True)
-
-    _render_paragraph_block("Closing reflection", closing, narrow=True)
-
-    st.markdown("<section class='unesco-open-section'>", unsafe_allow_html=True)
-    st.markdown("<div class='unesco-open-cta'>", unsafe_allow_html=True)
-    st.markdown(
-        "<div class='unesco-open-heading'>Continue</div>", unsafe_allow_html=True
-    )
-    st.markdown(
-        "<div class='unesco-open-body'>"
-        "This page is an entry into something that has already started. "
-        "Carry these signals forward, return to the platform, and reopen the field elsewhere."
-        "</div>",
-        unsafe_allow_html=True,
-    )
-    c1, c2, c3 = st.columns(3)
-    c1.button("Start a new session", disabled=True, width="stretch")
-    c2.page_link(
-        "pages/01_Login.py", label="Join the platform", icon=":material/login:"
-    )
-    c3.button("Contact organisers", disabled=True, width="stretch")
-    st.markdown("</div></section>", unsafe_allow_html=True)
-
-    st.markdown("</div>", unsafe_allow_html=True)
+    render_decision(blocks, question_map.get("ORGANISATION_SIGNAL", {}).get("counts", {}))
+    render_full_image(IMAGE_URLS[2])
+    render_meta(blocks)
+    render_gallery()
+    render_closing(blocks)
+    render_action_block()
 
     log_event(
-        module="iceicebaby.sessions",
+        module="iceicebaby.unesco_opening",
         event_type="page_view",
         page="UNESCO-opening",
-        player_id=str(st.session_state.get("player_page_id", "")),
-        session_id=str(st.session_state.get("session_id", "")),
-        device_id=str(st.session_state.get("anon_token", "")),
-        status="ok",
-        metadata={
-            "responses": response_count,
-            "participants": participant_count,
-        },
+        session_id=payload.get("session_id") or "",
+        value_label="unesco_opening_loaded",
+        metadata={"session_slug": payload.get("session_slug", GLOBAL_SESSION_SLUG)},
     )
 
 
