@@ -1,7 +1,7 @@
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Iterator, Literal, Optional
 import os
 
 import json
@@ -31,6 +31,7 @@ div[data-testid="stVerticalBlock"] div:has(div.fixed-header-{i}) {{
 <div class='fixed-header-{i}'/>
 """.strip()
 _sticky_count = 0
+_stylable_count = 0
 
 
 def _initial_sidebar_state() -> str:
@@ -180,6 +181,35 @@ def sticky_container(
         container = st.container(height=height, border=border)
     container.markdown(html_code, unsafe_allow_html=True)
     return container
+
+
+@contextmanager
+def stylable_container(
+    *,
+    key: str,
+    css_styles: str,
+    height: int | str | None = None,
+    border: bool | None = None,
+) -> Iterator[st.delta_generator.DeltaGenerator]:
+    global _stylable_count
+    class_name = f"stylable-container-{_stylable_count}"
+    _stylable_count += 1
+    style_block = f"""
+<style>
+div[data-testid="stVerticalBlock"] > div > div:has(> div.{class_name}) {{
+{css_styles}
+overflow: hidden;
+}}
+</style>
+<div class="{class_name}" data-stylable-key="{key}" style="display:none;height:0;margin:0;padding:0;"></div>
+""".strip()
+    if height is None:
+        container = st.container(border=border)
+    else:
+        container = st.container(height=height, border=border)
+    container.markdown(style_block, unsafe_allow_html=True)
+    with container:
+        yield container
 
 
 def primary_button(

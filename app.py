@@ -94,6 +94,11 @@ def _lab_pages() -> list[st.Page]:
             icon=":material/badge:",
         ),
         st.Page(
+            "pages/11_Session_Inspector.py",
+            title="Test · Session inspector",
+            icon=":material/search_insights:",
+        ),
+        st.Page(
             "pages/test_query_params.py",
             title="Test · Query params",
             icon=":material/link:",
@@ -102,6 +107,16 @@ def _lab_pages() -> list[st.Page]:
             "pages/test_notion.py",
             title="Test · Notion",
             icon=":material/database:",
+        ),
+        st.Page(
+            "pages/test_typography.py",
+            title="Test · Typography",
+            icon=":material/text_fields:",
+        ),
+        st.Page(
+            "pages/test_typography_native.py",
+            title="Test · Typography native",
+            icon=":material/view_quilt:",
         ),
         st.Page(
             "pages/test_highlight_playground.py",
