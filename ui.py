@@ -1,7 +1,7 @@
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Iterator, Literal, Optional
 import os
 
 import json
@@ -31,6 +31,7 @@ div[data-testid="stVerticalBlock"] div:has(div.fixed-header-{i}) {{
 <div class='fixed-header-{i}'/>
 """.strip()
 _sticky_count = 0
+_stylable_count = 0
 
 
 def _initial_sidebar_state() -> str:
@@ -104,6 +105,153 @@ def apply_theme() -> None:
         css = css_path.read_text(encoding="utf-8")
         # accent_override = f":root {{ --accent: {settings.accent_color}; }}"
         # st.markdown(f"<style>{css}{accent_override}</style>", unsafe_allow_html=True)
+
+
+def apply_admin_dark_mode() -> None:
+    st.markdown(
+        """
+<style>
+:root {
+  --admin-bg: #0d1117;
+  --admin-panel: #161b22;
+  --admin-panel-2: #1f2630;
+  --admin-border: rgba(240, 246, 252, 0.10);
+  --admin-ink: #e6edf3;
+  --admin-muted: #9fb0c3;
+  --admin-accent: #6ea8fe;
+  --admin-good: #3fb950;
+  --admin-warn: #d29922;
+  --admin-bad: #f85149;
+}
+
+html, body, [data-testid="stAppViewContainer"], [data-testid="stApp"] {
+  background: linear-gradient(180deg, #0d1117 0%, #111827 100%) !important;
+  color: var(--admin-ink) !important;
+}
+
+[data-testid="stHeader"] {
+  background: rgba(13, 17, 23, 0.85) !important;
+}
+
+.block-container {
+  max-width: 1360px !important;
+}
+
+[data-testid="stSidebar"] {
+  background: linear-gradient(180deg, #111827 0%, #0f1723 100%) !important;
+  border-right: 1px solid var(--admin-border) !important;
+}
+
+[data-testid="stSidebar"] * ,
+[data-testid="stAppViewContainer"] * {
+  color: inherit;
+}
+
+[data-testid="stMarkdownContainer"],
+[data-testid="stCaptionContainer"],
+[data-testid="stText"],
+[data-testid="stMetricLabel"],
+[data-testid="stMetricValue"],
+[data-testid="stMetricDelta"],
+[data-testid="stHeadingWithActionElements"] h1,
+[data-testid="stHeadingWithActionElements"] h2,
+[data-testid="stHeadingWithActionElements"] h3,
+label,
+p,
+li,
+span,
+div {
+  color: var(--admin-ink);
+}
+
+[data-testid="stCaptionContainer"],
+.microcopy {
+  color: var(--admin-muted) !important;
+}
+
+[data-testid="stForm"],
+[data-testid="stExpander"],
+[data-testid="stVerticalBlock"] > div:has(> [data-testid="stMetric"]),
+[data-testid="stAlert"],
+[data-testid="stDataFrame"],
+[data-testid="stTable"],
+[data-testid="stJson"],
+[data-testid="stCodeBlock"],
+[data-testid="stTextInputRootElement"],
+[data-testid="stSelectbox"],
+[data-testid="stMultiSelect"],
+[data-testid="stNumberInput"],
+[data-testid="stTextArea"],
+[data-testid="stDateInput"],
+[data-testid="stFileUploader"],
+[data-testid="stPopover"],
+[data-testid="stRadio"],
+[data-testid="stSegmentedControl"],
+[data-testid="stCheckbox"] {
+  background: var(--admin-panel) !important;
+  border-color: var(--admin-border) !important;
+}
+
+[data-testid="stExpander"] {
+  border: 1px solid var(--admin-border) !important;
+  border-radius: 14px !important;
+}
+
+[data-testid="stAlert"] {
+  border: 1px solid var(--admin-border) !important;
+  border-radius: 14px !important;
+}
+
+[data-testid="stDataFrame"] div[role="grid"],
+[data-testid="stTable"] table {
+  background: var(--admin-panel) !important;
+  color: var(--admin-ink) !important;
+}
+
+[data-testid="stDataFrame"] [role="columnheader"],
+[data-testid="stDataFrame"] [role="gridcell"],
+[data-testid="stTable"] th,
+[data-testid="stTable"] td {
+  background: transparent !important;
+  color: var(--admin-ink) !important;
+  border-color: var(--admin-border) !important;
+}
+
+input, textarea, [data-baseweb="select"] > div {
+  background: var(--admin-panel-2) !important;
+  color: var(--admin-ink) !important;
+  border-color: var(--admin-border) !important;
+}
+
+div[data-testid="stButton"] > button {
+  background: var(--admin-panel-2) !important;
+  color: var(--admin-ink) !important;
+  border: 1px solid var(--admin-border) !important;
+  border-radius: 10px !important;
+}
+
+div[data-testid="stButton"] > button[kind="primary"] {
+  background: var(--admin-accent) !important;
+  color: #08111d !important;
+  border-color: transparent !important;
+}
+
+div[data-testid="stButton"] > button:hover {
+  border-color: rgba(110, 168, 254, 0.55) !important;
+  box-shadow: 0 0 0 1px rgba(110, 168, 254, 0.15) inset !important;
+}
+
+pre, code {
+  color: #d2e4ff !important;
+}
+
+hr {
+  border-color: var(--admin-border) !important;
+}
+</style>
+""",
+        unsafe_allow_html=True,
+    )
 
 
 def heading(text: str) -> None:
@@ -180,6 +328,35 @@ def sticky_container(
         container = st.container(height=height, border=border)
     container.markdown(html_code, unsafe_allow_html=True)
     return container
+
+
+@contextmanager
+def stylable_container(
+    *,
+    key: str,
+    css_styles: str,
+    height: int | str | None = None,
+    border: bool | None = None,
+) -> Iterator[st.delta_generator.DeltaGenerator]:
+    global _stylable_count
+    class_name = f"stylable-container-{_stylable_count}"
+    _stylable_count += 1
+    style_block = f"""
+<style>
+div[data-testid="stVerticalBlock"] > div > div:has(> div.{class_name}) {{
+{css_styles}
+overflow: hidden;
+}}
+</style>
+<div class="{class_name}" data-stylable-key="{key}" style="display:none;height:0;margin:0;padding:0;"></div>
+""".strip()
+    if height is None:
+        container = st.container(border=border)
+    else:
+        container = st.container(height=height, border=border)
+    container.markdown(style_block, unsafe_allow_html=True)
+    with container:
+        yield container
 
 
 def primary_button(

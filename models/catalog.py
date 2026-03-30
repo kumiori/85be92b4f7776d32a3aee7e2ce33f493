@@ -36,7 +36,7 @@ QUESTION_CATALOG: list[Question] = [
         qtype="pre_signal",
         options=[
             "Yes, let's continue the conversation",
-            "Maybe, depending on conditions",
+            "Upon condition, depending on conditions",
             "No, stop here",
         ],
         short_description=(
@@ -53,7 +53,7 @@ QUESTION_CATALOG: list[Question] = [
         response_mode="signal",
         response_structure=[
             "Yes, let's continue",
-            "Maybe, depending on conditions",
+            "Upon condition, depending on conditions",
             "No, stop here",
         ],
         is_collective_signal=True,
@@ -231,7 +231,7 @@ QUESTION_CATALOG: list[Question] = [
         qtype="single",
         options=[
             "Yes, collaboration is possible",
-            "Maybe, depending upon conditions",
+            "Upon condition, depending upon conditions",
             "No, differences are too strong",
             "Other",
         ],

@@ -34,7 +34,7 @@ from models.catalog import (
 )
 from models.sessions import session_spec_by_id
 from repositories.interaction_repo import NotionInteractionRepository
-from ui import apply_theme, heading, microcopy, set_page, sidebar_debug_state
+from ui import apply_admin_dark_mode, apply_theme, heading, microcopy, set_page, sidebar_debug_state
 from ui import render_orientation_sidebar, update_sidebar_task
 from ui import begin_sidebar_timing, end_sidebar_timing
 
@@ -323,6 +323,7 @@ def _render_players_dashboard(repo, session_id: str) -> None:
             no_contact_count += 1
         rows.append(
             {
+                "player_id": pid,
                 "name": nickname,
                 "role": str(p.get("role") or ""),
                 "email": str(p.get("email") or ""),
@@ -342,6 +343,172 @@ def _render_players_dashboard(repo, session_id: str) -> None:
         st.write(", ".join(ordered_names))
         st.caption("🧊 indicates anonymous player")
     st.dataframe(rows, width="stretch")
+    _render_follow_up_exports(rows)
+
+
+def _normalise_contact_method(method: str) -> str:
+    txt = str(method or "").strip().lower()
+    txt = " ".join(txt.split())
+    if not txt:
+        return ""
+    if "don't want to be in touch" in txt or "dont want to be in touch" in txt:
+        return "no_contact"
+    if txt == "email":
+        return "email"
+    if txt in {"in person", "in-person"}:
+        return "in_person"
+    if txt in {"video call", "videocall", "video-call"}:
+        return "video_call"
+    if "phone" in txt or "call me" in txt or "whatsapp" in txt or "telegram" in txt:
+        return "phone"
+    return "other"
+
+
+def _display_contact_method(code: str) -> str:
+    return {
+        "email": "Email",
+        "phone": "Phone",
+        "video_call": "Video call",
+        "in_person": "In person",
+        "other": "Other",
+        "no_contact": "No contact",
+    }.get(code, code or "Unspecified")
+
+
+def _dedupe_preserve(items: List[str]) -> List[str]:
+    out: List[str] = []
+    seen: set[str] = set()
+    for item in items:
+        token = str(item or "").strip()
+        if not token:
+            continue
+        key = token.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(token)
+    return out
+
+
+def _render_copy_block(label: str, value: str, *, height: int = 120) -> None:
+    st.caption(label)
+    st.text_area(
+        label,
+        value=value,
+        height=height,
+        label_visibility="collapsed",
+        disabled=False,
+        key=f"admin-copy-{label.lower().replace(' ', '-')}",
+    )
+
+
+def _render_follow_up_exports(rows: List[Dict[str, Any]]) -> None:
+    st.subheader("Follow-up extraction")
+    st.caption(
+        "Collect preferences, statistics, and contact details for continued conversation."
+    )
+
+    enriched: List[Dict[str, Any]] = []
+    method_counts: Dict[str, int] = defaultdict(int)
+    for row in rows:
+        method_code = _normalise_contact_method(str(row.get("contact_preference") or ""))
+        detail = str(row.get("contact_detail") or "").strip()
+        profile_email = str(row.get("email") or "").strip()
+        enriched_row = dict(row)
+        enriched_row["method_code"] = method_code
+        enriched_row["effective_email"] = detail if method_code == "email" and detail else profile_email
+        enriched_row["effective_phone"] = detail if method_code in {"phone", "video_call", "in_person", "other"} else ""
+        enriched.append(enriched_row)
+        method_counts[method_code or "unspecified"] += 1
+
+    follow_up_rows = [
+        row
+        for row in enriched
+        if row.get("method_code") not in {"", "no_contact"}
+    ]
+
+    c1, c2, c3, c4, c5 = st.columns(5)
+    c1.metric("Follow-up ready", len(follow_up_rows))
+    c2.metric("Email", method_counts.get("email", 0))
+    c3.metric("Video call", method_counts.get("video_call", 0))
+    c4.metric("In person", method_counts.get("in_person", 0))
+    c5.metric("No contact", method_counts.get("no_contact", 0))
+
+    pref_rows = [
+        {
+            "preference": _display_contact_method(code if code != "unspecified" else ""),
+            "count": count,
+        }
+        for code, count in sorted(method_counts.items(), key=lambda item: (-item[1], item[0]))
+    ]
+    st.dataframe(pref_rows, width="stretch")
+
+    follow_up_view = [
+        {
+            "name": str(row.get("name") or ""),
+            "role": str(row.get("role") or ""),
+            "preference": _display_contact_method(str(row.get("method_code") or "")),
+            "email": str(row.get("effective_email") or ""),
+            "detail": str(row.get("contact_detail") or ""),
+            "last_activity": str(row.get("last_activity") or ""),
+        }
+        for row in follow_up_rows
+    ]
+    if follow_up_view:
+        st.dataframe(follow_up_view, width="stretch")
+    else:
+        st.info("No positive follow-up preferences recorded yet.")
+        return
+
+    mailing_emails = _dedupe_preserve(
+        [str(row.get("effective_email") or "") for row in follow_up_rows if str(row.get("effective_email") or "").strip()]
+    )
+    mailing_named = _dedupe_preserve(
+        [
+            f"{row.get('name')} <{row.get('effective_email')}>"
+            for row in follow_up_rows
+            if str(row.get("effective_email") or "").strip()
+        ]
+    )
+    phone_lines = _dedupe_preserve(
+        [
+            f"{row.get('name')} — {row.get('contact_detail')}"
+            for row in follow_up_rows
+            if str(row.get("method_code") or "") in {"phone", "video_call", "in_person", "other"}
+            and str(row.get("contact_detail") or "").strip()
+        ]
+    )
+    video_lines = _dedupe_preserve(
+        [
+            f"{row.get('name')} — {row.get('contact_detail')}"
+            for row in follow_up_rows
+            if str(row.get("method_code") or "") == "video_call"
+        ]
+    )
+    in_person_lines = _dedupe_preserve(
+        [
+            f"{row.get('name')} — {row.get('contact_detail')}"
+            for row in follow_up_rows
+            if str(row.get("method_code") or "") == "in_person"
+        ]
+    )
+    other_lines = _dedupe_preserve(
+        [
+            f"{row.get('name')} — {row.get('contact_detail') or row.get('contact_preference')}"
+            for row in follow_up_rows
+            if str(row.get("method_code") or "") == "other"
+        ]
+    )
+
+    e1, e2 = st.columns(2)
+    with e1:
+        _render_copy_block("Email list", "; ".join(mailing_emails), height=120)
+        _render_copy_block("Phone and detail list", "\n".join(phone_lines), height=160)
+        _render_copy_block("In-person follow-up", "\n".join(in_person_lines), height=120)
+    with e2:
+        _render_copy_block("Names and emails", "\n".join(mailing_named), height=160)
+        _render_copy_block("Video-call follow-up", "\n".join(video_lines), height=120)
+        _render_copy_block("Other follow-up details", "\n".join(other_lines), height=120)
 
 
 def _render_duplicate_players_panel(repo) -> None:
@@ -715,6 +882,7 @@ def _render_sessions_panel(repo) -> None:
 def main() -> None:
     set_page()
     apply_theme()
+    apply_admin_dark_mode()
     ensure_session_state()
     repo = get_notion_repo()
     authenticator = get_authenticator(repo)

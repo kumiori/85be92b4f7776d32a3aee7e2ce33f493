@@ -402,3 +402,123 @@ class NotionInteractionRepository(InteractionRepository):
                 break
             next_cursor = payload.get("next_cursor")
         return out
+
+    def get_responses_by_item(self, session_id: str, item_id: str) -> List[Dict[str, Any]]:
+        if not item_id:
+            return []
+        session_prop = self._find_prop("session", "relation")
+        question_id_prop = self._find_prop("question_id", "rich_text")
+        item_prop = self._find_prop("item_id", "rich_text")
+        value_json_prop = self._find_prop("value_json", "rich_text")
+        response_value_prop = self._find_prop("response_value", "rich_text")
+        value_label_prop = self._find_prop("value_label", "rich_text")
+        question_type_prop = self._find_prop("question_type", "select")
+        score_prop = self._find_prop("score", "number")
+        timestamp_prop = self._find_prop("timestamp", "date")
+        submitted_prop = self._find_prop("submitted_at", "date")
+        created_prop = self._find_prop("created_at", "date")
+        text_prop = self._find_prop("text_id", "rich_text")
+        device_prop = self._find_prop("device_id", "rich_text")
+        access_key_prop = self._find_prop("access_key", "rich_text")
+        player_prop = self._find_prop("player", "relation")
+        if not session_prop or not value_json_prop:
+            return []
+
+        item_filters: List[Dict[str, Any]] = []
+        if item_prop:
+            item_filters.append(
+                {"property": item_prop, "rich_text": {"equals": item_id}}
+            )
+        if question_id_prop and question_id_prop != item_prop:
+            item_filters.append(
+                {"property": question_id_prop, "rich_text": {"equals": item_id}}
+            )
+        if not item_filters:
+            return []
+
+        if len(item_filters) == 1:
+            filter_payload = {
+                "and": [
+                    {"property": session_prop, "relation": {"contains": session_id}},
+                    item_filters[0],
+                ]
+            }
+        else:
+            filter_payload = {
+                "and": [
+                    {"property": session_prop, "relation": {"contains": session_id}},
+                    {"or": item_filters},
+                ]
+            }
+
+        out: List[Dict[str, Any]] = []
+        next_cursor: Optional[str] = None
+        while True:
+            query: Dict[str, Any] = {
+                "data_source_id": self.data_source_id,
+                "filter": filter_payload,
+                "page_size": 100,
+            }
+            if next_cursor:
+                query["start_cursor"] = next_cursor
+            payload = self.client.data_sources.query(**query)
+            for page in payload.get("results", []):
+                props = page.get("properties", {})
+                raw_value = _extract_rich_text(props, value_json_prop)
+                parsed: Any
+                try:
+                    parsed = json.loads(raw_value)
+                except Exception:
+                    parsed = raw_value
+                normalized_value = parsed
+                if isinstance(parsed, dict):
+                    if "answer" in parsed:
+                        normalized_value = parsed.get("answer")
+                    elif "choice" in parsed:
+                        normalized_value = parsed.get("choice")
+                response_value_text = (
+                    _extract_rich_text(props, response_value_prop) if response_value_prop else ""
+                )
+                response_value: Any = normalized_value
+                if response_value_text:
+                    try:
+                        response_value = json.loads(response_value_text)
+                    except Exception:
+                        response_value = response_value_text
+                player_ids = []
+                pval = props.get(player_prop) if player_prop else None
+                if isinstance(pval, dict):
+                    player_ids = [x.get("id") for x in pval.get("relation", []) if isinstance(x, dict)]
+                timestamp = _extract_date_start(props, timestamp_prop)
+                submitted = _extract_date_start(props, submitted_prop)
+                created = _extract_date_start(props, created_prop) if not submitted else None
+                score = None
+                score_val = props.get(score_prop) if score_prop else None
+                if isinstance(score_val, dict):
+                    score = score_val.get("number")
+                out.append(
+                    {
+                        "response_id": page.get("id"),
+                        "session_id": session_id,
+                        "player_id": player_ids[0] if player_ids else None,
+                        "question_id": _extract_rich_text(props, question_id_prop)
+                        or _extract_rich_text(props, item_prop),
+                        "item_id": _extract_rich_text(props, item_prop)
+                        or _extract_rich_text(props, question_id_prop),
+                        "response_value": response_value,
+                        "value": normalized_value,
+                        "value_json": parsed,
+                        "value_label": _extract_rich_text(props, value_label_prop) if value_label_prop else "",
+                        "question_type": _extract_select_name(props, question_type_prop) if question_type_prop else "",
+                        "score": score,
+                        "text_id": _extract_rich_text(props, text_prop) if text_prop else "",
+                        "device_id": _extract_rich_text(props, device_prop) if device_prop else "",
+                        "access_key": _extract_rich_text(props, access_key_prop) if access_key_prop else "",
+                        "timestamp": timestamp or submitted or created or page.get("created_time"),
+                        "created_at": submitted or created or page.get("created_time"),
+                    }
+                )
+            if not payload.get("has_more"):
+                break
+            next_cursor = payload.get("next_cursor")
+        return out

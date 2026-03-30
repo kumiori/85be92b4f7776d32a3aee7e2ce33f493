@@ -49,7 +49,7 @@ PRE_SIGNAL_TEXT_ID = "pre_lobby_signal_v0"
 PRE_LOBBY_MODULE_TEXT_ID = "pre_lobby_module_v1"
 PRE_SIGNAL_SCORE = {
     "Yes — we need to develop collective dynamics": 1,
-    "Maybe — depending on conditions": 0,
+    "Upon condition — depending on conditions": 0,
     "No — for other reasons, stop here": -1,
 }
 AUTH_LOGGER = get_module_logger("iceicebaby.auth")
@@ -240,7 +240,7 @@ def main() -> None:
                     return 1
                 if txt.startswith("no"):
                     return -1
-                if "maybe" in txt:
+                if "upon condition" in txt or "depending on conditions" in txt or "depending upon conditions" in txt or "condition" in txt:
                     return 0
                 return None
 
@@ -290,16 +290,37 @@ def main() -> None:
 
             comment_existing = str(answers.get(q.id, {}).get("comment", "") or "")
             comment = comment_existing
-            maybe_selected = False
+            conditional_selected = False
             other_selected = False
             if isinstance(choice, list):
-                maybe_selected = any("maybe" in str(x).lower() for x in choice)
+                conditional_selected = any(
+                    any(
+                        marker in str(x).lower()
+                        for marker in [
+                            "upon condition",
+                            "maybe",
+                            "depending on conditions",
+                            "depending upon conditions",
+                            "condition",
+                        ]
+                    )
+                    for x in choice
+                )
                 other_selected = "Other" in choice
             else:
-                maybe_selected = "maybe" in str(choice).lower()
+                conditional_selected = any(
+                    marker in str(choice).lower()
+                    for marker in [
+                        "upon condition",
+                        "maybe",
+                        "depending on conditions",
+                        "depending upon conditions",
+                        "condition",
+                    ]
+                )
                 other_selected = choice == "Other"
 
-            if q.show_text_field and (maybe_selected or other_selected):
+            if q.show_text_field and (conditional_selected or other_selected):
                 comment = st.text_input(
                     "Condition or comment",
                     value=comment_existing,

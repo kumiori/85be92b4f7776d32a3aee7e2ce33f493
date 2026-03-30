@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import altair as alt
 import pandas as pd
@@ -75,6 +75,25 @@ EMOTION_CLUSTER_COLOURS = {
     "Other": "#757575",
 }
 
+REQUIRED_REPORT_ITEMS = [
+    "ARRIVAL_EMOTION",
+    "ENVIRONMENT_CHANGE_EMOTION",
+    "SOCIETAL_CHANGE_EMOTION",
+    "COLLABORATION_READINESS",
+    "IRREVERSIBILITY_AFFECT",
+    "PERSONAL_AGENCY",
+    "EPISTEMIC_FRAME",
+    "ORGANISATION_SIGNAL",
+    "PRIORITY_AFTER_NO_RETURN",
+    "PROXIMITY",
+    "SHIFT_AFTER_PANEL",
+    "ONE_WORD_TRACE",
+    "CONTACT_METHOD",
+    "FINAL_FEEDBACK",
+    "PERCEPTION_ENTRY",
+    "WHAT_ENABLES_ACTION",
+]
+
 
 def _slugify(value: str) -> str:
     return "-".join(
@@ -94,6 +113,25 @@ def _sessions_cache() -> List[Dict[str, Any]]:
         sessions,
         key=lambda s: (int(s.get("session_order", 999)), str(s.get("session_code", "")).upper()),
     )
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def _all_session_payloads_and_rows() -> Tuple[Dict[str, Dict[str, Any]], Dict[str, List[Dict[str, Any]]]]:
+    payloads: Dict[str, Dict[str, Any]] = {}
+    rows_by_session: Dict[str, List[Dict[str, Any]]] = {}
+    for session in _sessions_cache():
+        session_code = str(session.get("session_code") or "")
+        if not session_code:
+            continue
+        slug = _slugify(session_code)
+        try:
+            payloads[session_code] = get_overview_payload(slug)
+            _, rows = fetch_session_responses(slug)
+            rows_by_session[session_code] = rows
+        except Exception:
+            payloads[session_code] = {}
+            rows_by_session[session_code] = []
+    return payloads, rows_by_session
 
 
 @st.cache_data(ttl=300, show_spinner=False)
@@ -171,9 +209,32 @@ def _find_question(payload: Dict[str, Any], item_id: str) -> Dict[str, Any]:
     return {}
 
 
+def _find_question_across_payloads(
+    payloads: Dict[str, Dict[str, Any]],
+    item_id: str,
+) -> Tuple[Dict[str, Any], str]:
+    for session_code, payload in payloads.items():
+        for q in payload.get("questions", []) or []:
+            if str(q.get("item_id") or "") == item_id:
+                return q, session_code
+    return {}, ""
+
+
 def _question_prompt(item_id: str) -> str:
     q = QUESTION_BY_ID.get(item_id)
     return str(getattr(q, "prompt", item_id))
+
+
+def _feedback_label(raw: str) -> str:
+    token = str(raw or "").strip().lower()
+    mapping = {
+        "faces:0": "😞 Very difficult",
+        "faces:1": "🙁 Difficult",
+        "faces:2": "😐 Mixed",
+        "faces:3": "🙂 Positive",
+        "faces:4": "😄 Very positive",
+    }
+    return mapping.get(token, raw)
 
 
 def _emotion_cluster(label: str) -> str:
@@ -200,7 +261,7 @@ def _data_chip(label: str, value: Any) -> str:
 
 def _render_signal_glyphs(counts: Dict[str, int]) -> None:
     yes_n = int(counts.get("yes", 0))
-    maybe_n = int(counts.get("maybe", 0))
+    conditional_n = int(counts.get("upon_condition", 0))
     no_n = int(counts.get("no", 0))
 
     def _block(colour: str, n: int) -> str:
@@ -215,12 +276,60 @@ def _render_signal_glyphs(counts: Dict[str, int]) -> None:
     html = (
         "<div style='display:flex;justify-content:center;flex-wrap:wrap;align-items:center;gap:8px'>"
         f"{_block('#2e7d32', yes_n)}"
-        f"{_block('#fbc02d', maybe_n)}"
+        f"{_block('#fbc02d', conditional_n)}"
         f"{_block('#c62828', no_n)}"
         "</div>"
     )
     st.markdown(html, unsafe_allow_html=True)
-    st.caption("Legend: green = yes · yellow = maybe · red = no")
+    st.caption("Legend: green = yes · yellow = upon condition · red = no")
+
+
+def _counts_dataframe(counts: Dict[str, int], *, transform=None) -> pd.DataFrame:
+    rows = []
+    for key, value in (counts or {}).items():
+        label = transform(str(key)) if transform else str(key)
+        rows.append({"label": label, "value": int(value)})
+    rows.sort(key=lambda x: x["value"], reverse=True)
+    return pd.DataFrame(rows)
+
+
+def _render_counts_chart(
+    title: str,
+    counts: Dict[str, int],
+    *,
+    horizontal: bool = True,
+    transform=None,
+) -> None:
+    if not counts:
+        st.caption(f"{title}: no data yet.")
+        return
+    df = _counts_dataframe(counts, transform=transform)
+    if df.empty:
+        st.caption(f"{title}: no data yet.")
+        return
+    if horizontal:
+        chart = (
+            alt.Chart(df)
+            .mark_bar()
+            .encode(
+                x=alt.X("value:Q", title="Count", axis=alt.Axis(format="d")),
+                y=alt.Y("label:N", sort="-x", title=None),
+                tooltip=["label:N", alt.Tooltip("value:Q", format=".0f")],
+            )
+            .properties(title=title, height=max(220, 34 * len(df)))
+        )
+    else:
+        chart = (
+            alt.Chart(df)
+            .mark_bar()
+            .encode(
+                x=alt.X("label:N", title=None, sort="-y"),
+                y=alt.Y("value:Q", title="Count", axis=alt.Axis(format="d")),
+                tooltip=["label:N", alt.Tooltip("value:Q", format=".0f")],
+            )
+            .properties(title=title, height=260)
+        )
+    st.altair_chart(chart, width="stretch")
 
 
 def _render_emotion_field(
@@ -501,10 +610,12 @@ def render_block_3_decision(payload: Dict[str, Any]) -> None:
     org = _find_question(payload, "ORGANISATION_SIGNAL")
     _render_signal_glyphs(org.get("counts", {}))
     yes = int(org.get("counts", {}).get("yes", 0))
-    maybe = int(org.get("counts", {}).get("maybe", 0))
+    conditional = int(org.get("counts", {}).get("upon_condition", 0))
     no = int(org.get("counts", {}).get("no", 0))
     st.markdown(
-        _data_chip("yes", yes) + _data_chip("maybe", maybe) + _data_chip("no", no),
+        _data_chip("yes", yes)
+        + _data_chip("upon condition", conditional)
+        + _data_chip("no", no),
         unsafe_allow_html=True,
     )
     st.markdown(
@@ -625,13 +736,27 @@ def render_personalised_relation(
             answer = str(_extract_choice(org_row.get("value_json")) or org_row.get("value_label") or "")
             st.caption(f"You: {answer}")
             txt = answer.lower()
-            bucket = "yes" if "yes" in txt else ("maybe" if "maybe" in txt else ("no" if "no" in txt else "unknown"))
+            bucket = (
+                "yes"
+                if "yes" in txt
+                else (
+                    "upon_condition"
+                    if (
+                        "upon condition" in txt
+                        or "maybe" in txt
+                        or "depending on conditions" in txt
+                        or "depending upon conditions" in txt
+                        or "condition" in txt
+                    )
+                    else ("no" if "no" in txt else "unknown")
+                )
+            )
             st.caption(
                 _comparison_label_single(
                     bucket,
                     {
                         "yes": int(org.get("counts", {}).get("yes", 0)),
-                        "maybe": int(org.get("counts", {}).get("maybe", 0)),
+                        "upon_condition": int(org.get("counts", {}).get("upon_condition", 0)),
                         "no": int(org.get("counts", {}).get("no", 0)),
                     },
                 )
@@ -687,6 +812,128 @@ def render_closing_and_cta() -> None:
     c2.page_link("pages/01_Login.py", label="Join the platform", icon="🔑")
     c3.button("Contact organisers", disabled=True, width="stretch")
     st.markdown("</div>", unsafe_allow_html=True)
+
+
+def _latest_player_answer_text(
+    rows: List[Dict[str, Any]],
+    item_id: str,
+    player_page_id: str,
+    device_id: str,
+) -> str:
+    row = _latest_player_response(rows, item_id, player_page_id, device_id)
+    if not row:
+        return ""
+    choice = _extract_choice(row.get("value_json"))
+    if isinstance(choice, list):
+        return ", ".join(str(x) for x in choice if str(x).strip())
+    return str(choice or row.get("value_label") or "").strip()
+
+
+def render_remaining_questions(
+    payloads_by_session: Dict[str, Dict[str, Any]],
+    rows_by_session: Dict[str, List[Dict[str, Any]]],
+    player_page_id: str,
+    device_id: str,
+) -> None:
+    st.markdown("<div class='report-section'>", unsafe_allow_html=True)
+    st.markdown("<div class='report-title'>Further signals</div>", unsafe_allow_html=True)
+    st.markdown(
+        "<div class='report-body'>"
+        "The following section appends the remaining questions and data currently available across sessions."
+        "</div>",
+        unsafe_allow_html=True,
+    )
+
+    already_rendered = {
+        "ARRIVAL_EMOTION",
+        "ENVIRONMENT_CHANGE_EMOTION",
+        "SOCIETAL_CHANGE_EMOTION",
+        "ORGANISATION_SIGNAL",
+    }
+    appended_items = [item for item in REQUIRED_REPORT_ITEMS if item not in already_rendered]
+
+    for item_id in appended_items:
+        block, session_code = _find_question_across_payloads(payloads_by_session, item_id)
+        session_rows = rows_by_session.get(session_code, [])
+        prompt = _question_prompt(item_id)
+
+        st.markdown(f"### {prompt}")
+        if session_code:
+            st.caption(f"Session: {session_code} · Item ID: {item_id}")
+        else:
+            st.caption(f"Item ID: {item_id}")
+
+        personal_answer = _latest_player_answer_text(
+            session_rows, item_id, player_page_id, device_id
+        )
+        if personal_answer:
+            st.markdown(
+                f"<div class='report-body'><strong>Your latest response:</strong> <code>{personal_answer}</code></div>",
+                unsafe_allow_html=True,
+            )
+
+        if not block:
+            st.info("No aggregate block is currently available for this question.")
+            continue
+
+        qtype = str(block.get("question_type") or "")
+        counts = block.get("counts", {}) if isinstance(block.get("counts"), dict) else {}
+        entries = block.get("entries", []) or []
+
+        if item_id == "FINAL_FEEDBACK":
+            _render_counts_chart(
+                "Feedback distribution",
+                counts,
+                transform=_feedback_label,
+            )
+            st.caption("Legend: higher face values indicate a more positive experience.")
+        elif item_id == "ORGANISATION_SIGNAL":
+            _render_signal_glyphs(counts)
+        elif qtype == "multi":
+            personal_choices = _normalise_choices(
+                (_latest_player_response(session_rows, item_id, player_page_id, device_id) or {}).get("value_json")
+            )
+            _render_emotion_field(
+                prompt,
+                counts,
+                personal_choices=personal_choices,
+                height=240,
+            )
+        elif qtype == "text":
+            if entries:
+                for entry in entries[:12]:
+                    st.markdown(
+                        f"- `{entry.get('t', '')}` · {entry.get('text', '')}"
+                    )
+            else:
+                st.caption("No text entries yet.")
+        else:
+            _render_counts_chart(prompt, counts)
+
+        chips = []
+        if block.get("n_responses") is not None:
+            chips.append(_data_chip("Responses", block.get("n_responses")))
+        if block.get("n_events") is not None:
+            chips.append(_data_chip("Events", block.get("n_events")))
+        if chips:
+            st.markdown("".join(chips), unsafe_allow_html=True)
+        st.markdown("<div style='height:1.6rem'></div>", unsafe_allow_html=True)
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
+def render_raw_json_panel(
+    payloads_by_session: Dict[str, Dict[str, Any]],
+    rows_by_session: Dict[str, List[Dict[str, Any]]],
+) -> None:
+    with st.expander("Raw JSON data", expanded=False):
+        st.markdown(
+            "Collapsed developer panel containing the raw aggregate payloads and normalised response rows."
+        )
+        st.subheader("Aggregate payloads by session")
+        st.json(payloads_by_session)
+        st.subheader("Normalised rows by session")
+        st.json(rows_by_session)
     st.markdown("</div>", unsafe_allow_html=True)
 
 
@@ -705,6 +952,7 @@ def main() -> None:
 
     payload = get_overview_payload(selected_slug)
     _, rows = fetch_session_responses(selected_slug)
+    payloads_by_session, rows_by_session = _all_session_payloads_and_rows()
     player_page_id = str(st.session_state.get("player_page_id") or "")
     device_id = str(st.session_state.get("anon_token") or "")
     participants = _participants_snapshot()
@@ -716,8 +964,15 @@ def main() -> None:
     render_block_4_deepening(payload, rows, player_page_id, device_id)
     render_block_5_societal_projection(payload, rows, player_page_id, device_id)
     render_personalised_relation(payload, rows, player_page_id, device_id)
+    render_remaining_questions(
+        payloads_by_session,
+        rows_by_session,
+        player_page_id,
+        device_id,
+    )
     render_gallery()
     render_closing_and_cta()
+    render_raw_json_panel(payloads_by_session, rows_by_session)
 
     log_event(
         module="iceicebaby.report",
