@@ -115,7 +115,7 @@ def _render_signal_timeline(title: str, timeline: list[dict]) -> None:
 
 def _render_signal_glyphs(counts: dict) -> None:
     yes_n = int((counts or {}).get("yes", 0))
-    maybe_n = int((counts or {}).get("maybe", 0))
+    maybe_n = int((counts or {}).get("upon_condition", 0))
     no_n = int((counts or {}).get("no", 0))
 
     def _block(color: str, n: int) -> str:
@@ -135,7 +135,7 @@ def _render_signal_glyphs(counts: dict) -> None:
         "</div>"
     )
     st.markdown(html, unsafe_allow_html=True)
-    st.caption("Legend: green = yes · yellow = maybe · red = no")
+    st.caption("Legend: green = yes · yellow = upon condition · red = no")
 
 
 def _question_lookup(payload: dict) -> dict[str, dict]:

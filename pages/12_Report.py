@@ -261,7 +261,7 @@ def _data_chip(label: str, value: Any) -> str:
 
 def _render_signal_glyphs(counts: Dict[str, int]) -> None:
     yes_n = int(counts.get("yes", 0))
-    maybe_n = int(counts.get("maybe", 0))
+    conditional_n = int(counts.get("upon_condition", 0))
     no_n = int(counts.get("no", 0))
 
     def _block(colour: str, n: int) -> str:
@@ -276,12 +276,12 @@ def _render_signal_glyphs(counts: Dict[str, int]) -> None:
     html = (
         "<div style='display:flex;justify-content:center;flex-wrap:wrap;align-items:center;gap:8px'>"
         f"{_block('#2e7d32', yes_n)}"
-        f"{_block('#fbc02d', maybe_n)}"
+        f"{_block('#fbc02d', conditional_n)}"
         f"{_block('#c62828', no_n)}"
         "</div>"
     )
     st.markdown(html, unsafe_allow_html=True)
-    st.caption("Legend: green = yes · yellow = maybe · red = no")
+    st.caption("Legend: green = yes · yellow = upon condition · red = no")
 
 
 def _counts_dataframe(counts: Dict[str, int], *, transform=None) -> pd.DataFrame:
@@ -610,10 +610,12 @@ def render_block_3_decision(payload: Dict[str, Any]) -> None:
     org = _find_question(payload, "ORGANISATION_SIGNAL")
     _render_signal_glyphs(org.get("counts", {}))
     yes = int(org.get("counts", {}).get("yes", 0))
-    maybe = int(org.get("counts", {}).get("maybe", 0))
+    conditional = int(org.get("counts", {}).get("upon_condition", 0))
     no = int(org.get("counts", {}).get("no", 0))
     st.markdown(
-        _data_chip("yes", yes) + _data_chip("maybe", maybe) + _data_chip("no", no),
+        _data_chip("yes", yes)
+        + _data_chip("upon condition", conditional)
+        + _data_chip("no", no),
         unsafe_allow_html=True,
     )
     st.markdown(
@@ -734,13 +736,27 @@ def render_personalised_relation(
             answer = str(_extract_choice(org_row.get("value_json")) or org_row.get("value_label") or "")
             st.caption(f"You: {answer}")
             txt = answer.lower()
-            bucket = "yes" if "yes" in txt else ("maybe" if "maybe" in txt else ("no" if "no" in txt else "unknown"))
+            bucket = (
+                "yes"
+                if "yes" in txt
+                else (
+                    "upon_condition"
+                    if (
+                        "upon condition" in txt
+                        or "maybe" in txt
+                        or "depending on conditions" in txt
+                        or "depending upon conditions" in txt
+                        or "condition" in txt
+                    )
+                    else ("no" if "no" in txt else "unknown")
+                )
+            )
             st.caption(
                 _comparison_label_single(
                     bucket,
                     {
                         "yes": int(org.get("counts", {}).get("yes", 0)),
-                        "maybe": int(org.get("counts", {}).get("maybe", 0)),
+                        "upon_condition": int(org.get("counts", {}).get("upon_condition", 0)),
                         "no": int(org.get("counts", {}).get("no", 0)),
                     },
                 )

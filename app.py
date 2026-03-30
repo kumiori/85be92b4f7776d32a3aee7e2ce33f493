@@ -119,6 +119,11 @@ def _lab_pages() -> list[st.Page]:
             icon=":material/view_quilt:",
         ),
         st.Page(
+            "pages/test_git_pulse.py",
+            title="Test · Git pulse",
+            icon=":material/show_chart:",
+        ),
+        st.Page(
             "pages/test_highlight_playground.py",
             title="Test · Highlight playground",
             icon=":material/draw:",
