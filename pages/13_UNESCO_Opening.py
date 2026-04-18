@@ -97,8 +97,8 @@ AFFILIATION_LINE = (
     "<sup>2</sup>: https://photo-philo-delhom.com • "
     "<sup>3</sup>: Institut de Recherche pour le Développement, Université Grenoble-Alpes, CNRS, Grenoble • "
     "<sup>4</sup>: Fabrique d'Innovation pour les Transitions, General Secretariat of the Ministry of Ecological Transition • "
-    "<sup>5</sup>: Institut des Sciences de la Terre and Institut des Géosciences de l’Environnement, Grenoble • "
-    "<sup>6</sup>: Institut ∂'Alembert, CNRS Sorbonne Université, Paris • "
+    "<sup>5</sup>: Institut des Sciences de la Terre and Institut des Géosciences de l’Environnement, Université Grenoble-Alpes, Grenoble • "
+    "<sup>6</sup>: Institut ∂'Alembert, CNRS, Sorbonne Université, Paris • "
 )
 
 CORE_OBJECTIVE_PARAGRAPHS = [
