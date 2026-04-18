@@ -87,7 +87,7 @@ OPENING_PARAGRAPHS = [
 
 CONTRIBUTOR_LINE = (
     "Bruno Doucey<sup>1</sup>, poet, writer, and editor; Jean-François Delhom<sup>2</sup>, "
-    "landscape photographer; Ignacio Palomo<sup>3</sup>, researcher in environmental sciences; Leopold Bouzard<sup>4</sup>, researcher in behavioural sciences; "
+    "landscape photographer; Ignacio Palomo<sup>3</sup>, researcher and lecturer in environmental sciences and social-ecological systems; Leopold Bouzard<sup>4</sup>, researcher in behavioural sciences; "
     "Véronique Dansereau<sup>5</sup>, researcher and lecturer on mechanical interactions "
     "in complex geophysical media; and Andrés León Baldelli<sup>6</sup>, researcher in "
     "fracture mechanics and irreversible evolutionary systems."
