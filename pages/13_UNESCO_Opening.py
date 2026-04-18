@@ -86,19 +86,19 @@ OPENING_PARAGRAPHS = [
 ]
 
 CONTRIBUTOR_LINE = (
-    "Bruno Doucey<sup>1</sup>, poet, writer, editor; Jean-François Delhom<sup>2</sup>, "
-    "landscape photographer; Leopold Bouzard<sup>3</sup>, behavioural sciences; "
-    "Véronique Dansereau<sup>4</sup>, researcher and lecturer on mechanical interactions "
-    "in complex geophysical media; and Andrés León Baldelli<sup>5</sup>, researcher in "
-    "theoretical modelling of fracture mechanics."
+    "Bruno Doucey<sup>1</sup>, poet, writer, and editor; Jean-François Delhom<sup>2</sup>, "
+    "landscape photographer; Ignacio Palomo<sup>3</sup>, researcher in environmental sciences; Leopold Bouzard<sup>4</sup>, researcher in behavioural sciences; "
+    "Véronique Dansereau<sup>5</sup>, researcher and lecturer on mechanical interactions "
+    "in complex geophysical media; and Andrés León Baldelli<sup>6</sup>, researcher in "
+    "fracture mechanics and irreversible evolutionary systems."
 )
-
 AFFILIATION_LINE = (
-    "<sup>1</sup> text required. "
-    "<sup>2</sup> text required. "
-    "<sup>3</sup> Fabrique d'Innovation pour les Transitions, General Secretariat of the Ministry of Ecological Transition. "
-    "<sup>4</sup> Institut des Sciences de la Terre (ISTerre) and the Institut des Géosciences de l’Environnement (IGE), Grenoble. "
-    "<sup>5</sup> Institut ∂'Alembert, CNRS Sorbonne Université, Paris."
+    "<sup>1</sup>: https://editions-brunodoucey.com • "
+    "<sup>2</sup>: https://photo-philo-delhom.com • "
+    "<sup>3</sup>: Institut de Recherche pour le Développement, Université Grenoble-Alpes, CNRS, Grenoble • "
+    "<sup>4</sup>: Fabrique d'Innovation pour les Transitions, General Secretariat of the Ministry of Ecological Transition • "
+    "<sup>5</sup>: Institut des Sciences de la Terre and Institut des Géosciences de l’Environnement, Grenoble • "
+    "<sup>6</sup>: Institut ∂'Alembert, CNRS Sorbonne Université, Paris • "
 )
 
 CORE_OBJECTIVE_PARAGRAPHS = [
@@ -732,6 +732,19 @@ margin-bottom: 40px;
         ):
             st.caption("Opening")
             _render_prose(OPENING_PARAGRAPHS)
+        with stylable_container(
+            key="unesco-opening-contributors",
+            css_styles=CARD_SOFT_CSS + "\nmargin-bottom: 40px;",
+        ):
+            st.caption("The session connected the voices and works of")
+            st.markdown(
+                f"<p class='unesco-body' style='max-width:none;'>{CONTRIBUTOR_LINE}</p>",
+                unsafe_allow_html=True,
+            )
+            st.markdown(
+                f"<p class='unesco-note' style='max-width:none;'>{AFFILIATION_LINE}</p>",
+                unsafe_allow_html=True,
+            )
     with right:
         with stylable_container(
             key="unesco-opening-metrics",
@@ -769,19 +782,6 @@ padding: 28px;
                 st.caption("🧊 indicates anonymous participant")
             else:
                 st.caption("No participant snapshot is currently available.")
-    with stylable_container(
-        key="unesco-opening-contributors",
-        css_styles=CARD_SOFT_CSS + "\nmargin-bottom: 40px;",
-    ):
-        st.caption("The session connected the voices and works of")
-        st.markdown(
-            f"<p class='unesco-body' style='max-width:none;'>{CONTRIBUTOR_LINE}</p>",
-            unsafe_allow_html=True,
-        )
-        st.markdown(
-            f"<p class='unesco-note' style='max-width:none;'>{AFFILIATION_LINE}</p>",
-            unsafe_allow_html=True,
-        )
 
 
 def render_full_image(
