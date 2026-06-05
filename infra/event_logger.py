@@ -67,6 +67,18 @@ def _extract_rich_text(value: Any) -> str:
     return "".join(out).strip()
 
 
+def _extract_select_or_text(value: Any) -> str:
+    if not isinstance(value, dict):
+        return ""
+    selected = value.get("select")
+    if isinstance(selected, dict):
+        return str(selected.get("name") or "")
+    status_val = value.get("status")
+    if isinstance(status_val, dict):
+        return str(status_val.get("name") or "")
+    return _extract_rich_text(value)
+
+
 def _find_prop(props: Dict[str, Any], expected: str, ptype: Optional[str] = None) -> str:
     meta = props.get(expected)
     if isinstance(meta, dict) and (ptype is None or meta.get("type") == ptype):
@@ -231,6 +243,94 @@ def log_event(
         repo.client.pages.create(parent={"database_id": db_id}, properties=properties)
     except Exception as exc:
         logger.error("Notion write failure for event stream: %s", exc)
+
+
+def list_logged_events(
+    *,
+    page: str = "",
+    session_id: str = "",
+    limit: int = 100,
+) -> list[Dict[str, Any]]:
+    info = _event_repo_info()
+    if not info.get("enabled"):
+        return []
+    repo = info.get("repo")
+    db_id = str(info.get("db_id") or "")
+    props = info.get("props", {}) if isinstance(info.get("props"), dict) else {}
+    if not repo or not db_id:
+        return []
+
+    timestamp_prop = _find_prop(props, "timestamp", "date") or _find_prop(
+        props, "submitted_at", "date"
+    )
+    player_prop = _find_prop(props, "player", "relation")
+    session_prop = _find_prop(props, "session", "relation")
+    event_type_prop = _find_prop(props, "event_type", "select") or _find_prop(
+        props, "event_type", "rich_text"
+    )
+    item_prop = _find_prop(props, "item_id", "rich_text")
+    value_label_prop = _find_prop(props, "value_label", "rich_text")
+    metadata_prop = _find_prop(props, "metadata_json", "rich_text")
+    page_prop = _find_prop(props, "page", "rich_text")
+    device_prop = _find_prop(props, "device_id", "rich_text")
+    status_prop = _find_prop(props, "status", "select") or _find_prop(
+        props, "status", "rich_text"
+    )
+
+    filters: list[Dict[str, Any]] = []
+    if page and page_prop:
+        filters.append({"property": page_prop, "rich_text": {"equals": page}})
+    if session_id and session_prop:
+        filters.append({"property": session_prop, "relation": {"contains": session_id}})
+
+    query_kwargs: Dict[str, Any] = {
+        "page_size": limit,
+        "sorts": [{"property": timestamp_prop, "direction": "descending"}]
+        if timestamp_prop
+        else [{"timestamp": "created_time", "direction": "descending"}],
+    }
+    if filters:
+        query_kwargs["filter"] = {"and": filters} if len(filters) > 1 else filters[0]
+
+    try:
+        payload = repo.client.data_sources.query(data_source_id=db_id, **query_kwargs)
+    except Exception:
+        return []
+
+    rows: list[Dict[str, Any]] = []
+    for page_row in payload.get("results", []):
+        row_props = page_row.get("properties", {})
+        metadata_raw = _extract_rich_text(row_props.get(metadata_prop)) if metadata_prop else ""
+        try:
+            metadata = json.loads(metadata_raw) if metadata_raw else {}
+        except Exception:
+            metadata = {"raw": metadata_raw}
+        rows.append(
+            {
+                "id": str(page_row.get("id", "")),
+                "event_type": _extract_select_or_text(row_props.get(event_type_prop))
+                if event_type_prop
+                else "",
+                "page": _extract_rich_text(row_props.get(page_prop)) if page_prop else "",
+                "status": _extract_select_or_text(row_props.get(status_prop)) if status_prop else "",
+                "item_id": _extract_rich_text(row_props.get(item_prop)) if item_prop else "",
+                "value_label": _extract_rich_text(row_props.get(value_label_prop))
+                if value_label_prop
+                else "",
+                "device_id": _extract_rich_text(row_props.get(device_prop)) if device_prop else "",
+                "session_id": row_props.get(session_prop, {}).get("relation", [])[0].get("id", "")
+                if session_prop and row_props.get(session_prop, {}).get("relation")
+                else "",
+                "player_id": row_props.get(player_prop, {}).get("relation", [])[0].get("id", "")
+                if player_prop and row_props.get(player_prop, {}).get("relation")
+                else "",
+                "timestamp": row_props.get(timestamp_prop, {}).get("date", {}).get("start", "")
+                if timestamp_prop
+                else "",
+                "metadata": metadata,
+            }
+        )
+    return rows
 
 
 def role_claim_cooldown_state(
