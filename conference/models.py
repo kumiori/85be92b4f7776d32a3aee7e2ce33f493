@@ -91,7 +91,7 @@ STEP_COPY: Dict[str, Dict[str, str]] = {
         "note": "Anonymous first. You can leave an alias or contact at the end if you wish.",
     },
     "role": {
-        "title": "Who are you?",
+        "title": "What is your point of view?",
         "body": "Every problem looks different from theory, numerics, experiments, or data.",
         "cta": "Continue",
     },
@@ -193,6 +193,7 @@ SESSION_QUESTIONS: List[Dict[str, Any]] = [
             {"value": "data_ai", "label": "Data / AI"},
             {"value": "industry", "label": "Industry"},
             {"value": "other", "label": "Other"},
+            {"value": "depends", "label": "Depends on the day"},
         ],
         "required": True,
     },
