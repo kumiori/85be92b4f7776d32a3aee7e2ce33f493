@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import uuid
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -24,7 +24,7 @@ from conference.flow import (
     step_is_complete,
     update_draft,
 )
-from conference.models import STEP_COPY, field_option_label_map, mode_card_rows, question_by_step
+from conference.models import FLOW_MODES, STEP_COPY, field_option_label_map, mode_card_rows, question_by_step
 from conference.repo import emoji_suffix
 from conference.ui import apply_conference_styles, conference_header, summary_card
 from infra.key_codec import generate_hex_key, hex_to_emoji, normalize_access_key, split_emoji_symbols
@@ -34,11 +34,39 @@ from ui import set_page, sidebar_debug_state
 PAGE_KEY = "pisa-meeting"
 TEXT_ID = "pisa_session_v2"
 IDENTITY_STEP = "identity"
+ENTRY_KEY = "conference_entry_mode"
+LOGIN_ERROR_KEY = "conference_login_error"
+PISA_OVERVIEW_PAGE = "pages/17_Pisa_Overview.py"
 
 
 def _ensure_local_state() -> None:
     init_flow_state()
     st.session_state.setdefault("conference_device_id", uuid.uuid4().hex[:16])
+    st.session_state.setdefault(ENTRY_KEY, "")
+    st.session_state.setdefault(LOGIN_ERROR_KEY, "")
+
+
+def _set_entry_mode(mode: str) -> None:
+    st.session_state[ENTRY_KEY] = mode
+
+
+def _entry_mode() -> str:
+    return str(st.session_state.get(ENTRY_KEY, "") or "").strip()
+
+
+def _clear_login_error() -> None:
+    st.session_state[LOGIN_ERROR_KEY] = ""
+
+
+def _set_login_error(message: str) -> None:
+    st.session_state[LOGIN_ERROR_KEY] = message
+
+
+def _mode_label(mode: str) -> str:
+    spec = FLOW_MODES.get(str(mode or "").strip(), {})
+    title = str(spec.get("title") or "Quick pulse")
+    detail = str(spec.get("detail") or "")
+    return f"{title} · {detail}" if detail else title
 
 
 def _infer_mode(submission: Dict[str, Any]) -> str:
@@ -49,19 +77,14 @@ def _infer_mode(submission: Dict[str, Any]) -> str:
     return "quick"
 
 
-def _hydrate_existing_submission(repo: Any, session_id: str) -> None:
-    if st.session_state.get("conference_hydrated"):
-        return
-    draft = get_draft()
-    raw_key = str(draft.get("access_key") or st.query_params.get("key", "") or "").strip()
-    if not raw_key:
-        st.session_state["conference_hydrated"] = True
-        return
+def _load_submission_for_key(repo: Any, session_id: str, raw_key: str) -> tuple[str | None, Dict[str, Any] | None]:
+    token = str(raw_key or "").strip()
+    if not token:
+        return None, None
     try:
-        access_key = normalize_access_key(raw_key)
+        access_key = normalize_access_key(token)
     except ValueError:
-        st.session_state["conference_hydrated"] = True
-        return
+        return None, None
     access_key_hash = repo.access_key_hash(access_key)
     cache_key = f"{session_id}:{access_key_hash}"
     submission = st.session_state.get("conference_submission_cache")
@@ -72,7 +95,19 @@ def _hydrate_existing_submission(repo: Any, session_id: str) -> None:
         )
         st.session_state["conference_submission_cache_key"] = cache_key
         st.session_state["conference_submission_cache"] = submission
-    if submission:
+    return access_key, submission
+
+
+def _hydrate_existing_submission(repo: Any, session_id: str) -> None:
+    if st.session_state.get("conference_hydrated"):
+        return
+    draft = get_draft()
+    raw_key = str(draft.get("access_key") or st.query_params.get("key", "") or "").strip()
+    if not raw_key:
+        st.session_state["conference_hydrated"] = True
+        return
+    access_key, submission = _load_submission_for_key(repo, session_id, raw_key)
+    if access_key and submission:
         hydrated = {
             key: value
             for key, value in submission.items()
@@ -81,12 +116,19 @@ def _hydrate_existing_submission(repo: Any, session_id: str) -> None:
         hydrated["mode"] = str(submission.get("mode") or _infer_mode(submission))
         hydrated["access_key"] = access_key
         update_draft(**hydrated)
-    else:
+        repo.upsert_conference_player(
+            session_id=session_id,
+            access_key=access_key,
+            payload=build_session_payload(get_draft()),
+        )
+        if not get_draft().get("submitted"):
+            _set_entry_mode("dashboard")
+    elif access_key:
         update_draft(access_key=access_key)
     st.session_state["conference_hydrated"] = True
 
 
-def _advance_step(step: str) -> None:
+def _advance_step() -> None:
     next_step()
 
 
@@ -100,7 +142,7 @@ def _labels_for(field: str, value: Any) -> str:
     return str(value or "No answer")
 
 
-def _ensure_access_key(repo: Any) -> str:
+def _ensure_access_key() -> str:
     access_key = str(get_draft().get("access_key") or "").strip()
     if access_key:
         return access_key
@@ -111,17 +153,22 @@ def _ensure_access_key(repo: Any) -> str:
 
 def _submit(repo: Any, session: Dict[str, Any]) -> None:
     payload = build_session_payload(get_draft())
-    access_key = _ensure_access_key(repo)
+    access_key = _ensure_access_key()
     access_key_hash = repo.access_key_hash(access_key)
     access_key_last4 = emoji_suffix(access_key)
-    repo.save_session_response_set(
+    player = repo.upsert_conference_player(
         session_id=session["id"],
-        player_id=None,
-        text_id=TEXT_ID,
-        device_id=str(st.session_state.get("conference_device_id", "")),
-        access_key_hash=access_key_hash,
-        access_key_last4=access_key_last4,
+        access_key=access_key,
         payload=payload,
+    )
+    repo.save_session_response_set(
+        session["id"],
+        str((player or {}).get("id") or ""),
+        TEXT_ID,
+        str(st.session_state.get("conference_device_id", "")),
+        access_key_hash,
+        access_key_last4,
+        payload,
     )
     st.session_state["conference_submission_cache_key"] = f"{session['id']}:{access_key_hash}"
     st.session_state["conference_submission_cache"] = payload | {
@@ -135,7 +182,7 @@ def _submit(repo: Any, session: Dict[str, Any]) -> None:
 def _open_confirm_send_dialog(repo: Any, session: Dict[str, Any]) -> None:
     @st.dialog("Save this key")
     def _confirm_send_dialog() -> None:
-        access_key = _ensure_access_key(repo)
+        access_key = _ensure_access_key()
         emoji_key = hex_to_emoji(access_key)
         emoji_symbols = split_emoji_symbols(emoji_key)
         short_emoji = "".join(emoji_symbols[-4:]) if len(emoji_symbols) >= 4 else emoji_key
@@ -182,18 +229,85 @@ def _open_confirm_send_dialog(repo: Any, session: Dict[str, Any]) -> None:
     _confirm_send_dialog()
 
 
-def _select_mode(mode: str, session_id: str) -> None:
-    update_draft(mode=mode)
-    set_step(first_active_question_step())
+def _start_new_participant() -> None:
+    reset_flow_state()
+    _clear_login_error()
+    _set_entry_mode("new")
     st.rerun()
 
 
-def _render_welcome(session: Dict[str, Any]) -> None:
+def _open_existing_login() -> None:
+    _clear_login_error()
+    _set_entry_mode("existing")
+
+
+def _login_with_key(repo: Any, session_id: str, raw_key: str) -> None:
+    access_key, submission = _load_submission_for_key(repo, session_id, raw_key)
+    if not access_key:
+        _set_login_error("This Pisa key could not be decoded.")
+        return
+    update_draft(access_key=access_key)
+    if not submission:
+        _set_login_error("No Pisa submission was found for this key yet.")
+        return
+    hydrated = {
+        key: value
+        for key, value in submission.items()
+        if key in get_draft()
+    }
+    hydrated["mode"] = str(submission.get("mode") or _infer_mode(submission))
+    hydrated["access_key"] = access_key
+    update_draft(**hydrated)
+    repo.upsert_conference_player(
+        session_id=session_id,
+        access_key=access_key,
+        payload=build_session_payload(get_draft()),
+    )
+    _clear_login_error()
+    _set_entry_mode("dashboard")
+    st.rerun()
+
+
+def _resume_in_mode(mode: str) -> None:
+    update_draft(mode=mode, submitted=False)
+    set_step(first_active_question_step())
+    _set_entry_mode("new")
+    st.rerun()
+
+
+def _render_entry(session: Dict[str, Any], repo: Any) -> None:
+    conference_header("Orchestrating solvers for real problems", "", step="")
+    st.markdown("### Anonymous first.")
+    st.markdown("### Choose how to enter.")
+    if st.button("🆕 New participant", type="primary", use_container_width=True):
+        _start_new_participant()
+    if st.button("🔑 I already have a Pisa key", use_container_width=True):
+        _open_existing_login()
+        st.rerun()
+    if _entry_mode() == "existing":
+        st.markdown("### Enter your Pisa emoji key.")
+        raw_key = st.text_input(
+            "Pisa key",
+            value=str(get_draft().get("access_key") or ""),
+            key="conference_existing_key",
+            placeholder="Paste your emoji key here",
+            label_visibility="collapsed",
+        )
+        if st.button("Open my Pisa dashboard", type="primary", use_container_width=True):
+            _login_with_key(repo, session["id"], raw_key)
+        error = str(st.session_state.get(LOGIN_ERROR_KEY, "") or "")
+        if error:
+            st.warning(error)
+
+
+def _render_welcome() -> None:
     st.markdown("### How much time do you have?")
     for row in mode_card_rows():
         button_label = f"{row['accent']} {row['title']}\n{row['detail']}"
         if st.button(button_label, type="primary", use_container_width=True, key=f"conference_mode_{row['value']}"):
-            _select_mode(str(row["value"]), session["id"])
+            update_draft(mode=str(row["value"]))
+            set_step(first_active_question_step())
+            st.rerun()
     summary_card("Anonymous first", STEP_COPY["welcome"]["note"])
 
 
@@ -250,11 +364,11 @@ def _render_identity() -> None:
         key="conference_widget_identity",
         placeholder="Optional name or affiliation",
     )
-    contact = ""
+    contact = str(draft.get("contact") or "")
     if should_collect_contact(draft):
         contact = st.text_input(
             "Contact",
-            value=str(draft.get("contact") or ""),
+            value=contact,
             key="conference_widget_contact",
             placeholder="Optional email, website, or contact cue",
         )
@@ -266,12 +380,12 @@ def _render_identity() -> None:
         max_chars=280,
         height=140,
     )
-    update_draft(alias=alias, identity=identity, contact=contact, notes=notes)
+    update_draft(alias=alias, identity=identity, contact=contact if should_collect_contact(draft) else "", notes=notes)
 
 
 def _render_review() -> None:
     payload = build_session_payload(get_draft())
-    summary_card("Format", str(payload.get("mode") or "quick").replace("_", " ").title())
+    summary_card("Questionnaire", _mode_label(str(payload.get("mode") or "quick")))
     for step in active_question_steps(get_draft()):
         model = question_by_step(step)
         if not model:
@@ -289,6 +403,50 @@ def _render_review() -> None:
         summary_card("Notes", str(payload["notes"]))
 
 
+def _render_personal_dashboard() -> None:
+    payload = build_session_payload(get_draft())
+    conference_header("Our Pisa dashboard", "", step="")
+    st.markdown("### Your Pisa signal is loaded.")
+    summary_card("Questionnaire", _mode_label(str(payload.get("mode") or "quick")))
+    profile_parts = [
+        _labels_for("role", payload.get("role")),
+        _labels_for("career_stage", payload.get("career_stage")),
+    ]
+    profile_text = " / ".join(
+        part
+        for part in profile_parts
+        if part and part not in {"No answer", "None selected"}
+    ) or "Anonymous scientist"
+    summary_card("Profile", profile_text)
+    summary_card("Systems", _labels_for("systems", payload.get("systems")))
+    summary_card("Motivations", _labels_for("motivations", payload.get("motivations")))
+    summary_card("Expectations", _labels_for("expectations", payload.get("expectations")))
+    summary_card("Challenge", _labels_for("challenge", payload.get("challenge")))
+    if payload.get("open_text"):
+        summary_card("Thoughts", str(payload["open_text"]))
+
+    mode = str(payload.get("mode") or "quick")
+    if mode == "quick":
+        if st.button("Continue in Standard", type="primary", use_container_width=True):
+            _resume_in_mode("standard")
+        if st.button("Continue in Deep dive", use_container_width=True):
+            _resume_in_mode("deep")
+    elif mode == "standard":
+        if st.button("Continue in Deep dive", type="primary", use_container_width=True):
+            _resume_in_mode("deep")
+        if st.button("Do the Standard questionnaire again", use_container_width=True):
+            _resume_in_mode("standard")
+    else:
+        if st.button("Do the Deep dive again", type="primary", use_container_width=True):
+            _resume_in_mode("deep")
+
+    st.page_link(PISA_OVERVIEW_PAGE, label="Open the Pisa overview", use_container_width=True, icon=":material/travel_explore:")
+    if st.button("Use another Pisa key", use_container_width=True):
+        _set_entry_mode("existing")
+        _clear_login_error()
+        st.rerun()
+
+
 def _render_done() -> None:
     draft = get_draft()
     access_key = str(draft.get("access_key") or "")
@@ -303,9 +461,16 @@ def _render_done() -> None:
         )
     with st.expander("ASCII access key", expanded=False):
         st.code(access_key or "Unavailable")
-    if st.button(STEP_COPY["done"]["cta"], use_container_width=True):
-        reset_flow_state()
-        st.rerun()
+    left, right = st.columns(2)
+    with left:
+        if st.button("Open my Pisa dashboard", type="primary", use_container_width=True):
+            _set_entry_mode("dashboard")
+            st.rerun()
+    with right:
+        if st.button(STEP_COPY["done"]["cta"], use_container_width=True):
+            reset_flow_state()
+            _set_entry_mode("")
+            st.rerun()
 
 
 def _render_navigation(repo: Any, session: Dict[str, Any]) -> None:
@@ -327,8 +492,34 @@ def _render_navigation(repo: Any, session: Dict[str, Any]) -> None:
         if not step_is_complete(step, draft):
             st.warning("Complete this step before continuing.")
             return
-        _advance_step(step)
+        _advance_step()
         st.rerun()
+
+
+def _render_questionnaire(repo: Any, session: Dict[str, Any]) -> None:
+    if current_step() not in active_step_sequence():
+        set_step("welcome")
+    step = current_step()
+    copy = STEP_COPY[step]
+    sequence = active_step_sequence()
+    step_index = sequence.index(step) + 1 if step in sequence else 1
+    step_label = f"{step_index} / {len(sequence)}" if step != "done" else "complete"
+    conference_header(copy["title"], "", step=step_label)
+    if copy.get("body"):
+        st.markdown(f"### {copy['body']}")
+
+    if step == "welcome":
+        _render_welcome()
+    elif step == IDENTITY_STEP:
+        _render_identity()
+    elif step == "review":
+        _render_review()
+    elif step == "done":
+        _render_done()
+    else:
+        _render_question_step(step)
+
+    _render_navigation(repo, session)
 
 
 def main() -> None:
@@ -349,29 +540,19 @@ def main() -> None:
         return
 
     _hydrate_existing_submission(repo, session["id"])
-    if current_step() not in active_step_sequence():
-        set_step("welcome")
-    step = current_step()
-    copy = STEP_COPY[step]
-    sequence = active_step_sequence()
-    step_index = sequence.index(step) + 1 if step in sequence else 1
-    step_label = f"{step_index} / {len(sequence)}" if step != "done" else "complete"
-    conference_header(copy["title"], "", step=step_label)
-    if copy.get("body"):
-        st.markdown(f"### {copy['body']}")
 
-    if step == "welcome":
-        _render_welcome(session)
-    elif step == IDENTITY_STEP:
-        _render_identity()
-    elif step == "review":
-        _render_review()
-    elif step == "done":
-        _render_done()
-    else:
-        _render_question_step(step)
+    if get_draft().get("submitted"):
+        _render_questionnaire(repo, session)
+        return
 
-    _render_navigation(repo, session)
+    mode = _entry_mode()
+    if mode == "dashboard":
+        _render_personal_dashboard()
+        return
+    if mode == "new":
+        _render_questionnaire(repo, session)
+        return
+    _render_entry(session, repo)
 
 
 if __name__ == "__main__":

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from typing import Any, Dict, List, Optional
 
 from conference.models import SESSION_QUESTIONS
@@ -11,6 +12,7 @@ from repositories.interaction_repo import NotionInteractionRepository
 
 QUESTION_IDENTITY = "PISA_IDENTITY_BLOCK"
 QUESTION_BUNDLE = "PISA_MEETING_BUNDLE"
+EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
 def emoji_suffix(access_key: str, length: int = 4) -> str:
@@ -70,6 +72,50 @@ class ConferenceRepo:
             items = sessions(limit=50)
             return items[0] if items else None
         return None
+
+    def upsert_conference_player(
+        self,
+        *,
+        session_id: str,
+        access_key: str,
+        payload: Dict[str, Any],
+    ) -> Optional[Dict[str, Any]]:
+        if not self.notion_repo or not access_key:
+            return None
+        nickname = (
+            str(payload.get("alias") or "").strip()
+            or str(payload.get("identity") or "").strip()
+            or f"Pisa {emoji_suffix(access_key)}"
+        )
+        intent = str(payload.get("open_text") or "").strip()
+        contact = str(payload.get("contact") or "").strip()
+        email = contact if EMAIL_RE.match(contact) else ""
+        emoji_key = hex_to_emoji(access_key)
+        try:
+            player = self.notion_repo.upsert_player(
+                session_id=session_id,
+                player_id=access_key,
+                nickname=nickname,
+                role="None",
+                consent_play=False,
+                consent_research=False,
+                preferred_mode=str(payload.get("mode") or "").strip() or None,
+                emoji=emoji_key,
+                emoji_suffix_4=emoji_suffix(access_key, length=4),
+                emoji_suffix_6=emoji_suffix(access_key, length=6),
+            )
+        except Exception:
+            return None
+        try:
+            updated = self.notion_repo.update_player_metadata(
+                str(player.get("id") or access_key),
+                nickname=nickname,
+                intent=intent or None,
+                email=email or None,
+            )
+            return updated or player
+        except Exception:
+            return player
 
     def save_session_response_set(
         self,
@@ -132,7 +178,19 @@ class ConferenceRepo:
     def group_rows_by_submission(self, rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         by_actor: Dict[str, Dict[str, Any]] = {}
         for row in sorted(rows, key=lambda item: str(item.get("submitted_at") or item.get("timestamp") or "")):
-            actor_key = str(row.get("player_id") or row.get("device_id") or row.get("response_id") or "")
+            payload = row.get("value_json")
+            if not isinstance(payload, dict):
+                payload = {}
+            field = str(payload.get("field") or "")
+            bundle_key = str(
+                payload.get("access_key_hash")
+                or row.get("response_id")
+                or row.get("id")
+                or ""
+            )
+            actor_key = bundle_key if field == "session_bundle" and bundle_key else str(
+                row.get("player_id") or row.get("device_id") or row.get("response_id") or row.get("id") or ""
+            )
             if not actor_key:
                 continue
             submission = by_actor.setdefault(
@@ -144,10 +202,6 @@ class ConferenceRepo:
                     "submitted_at": "",
                 },
             )
-            payload = row.get("value_json")
-            if not isinstance(payload, dict):
-                payload = {}
-            field = str(payload.get("field") or "")
             answer = payload.get("answer", row.get("response_value"))
             submission["submitted_at"] = str(
                 row.get("timestamp") or row.get("created_at") or submission.get("submitted_at") or ""

@@ -75,7 +75,13 @@ def _visible_pages() -> dict[str, list[st.Page]]:
                 "pages/15_Pisa_Meeting.py",
                 title="Pisa Meeting",
                 icon=":material/groups:",
-                url_path="pisa-meeting",
+                url_path="pisa",
+            ),
+            st.Page(
+                "pages/17_Pisa_Overview.py",
+                title="Pisa Overview",
+                icon=":material/travel_explore:",
+                url_path="pisa-overview",
             ),
             st.Page(
                 "pages/16_Pisa_Meeting_Host.py",
