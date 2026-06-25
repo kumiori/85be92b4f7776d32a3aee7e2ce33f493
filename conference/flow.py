@@ -6,46 +6,49 @@ from typing import Any, Dict, Iterable, List
 import streamlit as st
 
 from conference.models import (
+    DEFERRABLE_FIELDS,
+    FINGERPRINT_AXES,
     FOLLOW_UP_CONTACT_VALUES,
+    FLOW_MODES,
+    MIGRATION_PROFILE_FIELDS,
+    PROFILE_FIELDS,
+    SESSION_FIELDS,
     STEP_ORDER,
     active_steps_for_mode,
+    assets_set,
     career_stage_set,
     challenge_set,
-    continue_conversation_set,
-    expectations_set,
-    formulation_set,
+    collaboration_style_set,
+    field_for_step,
+    follow_up_interest_set,
     motivations_set,
-    obstacle_set,
     question_by_step,
-    reality_check_set,
-    research_style_set,
     role_set,
     scale_set,
-    systems_set,
-    timescale_set,
 )
 
 
 DEFAULT_DRAFT: Dict[str, Any] = {
     "mode": "",
-    "role": "",
+    "role": [],
     "career_stage": "",
-    "systems": [],
-    "expectations": "",
-    "formulation": [],
-    "reality_check": "",
+    "scientific_home_country": "",
+    "scientific_home_city": "",
+    "scientific_home_institution": "",
     "scale": "",
+    "collaboration_style": "",
+    "assets": [],
     "motivations": [],
     "obstacle": [],
-    "research_style": "",
     "challenge": "",
-    "timescale": "",
-    "continue_conversation": "",
-    "open_text": "",
+    "follow_up_interest": "",
+    "complexity_fingerprint": {axis: 0 for axis in FINGERPRINT_AXES},
+    "open_question": "",
     "alias": "",
     "identity": "",
     "contact": "",
-    "notes": "",
+    "deferred_fields": [],
+    "identity_reveal_targets": [],
     "access_key": "",
     "submitted": False,
 }
@@ -54,18 +57,38 @@ DEFAULT_DRAFT: Dict[str, Any] = {
 FIELD_ALLOWED_VALUES: Dict[str, set[str]] = {
     "role": role_set(),
     "career_stage": career_stage_set(),
-    "systems": systems_set(),
-    "expectations": expectations_set(),
-    "formulation": formulation_set(),
-    "reality_check": reality_check_set(),
     "scale": scale_set(),
+    "collaboration_style": collaboration_style_set(),
+    "assets": assets_set(),
     "motivations": motivations_set(),
-    "obstacle": obstacle_set(),
-    "research_style": research_style_set(),
+    "obstacle": {
+        "theory",
+        "models",
+        "computation",
+        "data",
+        "experiments",
+        "validation",
+        "funding",
+        "coordination",
+    },
     "challenge": challenge_set(),
-    "timescale": timescale_set(),
-    "continue_conversation": continue_conversation_set(),
+    "follow_up_interest": follow_up_interest_set(),
 }
+
+
+MULTI_FIELDS = {"role", "assets", "motivations", "obstacle", "identity_reveal_targets"}
+TEXT_FIELDS = {
+    "scientific_home_country",
+    "scientific_home_city",
+    "scientific_home_institution",
+    "open_question",
+    "alias",
+    "identity",
+    "contact",
+    "access_key",
+}
+
+CURRENT_SCHEMA_VERSION = 2
 
 
 def active_question_steps(draft: Dict[str, Any] | None = None) -> List[str]:
@@ -84,10 +107,8 @@ def first_active_question_step(draft: Dict[str, Any] | None = None) -> str:
 
 def should_collect_contact(draft: Dict[str, Any] | None = None) -> bool:
     source = draft or get_draft()
-    value = source.get("continue_conversation")
-    if isinstance(value, list):
-        return any(str(item or "").strip() in FOLLOW_UP_CONTACT_VALUES for item in value)
-    return str(value or "").strip() in FOLLOW_UP_CONTACT_VALUES
+    value = str(source.get("follow_up_interest") or "").strip()
+    return value in FOLLOW_UP_CONTACT_VALUES
 
 
 def init_flow_state() -> None:
@@ -176,58 +197,227 @@ def _coerce_values(value: Any) -> List[Any]:
     return [token] if token else []
 
 
-def build_session_payload(draft: Dict[str, Any]) -> Dict[str, Any]:
-    payload: Dict[str, Any] = {"mode": str(draft.get("mode") or "").strip()}
-    active_fields = {
-        str(question_by_step(step)["field"])
-        for step in active_question_steps(draft)
-        if question_by_step(step)
-    }
-    for field, allowed in FIELD_ALLOWED_VALUES.items():
-        if field not in active_fields:
-            payload[field] = [] if field in {"systems", "formulation", "motivations", "obstacle"} else ""
-            continue
-        question = question_by_step(_step_for_field(field))
-        if question and question.get("input_type") == "multi":
-            payload[field] = _normalize_values(
-                _coerce_values(draft.get(field, [])),
-                allowed,
-                question.get("max_select"),
+def _normalize_text(value: Any) -> str:
+    return str(value or "").strip()
+
+
+def _normalize_fingerprint(value: Any) -> Dict[str, int]:
+    source = value if isinstance(value, dict) else {}
+    out: Dict[str, int] = {}
+    for axis in FINGERPRINT_AXES:
+        raw = source.get(axis, 0)
+        try:
+            level = int(raw)
+        except Exception:
+            level = 0
+        out[axis] = max(0, min(5, level))
+    return out
+
+
+def _fingerprint_answered(value: Dict[str, int]) -> bool:
+    return any(int(value.get(axis, 0) or 0) > 0 for axis in FINGERPRINT_AXES)
+
+
+def _active_fields(draft: Dict[str, Any]) -> set[str]:
+    fields: set[str] = set()
+    for step in active_question_steps(draft):
+        field = field_for_step(step)
+        if field:
+            fields.add(field)
+    return fields
+
+
+def _raw_deferred_fields(draft: Dict[str, Any]) -> List[str]:
+    return [
+        str(field).strip()
+        for field in _coerce_values(draft.get("deferred_fields", []))
+        if str(field).strip() in DEFERRABLE_FIELDS
+    ]
+
+
+def is_field_answered(field: str, draft: Dict[str, Any]) -> bool:
+    if field in {"role", "assets", "motivations", "obstacle", "identity_reveal_targets"}:
+        return bool(_coerce_values(draft.get(field, [])))
+    if field == "complexity_fingerprint":
+        return _fingerprint_answered(_normalize_fingerprint(draft.get(field)))
+    if field == "scientific_home":
+        return any(
+            _normalize_text(draft.get(key))
+            for key in (
+                "scientific_home_country",
+                "scientific_home_city",
+                "scientific_home_institution",
             )
-        else:
-            payload[field] = _normalize_single(draft.get(field, ""), allowed)
-    payload["open_text"] = (
-        str(draft.get("open_text") or "").strip()
-        if "open_text" in active_question_steps(draft)
+        )
+    return bool(_normalize_text(draft.get(field)))
+
+
+def normalized_deferred_fields(draft: Dict[str, Any] | None = None) -> List[str]:
+    source = draft or get_draft()
+    active = _active_fields(source)
+    return [
+        field
+        for field in _raw_deferred_fields(source)
+        if field in active and not is_field_answered(field, source)
+    ]
+
+
+def defer_field(field: str) -> None:
+    if field not in DEFERRABLE_FIELDS:
+        return
+    draft = get_draft()
+    deferred = normalized_deferred_fields(draft)
+    if field not in deferred:
+        deferred.append(field)
+    update_draft(deferred_fields=deferred)
+
+
+def clear_deferred_field(field: str) -> None:
+    deferred = [name for name in _raw_deferred_fields(get_draft()) if name != field]
+    update_draft(deferred_fields=deferred)
+
+
+def pending_reflection_fields(draft: Dict[str, Any] | None = None) -> List[str]:
+    return normalized_deferred_fields(draft)
+
+
+def profile_completion_gaps(draft: Dict[str, Any] | None = None) -> List[str]:
+    source = draft or get_draft()
+    gaps: List[str] = []
+    for field in MIGRATION_PROFILE_FIELDS:
+        if field == "complexity_fingerprint":
+            if not is_field_answered(field, source):
+                gaps.append(field)
+            continue
+        if field == "assets":
+            if not _coerce_values(source.get("assets", [])):
+                gaps.append(field)
+            continue
+        if not _normalize_text(source.get(field)):
+            gaps.append(field)
+    return gaps
+
+
+def build_session_payload(draft: Dict[str, Any]) -> Dict[str, Any]:
+    payload: Dict[str, Any] = {"schema_version": str(CURRENT_SCHEMA_VERSION)}
+    active_fields = _active_fields(draft)
+
+    role = _normalize_values(_coerce_values(draft.get("role", [])), FIELD_ALLOWED_VALUES["role"], 3)
+    career_stage = _normalize_single(draft.get("career_stage", ""), FIELD_ALLOWED_VALUES["career_stage"])
+    scale = _normalize_single(draft.get("scale", ""), FIELD_ALLOWED_VALUES["scale"])
+    collaboration_style = _normalize_single(
+        draft.get("collaboration_style", ""),
+        FIELD_ALLOWED_VALUES["collaboration_style"],
+    )
+    assets = _normalize_values(_coerce_values(draft.get("assets", [])), FIELD_ALLOWED_VALUES["assets"], 3)
+    motivations = _normalize_values(_coerce_values(draft.get("motivations", [])), FIELD_ALLOWED_VALUES["motivations"], 3)
+    obstacle = _normalize_values(_coerce_values(draft.get("obstacle", [])), FIELD_ALLOWED_VALUES["obstacle"], 2)
+    challenge = _normalize_single(draft.get("challenge", ""), FIELD_ALLOWED_VALUES["challenge"])
+    follow_up_interest = _normalize_single(
+        draft.get("follow_up_interest", ""),
+        FIELD_ALLOWED_VALUES["follow_up_interest"],
+    )
+    complexity_fingerprint = _normalize_fingerprint(draft.get("complexity_fingerprint"))
+    open_question = (
+        _normalize_text(draft.get("open_question"))
+        if "open_question" in active_fields
         else ""
     )
-    payload["alias"] = str(draft.get("alias") or "").strip()
-    payload["identity"] = str(draft.get("identity") or "").strip()
-    payload["contact"] = str(draft.get("contact") or "").strip() if should_collect_contact(draft) else ""
-    payload["notes"] = str(draft.get("notes") or "").strip()
-    payload["contact_label"] = (
-        payload["identity"]
-        or payload["alias"]
-        or payload["contact"]
-        or "anonymous-scientist"
-    )
-    payload["anonymous_first"] = True
+
+    deferred_fields = normalized_deferred_fields(draft)
+
+    profile = {
+        "role": role,
+        "career_stage": career_stage if "career_stage" in active_fields else "",
+        "scientific_home": {
+            "country": _normalize_text(draft.get("scientific_home_country")),
+            "city": _normalize_text(draft.get("scientific_home_city")),
+            "institution": _normalize_text(draft.get("scientific_home_institution")),
+        }
+        if "scientific_home" in active_fields
+        else {"country": "", "city": "", "institution": ""},
+        "computational_scale": scale if "scale" in active_fields else "",
+        "collaboration_style": collaboration_style if "collaboration_style" in active_fields else "",
+        "assets": assets if "assets" in active_fields else [],
+        "complexity_fingerprint": complexity_fingerprint if "complexity_fingerprint" in active_fields else {axis: 0 for axis in FINGERPRINT_AXES},
+    }
+    session = {
+        "depth": str(draft.get("mode") or "").strip(),
+        "motivations": motivations if "motivations" in active_fields else [],
+        "obstacle": obstacle if "obstacle" in active_fields else [],
+        "challenge": challenge if "challenge" in active_fields else "",
+        "follow_up_interest": follow_up_interest if "follow_up_interest" in active_fields else "",
+        "open_question": open_question,
+        "deferred_fields": deferred_fields,
+        "identity_reveal_targets": _normalize_values(
+            _coerce_values(draft.get("identity_reveal_targets", [])),
+            set(_coerce_values(draft.get("identity_reveal_targets", []))),
+        ),
+    }
+    derived = {"neighbour_ids": []}
+
+    payload["profile"] = profile
+    payload["session"] = session
+    payload["derived"] = derived
     return payload
 
 
-def _step_for_field(field: str) -> str:
-    return next(
-        (
-            item
-            for item in STEP_ORDER
-            if question_by_step(item) and question_by_step(item)["field"] == field
-        ),
-        "",
+def flatten_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
+    profile = payload.get("profile") if isinstance(payload.get("profile"), dict) else {}
+    session = payload.get("session") if isinstance(payload.get("session"), dict) else {}
+    scientific_home = (
+        profile.get("scientific_home")
+        if isinstance(profile.get("scientific_home"), dict)
+        else {}
     )
+    out = {
+        "schema_version": str(payload.get("schema_version") or CURRENT_SCHEMA_VERSION),
+        "mode": str(session.get("depth") or payload.get("mode") or "").strip(),
+        "role": list(profile.get("role") or []),
+        "career_stage": str(profile.get("career_stage") or "").strip(),
+        "scientific_home_country": str(scientific_home.get("country") or "").strip(),
+        "scientific_home_city": str(scientific_home.get("city") or "").strip(),
+        "scientific_home_institution": str(scientific_home.get("institution") or "").strip(),
+        "scale": str(profile.get("computational_scale") or "").strip(),
+        "collaboration_style": str(profile.get("collaboration_style") or "").strip(),
+        "assets": list(profile.get("assets") or []),
+        "complexity_fingerprint": _normalize_fingerprint(profile.get("complexity_fingerprint")),
+        "motivations": list(session.get("motivations") or []),
+        "obstacle": list(session.get("obstacle") or []),
+        "challenge": str(session.get("challenge") or "").strip(),
+        "follow_up_interest": str(session.get("follow_up_interest") or "").strip(),
+        "continue_conversation": str(session.get("follow_up_interest") or "").strip(),
+        "open_question": str(session.get("open_question") or "").strip(),
+        "open_text": str(session.get("open_question") or "").strip(),
+        "deferred_fields": list(session.get("deferred_fields") or []),
+        "identity_reveal_targets": list(session.get("identity_reveal_targets") or []),
+    }
+    return out
+
+
+def build_identity_metadata(draft: Dict[str, Any]) -> Dict[str, Any]:
+    alias = _normalize_text(draft.get("alias"))
+    identity = _normalize_text(draft.get("identity"))
+    contact = _normalize_text(draft.get("contact")) if should_collect_contact(draft) else ""
+    return {
+        "alias": alias,
+        "identity": identity,
+        "contact": contact,
+        "notes": "",
+        "contact_label": identity or alias or contact or "anonymous-scientist",
+        "anonymous_first": True,
+    }
+
+
+def build_payload_view(draft: Dict[str, Any]) -> Dict[str, Any]:
+    payload = build_session_payload(draft)
+    view = flatten_payload(payload)
+    view.update(build_identity_metadata(draft))
+    return view
 
 
 def step_is_complete(step: str, draft: Dict[str, Any]) -> bool:
-    payload = build_session_payload(draft)
+    payload = build_payload_view(draft)
     if step == "welcome":
         return bool(str(draft.get("mode") or "").strip())
     if step in {"identity", "review", "done"}:
@@ -237,9 +427,32 @@ def step_is_complete(step: str, draft: Dict[str, Any]) -> bool:
         return False
     if step not in active_question_steps(draft):
         return True
-    if question.get("input_type") == "text":
+    field = str(question["field"])
+    if field in normalized_deferred_fields(draft):
         return True
-    value = payload.get(question["field"])
-    if question.get("input_type") == "multi":
+    input_type = str(question.get("input_type") or "")
+    if input_type == "scientific_home":
+        return True
+    if input_type == "fingerprint":
+        return is_field_answered("complexity_fingerprint", draft)
+    value = payload.get(field)
+    if input_type == "text":
+        return bool(str(value or "").strip())
+    if input_type == "multi":
         return bool(value)
     return bool(str(value or "").strip())
+
+
+def suggested_mode_for_missing_profile_fields(fields: List[str]) -> str:
+    if "career_stage" in fields:
+        return "deep"
+    if fields:
+        return "standard"
+    return "quick"
+
+
+def mode_label(mode: str) -> str:
+    spec = FLOW_MODES.get(str(mode or "").strip(), {})
+    title = str(spec.get("title") or "Quick pulse")
+    detail = str(spec.get("detail") or "")
+    return f"{title} · {detail}" if detail else title

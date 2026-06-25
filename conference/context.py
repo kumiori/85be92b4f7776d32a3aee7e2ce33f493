@@ -11,7 +11,7 @@ from conference.settings import load_conference_settings
 from infra.app_context import get_notion_repo
 
 
-REPO_CACHE_VERSION = "2026-06-05-bundle-v1"
+REPO_CACHE_VERSION = "2026-06-25-access-key-resolution-v3"
 
 
 @st.cache_resource(show_spinner=False)
@@ -30,9 +30,12 @@ def _build_conference_repo(version: str) -> Optional[ConferenceRepo]:
 def get_conference_repo() -> Optional[ConferenceRepo]:
     repo = _build_conference_repo(REPO_CACHE_VERSION)
     save_method = getattr(repo, "save_session_response_set", None) if repo else None
+    resolve_method = getattr(repo, "resolve_session", None) if repo else None
     if repo and callable(save_method):
         try:
-            if "payload" not in inspect.signature(save_method).parameters:
+            save_params = inspect.signature(save_method).parameters
+            resolve_params = inspect.signature(resolve_method).parameters if callable(resolve_method) else {}
+            if "payload" not in save_params or "prefer_active" not in resolve_params:
                 _build_conference_repo.clear()
                 repo = _build_conference_repo(REPO_CACHE_VERSION)
         except Exception:
@@ -41,9 +44,12 @@ def get_conference_repo() -> Optional[ConferenceRepo]:
 
 
 @st.cache_data(show_spinner=False)
-def get_conference_bundle(session_code: str = "") -> Dict[str, Any]:
+def get_conference_bundle(session_code: str = "", prefer_active: bool = False) -> Dict[str, Any]:
     repo = get_conference_repo()
     if not repo or not repo.is_ready():
         return {"session": None}
-    session = repo.resolve_session(session_code=session_code)
+    try:
+        session = repo.resolve_session(session_code=session_code, prefer_active=prefer_active)
+    except TypeError:
+        session = repo.resolve_session(session_code=session_code)
     return {"session": session}

@@ -13,8 +13,8 @@ def normalize_org_signal(label: str) -> str:
     text = str(label or "").strip().lower()
     if "yes" in text:
         return "yes"
-    if "maybe" in text:
-        return "maybe"
+    if "upon condition" in text or "depending on conditions" in text or "depending upon conditions" in text or "condition" in text:
+        return "upon_condition"
     if "no" in text:
         return "no"
     return "unknown"
@@ -105,7 +105,7 @@ def aggregate_question(rows_for_item: list[Dict[str, Any]]) -> Dict[str, Any]:
                 t = str(row.get("submitted_at", "") or "")
                 if not t:
                     continue
-                score = 1 if bucket == "yes" else (0 if bucket == "maybe" else (-1 if bucket == "no" else 0))
+                score = 1 if bucket == "yes" else (0 if bucket == "upon_condition" else (-1 if bucket == "no" else 0))
                 timeline_events.append({"t": t, "score": score, "bucket": bucket})
 
             timeline_events.sort(key=lambda x: x.get("t", ""))
@@ -130,7 +130,7 @@ def aggregate_question(rows_for_item: list[Dict[str, Any]]) -> Dict[str, Any]:
                 "n_events": len(rows_for_item),
                 "counts": {
                     "yes": int(label_counts.get("yes", 0)),
-                    "maybe": int(label_counts.get("maybe", 0)),
+                    "upon_condition": int(label_counts.get("upon_condition", 0)),
                     "no": int(label_counts.get("no", 0)),
                     "unknown": int(label_counts.get("unknown", 0)),
                 },
@@ -231,8 +231,9 @@ def aggregate_question(rows_for_item: list[Dict[str, Any]]) -> Dict[str, Any]:
             choice = _extract_choice(payload)
         label = str(choice or row.get("value_label") or "").strip()
         if label:
-            if "maybe" in label.lower():
-                label = "Maybe"
+            low = label.lower()
+            if "upon condition" in low or "depending on conditions" in low or "depending upon conditions" in low or "condition" in low:
+                label = "Upon condition"
             counts[label] += 1
     return {
         "item_id": item_id,

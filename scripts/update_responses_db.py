@@ -23,6 +23,11 @@ def main():
     # - add new generic interaction fields
     # - do not delete anything
     props = {
+        # canonical identifiers
+        "question_id": {"rich_text": {}},
+        "response_value": {"rich_text": {}},
+        "timestamp": {"date": {}},
+        "access_key": {"rich_text": {}},
         # generic question identifier, if relation is not enough
         "item_id": {"rich_text": {}},
         # JSON payload for any answer type
@@ -72,7 +77,7 @@ def main():
     print("\nSafe additive migration complete.")
     print("Legacy fields were left untouched.")
     print(
-        "Start writing new interaction answers into: item_id, value_json, value_label, question_type, score, question, submitted_at."
+        "Start writing new interaction answers into canonical fields: question_id, response_value, timestamp, access_key, value_json, value_label, question_type, score, question, submitted_at."
     )
 
 
