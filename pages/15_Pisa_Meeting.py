@@ -99,11 +99,15 @@ def _labels_for(field: str, value: Any) -> str:
     if field == "mode":
         return mode_label(str(value or "quick"))
     if field == "scientific_home":
-        parts = [
-            str(value.get("country") or "").strip(),
-            str(value.get("city") or "").strip(),
-            str(value.get("institution") or "").strip(),
-        ] if isinstance(value, dict) else []
+        parts = (
+            [
+                str(value.get("country") or "").strip(),
+                str(value.get("city") or "").strip(),
+                str(value.get("institution") or "").strip(),
+            ]
+            if isinstance(value, dict)
+            else []
+        )
         return " · ".join(part for part in parts if part) or "Not yet defined"
     if field == "complexity_fingerprint":
         if not isinstance(value, dict):
@@ -165,7 +169,9 @@ def _load_submission_for_key(
     token = str(raw_key or "").strip()
     if not token:
         return None, None, ""
-    access_key, error = resolve_access_key_input(getattr(repo, "notion_repo", None), token)
+    access_key, error = resolve_access_key_input(
+        getattr(repo, "notion_repo", None), token
+    )
     if not access_key:
         return None, None, str(error or "")
     access_key_hash = repo.access_key_hash(access_key)
@@ -185,16 +191,16 @@ def _hydrate_existing_submission(repo: Any, session_id: str) -> None:
     if st.session_state.get("conference_hydrated"):
         return
     draft = get_draft()
-    raw_key = str(draft.get("access_key") or st.query_params.get("key", "") or "").strip()
+    raw_key = str(
+        draft.get("access_key") or st.query_params.get("key", "") or ""
+    ).strip()
     if not raw_key:
         st.session_state["conference_hydrated"] = True
         return
     access_key, submission, _ = _load_submission_for_key(repo, session_id, raw_key)
     if access_key and submission:
         hydrated = {
-            key: value
-            for key, value in submission.items()
-            if key in get_draft()
+            key: value for key, value in submission.items() if key in get_draft()
         }
         hydrated["mode"] = str(submission.get("mode") or _infer_mode(submission))
         hydrated["access_key"] = access_key
@@ -248,11 +254,15 @@ def _submit(repo: Any, session: Dict[str, Any]) -> None:
         payload,
         identity_metadata,
     )
-    st.session_state["conference_submission_cache_key"] = f"{session['id']}:{access_key_hash}"
+    st.session_state["conference_submission_cache_key"] = (
+        f"{session['id']}:{access_key_hash}"
+    )
     st.session_state["conference_submission_cache"] = build_payload_view(draft) | {
         "access_key_hash": access_key_hash,
         "access_key_last4": access_key_last4,
-        "actor_key": f"player:{str((player or {}).get('id') or '')}" if (player or {}).get("id") else f"response:{access_key_hash}",
+        "actor_key": f"player:{str((player or {}).get('id') or '')}"
+        if (player or {}).get("id")
+        else f"response:{access_key_hash}",
     }
     update_draft(access_key=access_key, submitted=True)
     mark_submitted()
@@ -264,7 +274,9 @@ def _open_confirm_send_dialog(repo: Any, session: Dict[str, Any]) -> None:
         access_key = _ensure_access_key()
         emoji_key = hex_to_emoji(access_key)
         emoji_symbols = split_emoji_symbols(emoji_key)
-        short_emoji = "".join(emoji_symbols[-4:]) if len(emoji_symbols) >= 4 else emoji_key
+        short_emoji = (
+            "".join(emoji_symbols[-4:]) if len(emoji_symbols) >= 4 else emoji_key
+        )
         st.markdown(
             f"""
             <div style="text-align:center; font-size:4.6rem; line-height:1.15; letter-spacing:.16em; margin: 1rem 0 1.15rem 0;">
@@ -330,11 +342,7 @@ def _login_with_key(repo: Any, session_id: str, raw_key: str) -> None:
     if not submission:
         _set_login_error("No submission was found for this access key yet.")
         return
-    hydrated = {
-        key: value
-        for key, value in submission.items()
-        if key in get_draft()
-    }
+    hydrated = {key: value for key, value in submission.items() if key in get_draft()}
     hydrated["mode"] = str(submission.get("mode") or _infer_mode(submission))
     hydrated["access_key"] = access_key
     hydrated["submitted"] = True
@@ -358,7 +366,7 @@ def _resume_in_mode(mode: str) -> None:
 
 
 def _render_entry(session: Dict[str, Any], repo: Any) -> None:
-    conference_header("Complexity", "", step="")
+    conference_header("Pattenrs and Complexity", "", step="")
     st.markdown("### Anonymous first.")
     st.markdown("### Choose how to enter.")
     if st.button("🆕 New participant", type="primary", use_container_width=True):
@@ -387,7 +395,12 @@ def _render_welcome() -> None:
     st.markdown("### How much time do you have?")
     for row in mode_card_rows():
         button_label = f"{row['accent']} {row['title']}\n{row['detail']}"
-        if st.button(button_label, type="primary", use_container_width=True, key=f"conference_mode_{row['value']}"):
+        if st.button(
+            button_label,
+            type="primary",
+            use_container_width=True,
+            key=f"conference_mode_{row['value']}",
+        ):
             update_draft(mode=str(row["value"]))
             set_step(first_active_question_step())
             st.rerun()
@@ -396,13 +409,17 @@ def _render_welcome() -> None:
 
 def _render_pills(question: Dict[str, Any], current_value: Any) -> None:
     field = str(question["field"])
-    option_map = {str(item["value"]): str(item["label"]) for item in question.get("options", [])}
+    option_map = {
+        str(item["value"]): str(item["label"]) for item in question.get("options", [])
+    }
     input_type = str(question["input_type"])
     if input_type == "multi":
         selected = st.pills(
             question["prompt"],
             list(option_map.keys()),
-            default=list(current_value or []) if isinstance(current_value, list) else [],
+            default=list(current_value or [])
+            if isinstance(current_value, list)
+            else [],
             selection_mode="multi",
             key=f"conference_widget_{field}",
             format_func=lambda value: option_map.get(value, value),
@@ -419,7 +436,9 @@ def _render_pills(question: Dict[str, Any], current_value: Any) -> None:
     selected_single = st.pills(
         question["prompt"],
         list(option_map.keys()),
-        default=str(current_value) if isinstance(current_value, str) and current_value else None,
+        default=str(current_value)
+        if isinstance(current_value, str) and current_value
+        else None,
         selection_mode="single",
         key=f"conference_widget_{field}",
         format_func=lambda value: option_map.get(value, value),
@@ -536,7 +555,11 @@ def _render_identity() -> None:
             key="conference_widget_contact",
             placeholder="Optional email, website, or contact cue",
         )
-    update_draft(alias=alias, identity=identity, contact=contact if should_collect_contact(draft) else "")
+    update_draft(
+        alias=alias,
+        identity=identity,
+        contact=contact if should_collect_contact(draft) else "",
+    )
 
 
 def _render_review() -> None:
@@ -545,7 +568,9 @@ def _render_review() -> None:
     summary_card("Profile", "Persistent across events unless you change it.")
     summary_card("Perspective", _labels_for("role", payload.get("role")))
     if payload.get("career_stage"):
-        summary_card("Career stage", _labels_for("career_stage", payload.get("career_stage")))
+        summary_card(
+            "Career stage", _labels_for("career_stage", payload.get("career_stage"))
+        )
     summary_card(
         "Scientific home",
         _labels_for(
@@ -560,16 +585,29 @@ def _render_review() -> None:
     if payload.get("scale"):
         summary_card("Computational scale", _labels_for("scale", payload.get("scale")))
     if payload.get("collaboration_style"):
-        summary_card("Collaboration style", _labels_for("collaboration_style", payload.get("collaboration_style")))
+        summary_card(
+            "Collaboration style",
+            _labels_for("collaboration_style", payload.get("collaboration_style")),
+        )
     summary_card("Assets", _labels_for("assets", payload.get("assets")))
     if "complexity_fingerprint" in active_question_steps(get_draft()):
-        summary_card("Complexity fingerprint", _labels_for("complexity_fingerprint", payload.get("complexity_fingerprint")))
+        summary_card(
+            "Complexity fingerprint",
+            _labels_for(
+                "complexity_fingerprint", payload.get("complexity_fingerprint")
+            ),
+        )
 
-    summary_card("Session", "These answers belong to this event and can change next time.")
+    summary_card(
+        "Session", "These answers belong to this event and can change next time."
+    )
     summary_card("Motivations", _labels_for("motivations", payload.get("motivations")))
     summary_card("Obstacle", _labels_for("obstacle", payload.get("obstacle")))
     summary_card("Challenge", _labels_for("challenge", payload.get("challenge")))
-    summary_card("Follow-up interest", _labels_for("follow_up_interest", payload.get("follow_up_interest")))
+    summary_card(
+        "Follow-up interest",
+        _labels_for("follow_up_interest", payload.get("follow_up_interest")),
+    )
     if payload.get("open_question"):
         summary_card("Open question", str(payload["open_question"]))
 
@@ -585,8 +623,12 @@ def _render_review() -> None:
         str(payload.get("identity") or "").strip(),
         str(payload.get("contact") or "").strip(),
     ]
-    identity_text = " · ".join(part for part in identity_parts if part) or "Remain anonymous"
+    identity_text = (
+        " · ".join(part for part in identity_parts if part) or "Remain anonymous"
+    )
     summary_card("Alias or identity", identity_text)
+
+
 def _question_teasers(submissions: List[Dict[str, Any]], self_actor: str) -> List[str]:
     entries: List[str] = []
     seen: set[str] = set()
@@ -603,7 +645,9 @@ def _question_teasers(submissions: List[Dict[str, Any]], self_actor: str) -> Lis
     return entries
 
 
-def _historical_session_counts(repo: Any, current_session_id: str) -> List[Dict[str, Any]]:
+def _historical_session_counts(
+    repo: Any, current_session_id: str
+) -> List[Dict[str, Any]]:
     sessions = [
         {
             "code": "pisa-conference-session",
@@ -623,7 +667,9 @@ def _historical_session_counts(repo: Any, current_session_id: str) -> List[Dict[
             continue
         if str(session.get("id") or "") == str(current_session_id or ""):
             continue
-        submissions = repo.group_rows_by_submission(repo.get_session_rows(session["id"]))
+        submissions = repo.group_rows_by_submission(
+            repo.get_session_rows(session["id"])
+        )
         rows.append(
             {
                 "label": item["label"],
@@ -666,8 +712,9 @@ def _render_other_sessions(repo: Any, current_session_id: str) -> None:
     for item in historical:
         summary_card(
             item["label"],
-            f'{int(item["participants"])} participants · question: {item["question"]}',
+            f"{int(item['participants'])} participants · question: {item['question']}",
         )
+
 
 def _render_personal_dashboard(repo: Any, session: Dict[str, Any]) -> None:
     payload = build_payload_view(get_draft())
@@ -678,18 +725,26 @@ def _render_personal_dashboard(repo: Any, session: Dict[str, Any]) -> None:
     summary_card("Perspective", _labels_for("role", payload.get("role")))
     summary_card("Assets", _labels_for("assets", payload.get("assets")))
     if payload.get("challenge"):
-        summary_card("Current challenge", _labels_for("challenge", payload.get("challenge")))
+        summary_card(
+            "Current challenge", _labels_for("challenge", payload.get("challenge"))
+        )
     if payload.get("open_question"):
         summary_card("Open question", str(payload.get("open_question")))
 
     gaps = profile_completion_gaps(get_draft())
     if gaps and not bool(st.session_state.get("conference_hide_migration_prompt")):
         st.markdown("### We’ve added new questions")
-        st.caption(f"We have added {len(gaps)} question(s) to better understand your perspective.")
+        st.caption(
+            f"We have added {len(gaps)} question(s) to better understand your perspective."
+        )
         left, right = st.columns(2)
         with left:
-            if st.button("Yes, enthusiastically", type="primary", use_container_width=True):
-                _resume_at_field(gaps[0], suggested_mode_for_missing_profile_fields(gaps))
+            if st.button(
+                "Yes, enthusiastically", type="primary", use_container_width=True
+            ):
+                _resume_at_field(
+                    gaps[0], suggested_mode_for_missing_profile_fields(gaps)
+                )
         with right:
             if st.button("Later", use_container_width=True):
                 st.session_state["conference_hide_migration_prompt"] = True
@@ -700,10 +755,17 @@ def _render_personal_dashboard(repo: Any, session: Dict[str, Any]) -> None:
         st.markdown("### Pending reflections")
         for field in pending:
             summary_card(_field_label(field), "Deferred. You can answer later.")
-        if st.button("Answer pending reflections", type="primary", use_container_width=True):
+        if st.button(
+            "Answer pending reflections", type="primary", use_container_width=True
+        ):
             _resume_at_field(pending[0], str(payload.get("mode") or "standard"))
 
-    teasers = _question_teasers(submissions, str(st.session_state.get("conference_submission_cache", {}).get("actor_key", "")))
+    teasers = _question_teasers(
+        submissions,
+        str(
+            st.session_state.get("conference_submission_cache", {}).get("actor_key", "")
+        ),
+    )
     _render_room_aggregates(submissions)
     _render_other_sessions(repo, str(session.get("id") or ""))
     if teasers:
@@ -723,10 +785,17 @@ def _render_personal_dashboard(repo: Any, session: Dict[str, Any]) -> None:
         if st.button("Edit my Standard responses", use_container_width=True):
             _resume_in_mode("standard")
     else:
-        if st.button("Edit my Deep responses", type="primary", use_container_width=True):
+        if st.button(
+            "Edit my Deep responses", type="primary", use_container_width=True
+        ):
             _resume_in_mode("deep")
 
-    st.page_link(COMPLEXITY_OVERVIEW_PAGE, label="Open the Complexity overview", use_container_width=True, icon=":material/travel_explore:")
+    st.page_link(
+        COMPLEXITY_OVERVIEW_PAGE,
+        label="Open the Complexity overview",
+        use_container_width=True,
+        icon=":material/travel_explore:",
+    )
     if st.button("Use another access key", use_container_width=True):
         _set_entry_mode("existing")
         _clear_login_error()
@@ -737,9 +806,16 @@ def _render_done() -> None:
     draft = get_draft()
     access_key = str(draft.get("access_key") or "")
     emoji_key = hex_to_emoji(access_key) if access_key else ""
-    access_key_hash = hashlib.sha256(access_key.encode("utf-8")).hexdigest() if access_key else ""
-    summary_card("Short key", "".join(split_emoji_symbols(emoji_key)[-4:]) if emoji_key else "Unavailable")
-    summary_card("Hash prefix", access_key_hash[:12] if access_key_hash else "Unavailable")
+    access_key_hash = (
+        hashlib.sha256(access_key.encode("utf-8")).hexdigest() if access_key else ""
+    )
+    summary_card(
+        "Short key",
+        "".join(split_emoji_symbols(emoji_key)[-4:]) if emoji_key else "Unavailable",
+    )
+    summary_card(
+        "Hash prefix", access_key_hash[:12] if access_key_hash else "Unavailable"
+    )
     with st.expander("Full emoji key", expanded=False):
         st.markdown(
             f"<div style='font-size:2rem; line-height:1.4; text-align:center; padding:.6rem 0;'>{emoji_key or 'Unavailable'}</div>",
@@ -770,7 +846,9 @@ def _render_navigation(repo: Any, session: Dict[str, Any]) -> None:
                 set_step(first_active_question_step())
                 st.rerun()
         with right:
-            if st.button(STEP_COPY["review"]["cta"], type="primary", use_container_width=True):
+            if st.button(
+                STEP_COPY["review"]["cta"], type="primary", use_container_width=True
+            ):
                 _open_confirm_send_dialog(repo, session)
         return
 
@@ -834,13 +912,17 @@ def main() -> None:
 
     repo = get_conference_repo()
     if not repo or not repo.is_ready():
-        st.error(repo.unavailable_reason if repo else "Conference repository is unavailable.")
+        st.error(
+            repo.unavailable_reason if repo else "Conference repository is unavailable."
+        )
         return
 
     bundle = get_conference_bundle(prefer_active=True)
     session = bundle.get("session")
     if not session:
-        st.error("Conference session is missing. Ensure `pisa-conference-session` exists in the shared sessions DB.")
+        st.error(
+            "Conference session is missing. Ensure `pisa-conference-session` exists in the shared sessions DB."
+        )
         return
 
     _hydrate_existing_submission(repo, session["id"])
