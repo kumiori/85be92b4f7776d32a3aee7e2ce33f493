@@ -2,17 +2,255 @@ from __future__ import annotations
 
 import hashlib
 import re
+import unicodedata
 from typing import Any, Dict, List, Optional
 
 from conference.models import SESSION_QUESTIONS
 from conference.settings import ConferenceSettings
-from infra.key_codec import hex_to_emoji, split_emoji_symbols
+from infra.key_codec import hex_to_emoji, normalize_access_key, split_emoji_symbols
 from repositories.interaction_repo import NotionInteractionRepository
 
 
 QUESTION_IDENTITY = "PISA_IDENTITY_BLOCK"
 QUESTION_BUNDLE = "PISA_MEETING_BUNDLE"
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+VARIATION_SELECTORS = {0xFE0E, 0xFE0F}
+ZWJ_CODEPOINT = 0x200D
+KEYCAP_CODEPOINT = 0x20E3
+REGIONAL_INDICATOR_MIN = 0x1F1E6
+REGIONAL_INDICATOR_MAX = 0x1F1FF
+SKIN_TONE_MIN = 0x1F3FB
+SKIN_TONE_MAX = 0x1F3FF
+
+
+def _as_list(value: Any) -> list[str]:
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    if isinstance(value, tuple):
+        return [str(item).strip() for item in value if str(item).strip()]
+    text = str(value or "").strip()
+    return [text] if text else []
+
+
+def _as_text(value: Any) -> str:
+    return str(value or "").strip()
+
+
+def _as_fingerprint(value: Any) -> Dict[str, int]:
+    source = value if isinstance(value, dict) else {}
+    out: Dict[str, int] = {}
+    for axis in ["theory", "data", "experiments", "mechanisms"]:
+        raw = source.get(axis, 0)
+        try:
+            level = int(raw)
+        except Exception:
+            level = 0
+        out[axis] = max(0, min(5, level))
+    return out
+
+
+def _is_regional_indicator(char: str) -> bool:
+    codepoint = ord(char)
+    return REGIONAL_INDICATOR_MIN <= codepoint <= REGIONAL_INDICATOR_MAX
+
+
+def _is_modifier(char: str) -> bool:
+    codepoint = ord(char)
+    return (
+        codepoint in VARIATION_SELECTORS
+        or codepoint == KEYCAP_CODEPOINT
+        or codepoint == ZWJ_CODEPOINT
+        or SKIN_TONE_MIN <= codepoint <= SKIN_TONE_MAX
+        or unicodedata.combining(char) > 0
+    )
+
+
+def _split_lookup_symbols(raw: str) -> list[str]:
+    token = str(raw or "").strip()
+    if not token:
+        return []
+    known = split_emoji_symbols(token)
+    if known:
+        return known
+
+    symbols: list[str] = []
+    idx = 0
+    while idx < len(token):
+        current = token[idx]
+        cluster = current
+        idx += 1
+
+        if _is_regional_indicator(current) and idx < len(token) and _is_regional_indicator(token[idx]):
+            cluster += token[idx]
+            idx += 1
+            symbols.append(cluster)
+            continue
+
+        while idx < len(token):
+            next_char = token[idx]
+            cluster += next_char
+            idx += 1
+
+            if ord(next_char) == ZWJ_CODEPOINT and idx < len(token):
+                cluster += token[idx]
+                idx += 1
+                continue
+
+            if _is_modifier(next_char):
+                continue
+
+            cluster = cluster[:-1]
+            idx -= 1
+            break
+
+        symbols.append(cluster)
+    return [symbol for symbol in symbols if symbol]
+
+
+def resolve_access_key_input(
+    notion_repo: Any,
+    raw_key: str,
+) -> tuple[str | None, str | None]:
+    token = str(raw_key or "").strip()
+    if not token:
+        return None, ""
+    try:
+        return normalize_access_key(token), None
+    except ValueError:
+        pass
+
+    symbols = _split_lookup_symbols(token)
+    if not symbols:
+        return None, "Access key format not recognized."
+    if len(symbols) < 4:
+        return None, "Add at least 4 emoji symbols to continue."
+
+    finder = getattr(notion_repo, "find_players_by_emoji_suffix", None)
+    if not callable(finder):
+        return None, "Emoji suffix lookup is unavailable right now."
+
+    suffix4 = "".join(symbols[-4:])
+    matches = finder(suffix4, length=4)
+    if len(matches) == 1:
+        access_key = str(matches[0].get("access_key") or "").strip()
+        if access_key:
+            return access_key, None
+        return None, "Stored access key is incomplete."
+    if len(matches) > 1 and len(symbols) < 6:
+        return None, "Multiple matches. Add two more emoji symbols."
+
+    if len(symbols) >= 6:
+        suffix6 = "".join(symbols[-6:])
+        matches = finder(suffix6, length=6)
+        if len(matches) == 1:
+            access_key = str(matches[0].get("access_key") or "").strip()
+            if access_key:
+                return access_key, None
+            return None, "Stored access key is incomplete."
+        if len(matches) > 1:
+            return None, "This access key is still ambiguous. Paste the full key."
+
+    return None, "No participant was found for this access key."
+
+
+def _normalize_bundle(bundle: Dict[str, Any]) -> Dict[str, Any]:
+    profile = bundle.get("profile") if isinstance(bundle.get("profile"), dict) else {}
+    session = bundle.get("session") if isinstance(bundle.get("session"), dict) else {}
+    derived = bundle.get("derived") if isinstance(bundle.get("derived"), dict) else {}
+    scientific_home = (
+        profile.get("scientific_home")
+        if isinstance(profile.get("scientific_home"), dict)
+        else {}
+    )
+
+    role = _as_list(profile.get("role", bundle.get("role", [])))
+    career_stage = _as_text(profile.get("career_stage", bundle.get("career_stage", "")))
+    country = _as_text(scientific_home.get("country", bundle.get("scientific_home_country", "")))
+    city = _as_text(scientific_home.get("city", bundle.get("scientific_home_city", "")))
+    institution = _as_text(
+        scientific_home.get("institution", bundle.get("scientific_home_institution", ""))
+    )
+    scale = _as_text(profile.get("computational_scale", bundle.get("scale", "")))
+    collaboration_style = _as_text(
+        profile.get("collaboration_style", bundle.get("collaboration_style", ""))
+    )
+    assets = _as_list(profile.get("assets", bundle.get("assets", [])))
+    fingerprint = _as_fingerprint(
+        profile.get("complexity_fingerprint", bundle.get("complexity_fingerprint", {}))
+    )
+    motivations = _as_list(session.get("motivations", bundle.get("motivations", [])))
+    obstacle = _as_list(session.get("obstacle", bundle.get("obstacle", [])))
+    challenge = _as_text(session.get("challenge", bundle.get("challenge", "")))
+    follow_up_interest = _as_text(
+        session.get(
+            "follow_up_interest",
+            bundle.get("follow_up_interest", bundle.get("continue_conversation", "")),
+        )
+    )
+    open_question = _as_text(session.get("open_question", bundle.get("open_question", bundle.get("open_text", ""))))
+    deferred_fields = _as_list(session.get("deferred_fields", bundle.get("deferred_fields", [])))
+    identity_reveal_targets = _as_list(
+        session.get("identity_reveal_targets", bundle.get("identity_reveal_targets", []))
+    )
+
+    return {
+        "schema_version": _as_text(bundle.get("schema_version")) or "1",
+        "mode": _as_text(session.get("depth", bundle.get("mode", ""))),
+        "profile": {
+            "role": role,
+            "career_stage": career_stage,
+            "scientific_home": {
+                "country": country,
+                "city": city,
+                "institution": institution,
+            },
+            "computational_scale": scale,
+            "collaboration_style": collaboration_style,
+            "assets": assets,
+            "complexity_fingerprint": fingerprint,
+        },
+        "session": {
+            "depth": _as_text(session.get("depth", bundle.get("mode", ""))),
+            "motivations": motivations,
+            "obstacle": obstacle,
+            "challenge": challenge,
+            "follow_up_interest": follow_up_interest,
+            "open_question": open_question,
+            "deferred_fields": deferred_fields,
+            "identity_reveal_targets": identity_reveal_targets,
+        },
+        "derived": derived,
+        "role": role,
+        "career_stage": career_stage,
+        "scientific_home_country": country,
+        "scientific_home_city": city,
+        "scientific_home_institution": institution,
+        "scale": scale,
+        "collaboration_style": collaboration_style,
+        "assets": assets,
+        "complexity_fingerprint": fingerprint,
+        "motivations": motivations,
+        "obstacle": obstacle,
+        "challenge": challenge,
+        "follow_up_interest": follow_up_interest,
+        "continue_conversation": follow_up_interest,
+        "open_question": open_question,
+        "open_text": open_question,
+        "deferred_fields": deferred_fields,
+        "identity_reveal_targets": identity_reveal_targets,
+    }
+
+
+def _compact_bundle(payload: Dict[str, Any]) -> Dict[str, Any]:
+    if not isinstance(payload.get("profile"), dict) and not isinstance(payload.get("session"), dict):
+        return payload
+    profile = payload.get("profile") if isinstance(payload.get("profile"), dict) else {}
+    session = payload.get("session") if isinstance(payload.get("session"), dict) else {}
+    return {
+        "schema_version": str(payload.get("schema_version") or "2"),
+        "profile": profile,
+        "session": session,
+    }
 
 
 def emoji_suffix(access_key: str, length: int = 4) -> str:
@@ -52,13 +290,19 @@ class ConferenceRepo:
             )
         return self._interaction_repo
 
-    def resolve_session(self, session_code: str = "") -> Optional[Dict[str, Any]]:
+    def resolve_session(self, session_code: str = "", prefer_active: bool = False) -> Optional[Dict[str, Any]]:
         if not self.notion_repo:
             return None
         if session_code:
             session = self.notion_repo.get_session_by_code(session_code)
             if session:
                 return session
+        if prefer_active:
+            active = getattr(self.notion_repo, "get_active_session", None)
+            if callable(active):
+                session = active()
+                if session:
+                    return session
         default_session = self.notion_repo.get_session_by_code(self.settings.default_session_code)
         if default_session:
             return default_session
@@ -79,16 +323,19 @@ class ConferenceRepo:
         session_id: str,
         access_key: str,
         payload: Dict[str, Any],
+        identity_metadata: Optional[Dict[str, Any]] = None,
     ) -> Optional[Dict[str, Any]]:
         if not self.notion_repo or not access_key:
             return None
+        normalized = _normalize_bundle(payload)
+        identity = identity_metadata or {}
         nickname = (
-            str(payload.get("alias") or "").strip()
-            or str(payload.get("identity") or "").strip()
+            str(identity.get("alias") or "").strip()
+            or str(identity.get("identity") or "").strip()
             or f"Pisa {emoji_suffix(access_key)}"
         )
-        intent = str(payload.get("open_text") or "").strip()
-        contact = str(payload.get("contact") or "").strip()
+        intent = str(normalized.get("open_question") or normalized.get("open_text") or "").strip()
+        contact = str(identity.get("contact") or "").strip()
         email = contact if EMAIL_RE.match(contact) else ""
         emoji_key = hex_to_emoji(access_key)
         try:
@@ -99,7 +346,7 @@ class ConferenceRepo:
                 role="None",
                 consent_play=False,
                 consent_research=False,
-                preferred_mode=str(payload.get("mode") or "").strip() or None,
+                preferred_mode=str(normalized.get("mode") or "").strip() or None,
                 emoji=emoji_key,
                 emoji_suffix_4=emoji_suffix(access_key, length=4),
                 emoji_suffix_6=emoji_suffix(access_key, length=6),
@@ -126,22 +373,26 @@ class ConferenceRepo:
         access_key_hash: str,
         access_key_last4: str,
         payload: Dict[str, Any],
+        identity_metadata: Optional[Dict[str, Any]] = None,
     ) -> None:
         repo = self.interaction_repo()
+        compact_bundle = _compact_bundle(payload)
+        normalized = _normalize_bundle(compact_bundle)
+        identity = identity_metadata or {}
         repo.save_response(
             session_id=session_id,
             player_id=player_id,
             question_id=QUESTION_BUNDLE,
             value={
-                "answer": payload,
+                "answer": compact_bundle,
                 "question_type": "other",
                 "field": "session_bundle",
-                "bundle": payload,
-                "mode": payload.get("mode", ""),
-                "alias": payload.get("alias", ""),
-                "identity": payload.get("identity", ""),
-                "contact": payload.get("contact", ""),
-                "optional_text": payload.get("notes", ""),
+                "bundle": compact_bundle,
+                "mode": normalized.get("mode", ""),
+                "alias": identity.get("alias", ""),
+                "identity": identity.get("identity", ""),
+                "contact": identity.get("contact", ""),
+                "optional_text": "",
                 "access_key_hash": access_key_hash,
                 "access_key_last4": access_key_last4,
                 "source": "conference_session",
@@ -174,6 +425,9 @@ class ConferenceRepo:
             return None
         matches.sort(key=lambda item: str(item.get("submitted_at") or ""), reverse=True)
         return matches[0]
+
+    def resolve_access_key(self, raw_key: str) -> tuple[str | None, str | None]:
+        return resolve_access_key_input(self.notion_repo, raw_key)
 
     def group_rows_by_submission(self, rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         by_actor: Dict[str, Dict[str, Any]] = {}
@@ -214,7 +468,8 @@ class ConferenceRepo:
                 bundle = payload.get("bundle")
                 if not isinstance(bundle, dict):
                     bundle = {}
-                for key, value in bundle.items():
+                normalized_bundle = _normalize_bundle(bundle)
+                for key, value in normalized_bundle.items():
                     submission[str(key)] = value
                 submission["alias"] = str(payload.get("alias") or bundle.get("alias") or "")
                 submission["identity"] = str(payload.get("identity") or bundle.get("identity") or "")
