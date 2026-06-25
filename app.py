@@ -70,22 +70,34 @@ def _visible_pages() -> dict[str, list[st.Page]]:
             st.Page("pages/12_Report.py", title="Report", icon=":material/article:"),
             st.Page("pages/09_Player.py", title="Your trajectory", icon=":material/person:"),
         ],
-        "**Pisa**": [
+        "**Complexity**": [
             st.Page(
                 "pages/15_Pisa_Meeting.py",
-                title="Pisa Meeting",
+                title="Complexity",
                 icon=":material/groups:",
+                url_path="complexity",
+            ),
+            st.Page(
+                "pages/19_Pisa_Experiment.py",
+                title="Pisa Experiment",
+                icon=":material/history:",
                 url_path="pisa",
             ),
             st.Page(
                 "pages/17_Pisa_Overview.py",
-                title="Pisa Overview",
+                title="Complexity Overview",
                 icon=":material/travel_explore:",
                 url_path="pisa-overview",
             ),
             st.Page(
+                "pages/18_Pisa_Opening.py",
+                title="Pisa Opening",
+                icon=":material/auto_stories:",
+                url_path="pisa-opening",
+            ),
+            st.Page(
                 "pages/16_Pisa_Meeting_Host.py",
-                title="Pisa Meeting Host",
+                title="Complexity Host",
                 icon=":material/insights:",
                 url_path="pisa-meeting-host",
             ),

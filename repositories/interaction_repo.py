@@ -39,6 +39,16 @@ def _extract_date_start(props: Dict[str, Any], name: Optional[str]) -> Optional[
     return str(start) if start else None
 
 
+def _rich_text_blocks(content: str, max_chunk_size: int = 1900) -> List[Dict[str, Any]]:
+    text = str(content or "")
+    if not text:
+        return []
+    return [
+        {"type": "text", "text": {"content": text[idx : idx + max_chunk_size]}}
+        for idx in range(0, len(text), max_chunk_size)
+    ]
+
+
 def _resolve_data_source_id(client: Any, db_or_ds_id: str) -> str:
     data_sources_endpoint = getattr(client, "data_sources", None)
     ds_retrieve = getattr(data_sources_endpoint, "retrieve", None) if data_sources_endpoint else None
@@ -250,31 +260,23 @@ class NotionInteractionRepository(InteractionRepository):
             q_page_id = self._resolve_question_page_id(question_id)
             properties[question_prop] = {"relation": [{"id": q_page_id}]} if q_page_id else {"relation": []}
         if question_id_prop:
-            properties[question_id_prop] = {
-                "rich_text": [{"type": "text", "text": {"content": question_id}}]
-            }
+            properties[question_id_prop] = {"rich_text": _rich_text_blocks(question_id)}
         if item_prop:
-            properties[item_prop] = {"rich_text": [{"type": "text", "text": {"content": question_id}}]}
+            properties[item_prop] = {"rich_text": _rich_text_blocks(question_id)}
         response_value = value
         if isinstance(value, dict):
             response_value = value.get("answer", value.get("choice", value))
         if response_value_prop:
             properties[response_value_prop] = {
-                "rich_text": [
-                    {"type": "text", "text": {"content": json.dumps(response_value, ensure_ascii=False)}}
-                ]
+                "rich_text": _rich_text_blocks(json.dumps(response_value, ensure_ascii=False))
             }
         if value_json_prop:
             properties[value_json_prop] = {
-                "rich_text": [
-                    {"type": "text", "text": {"content": json.dumps(value, ensure_ascii=False)}}
-                ]
+                "rich_text": _rich_text_blocks(json.dumps(value, ensure_ascii=False))
             }
         value_label = self._derive_value_label(value)
         if value_label_prop and value_label:
-            properties[value_label_prop] = {
-                "rich_text": [{"type": "text", "text": {"content": value_label}}]
-            }
+            properties[value_label_prop] = {"rich_text": _rich_text_blocks(value_label)}
         question_type = self._derive_question_type(value)
         if question_type_prop:
             properties[question_type_prop] = {"select": {"name": question_type}}
@@ -289,9 +291,7 @@ class NotionInteractionRepository(InteractionRepository):
             properties[depth_prop] = {"number": depth}
         optional_text = self._derive_optional_text(value)
         if optional_text_prop and optional_text:
-            properties[optional_text_prop] = {
-                "rich_text": [{"type": "text", "text": {"content": optional_text}}]
-            }
+            properties[optional_text_prop] = {"rich_text": _rich_text_blocks(optional_text)}
         if timestamp_prop:
             properties[timestamp_prop] = {"date": {"start": now_iso}}
         if submitted_prop:
@@ -299,11 +299,11 @@ class NotionInteractionRepository(InteractionRepository):
         if created_prop:
             properties[created_prop] = {"date": {"start": now_iso}}
         if text_prop:
-            properties[text_prop] = {"rich_text": [{"type": "text", "text": {"content": text_id}}]}
+            properties[text_prop] = {"rich_text": _rich_text_blocks(text_id)}
         if device_prop:
-            properties[device_prop] = {"rich_text": [{"type": "text", "text": {"content": device_id}}]}
+            properties[device_prop] = {"rich_text": _rich_text_blocks(device_id)}
         if access_key_prop:
-            properties[access_key_prop] = {"rich_text": [{"type": "text", "text": {"content": device_id}}]}
+            properties[access_key_prop] = {"rich_text": _rich_text_blocks(device_id)}
         if title_prop:
             properties[title_prop] = {"title": [{"type": "text", "text": {"content": f"{question_id} · {text_id}"}}]}
 
