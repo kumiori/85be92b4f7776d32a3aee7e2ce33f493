@@ -25,9 +25,9 @@ STEP_ORDER: List[str] = [
 
 FLOW_MODES: Dict[str, Dict[str, Any]] = {
     "quick": {
-        "title": "Quick pulse",
-        "detail": "~ 3 minutes · profile sketch",
-        "accent": "🟢",
+        "title": "Quick impulse",
+        "detail": "~ 3 minutes • just a sketch",
+        "accent": "🧊",
         "steps": [
             "role",
             "assets",
@@ -96,6 +96,8 @@ SESSION_FIELDS = {
     "challenge",
     "follow_up_interest",
     "open_question",
+    "boiler_room_contribution",
+    "question_flags",
     "identity_reveal_targets",
 }
 FINGERPRINT_AXES = ["theory", "data", "experiments", "mechanisms"]
@@ -116,8 +118,8 @@ MIGRATION_PROFILE_FIELDS = [
 STEP_COPY: Dict[str, Dict[str, str]] = {
     "welcome": {
         "title": "Complexity",
-        "body": "A short anonymous instrument for tracing how people think, what they can contribute, and what the room is becoming together.",
-        "note": "Anonymous first. Profiles persist gently. Session questions can evolve from event to event.",
+        "body": "An anonymous instrument for tracing thoughts, perceptions, and positions.",
+        "note": "Anonymous first. Profiles persist gently. Session questions will evolve from time to time.",
     },
     "role": {
         "title": "What is your perspective?",

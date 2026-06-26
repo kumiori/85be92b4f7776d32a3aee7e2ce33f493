@@ -8,6 +8,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 from conference.context import get_conference_bundle, get_conference_repo
+from conference.events import YOUNG_TEXT_ID
 from conference.pisa_legacy_flow import (
     active_question_steps,
     active_step_sequence,
@@ -25,6 +26,11 @@ from conference.pisa_legacy_flow import (
     update_draft,
 )
 from conference.pisa_legacy_models import STEP_COPY, field_option_label_map, mode_card_rows, question_by_step
+from conference.question_flags import (
+    QUESTION_FLAG_LABELS,
+    QUESTION_FLAG_OPTIONS,
+    normalize_question_flags,
+)
 from conference.repo import emoji_suffix, resolve_access_key_input
 from conference.ui import apply_conference_styles, conference_header, summary_card
 from infra.key_codec import generate_hex_key, hex_to_emoji, split_emoji_symbols
@@ -49,6 +55,79 @@ def _infer_mode(submission: Dict[str, Any]) -> str:
     return "quick"
 
 
+def _question_prompt_by_id(question_id: str) -> str:
+    for step in active_question_steps(get_draft()):
+        question = question_by_step(step)
+        if question and str(question.get("question_id") or "") == question_id:
+            return str(question.get("prompt") or question_id)
+    return question_id
+
+
+def _question_flag_entries() -> Dict[str, Dict[str, Any]]:
+    return normalize_question_flags(get_draft().get("question_flags"))
+
+
+def _set_question_flag(question_id: str, *, flags: list[str], note: str) -> None:
+    entries = _question_flag_entries()
+    token = str(question_id or "").strip()
+    if not token:
+        return
+    normalized = normalize_question_flags({token: {"flags": flags, "note": note}})
+    if normalized.get(token):
+        entries[token] = normalized[token]
+    else:
+        entries.pop(token, None)
+    update_draft(question_flags=entries)
+
+
+def _render_question_flag_control(question: Dict[str, Any]) -> None:
+    question_id = str(question.get("question_id") or "").strip()
+    if not question_id:
+        return
+    state = _question_flag_entries().get(question_id, {})
+    flags = list(state.get("flags") or [])
+    note = str(state.get("note") or "")
+    count = len(flags) + (1 if note else 0)
+    label = f"Flag ({count})" if count else "Flag"
+    with st.popover(label):
+        st.caption("Mark if the question feels incomplete, misleading, narrow, or otherwise off.")
+        selected = st.pills(
+            "Question issue",
+            [str(item["value"]) for item in QUESTION_FLAG_OPTIONS],
+            default=flags,
+            selection_mode="multi",
+            format_func=lambda value: QUESTION_FLAG_LABELS.get(value, value),
+            key=f"legacy_pisa_flag_{question_id}",
+            label_visibility="collapsed",
+        )
+        comment = st.text_input(
+            "Optional note",
+            value=note,
+            key=f"legacy_pisa_flag_note_{question_id}",
+            placeholder="Optional short note",
+            label_visibility="collapsed",
+        )
+        _set_question_flag(question_id, flags=list(selected), note=comment)
+
+
+def _render_question_flag_summary() -> None:
+    entries = _question_flag_entries()
+    if not entries:
+        return
+    lines: list[str] = []
+    for question_id, payload in entries.items():
+        labels = [
+            QUESTION_FLAG_LABELS.get(str(flag), str(flag))
+            for flag in payload.get("flags", [])
+        ]
+        body = ", ".join(labels)
+        note = str(payload.get("note") or "").strip()
+        if note:
+            body = f"{body} · {note}" if body else note
+        lines.append(f"{_question_prompt_by_id(question_id)}: {body or 'Flagged'}")
+    summary_card("Question flags", "<br>".join(lines))
+
+
 def _hydrate_existing_submission(repo: Any, session_id: str) -> None:
     if st.session_state.get("legacy_pisa_hydrated"):
         return
@@ -68,6 +147,7 @@ def _hydrate_existing_submission(repo: Any, session_id: str) -> None:
         submission = repo.latest_submission_by_access_key_hash(
             session_id=session_id,
             access_key_hash=access_key_hash,
+            text_ids=[YOUNG_TEXT_ID],
         )
         st.session_state["legacy_pisa_submission_cache_key"] = cache_key
         st.session_state["legacy_pisa_submission_cache"] = submission
@@ -188,11 +268,24 @@ def _select_mode(mode: str) -> None:
 
 
 def _render_welcome() -> None:
-    st.markdown("### How much time do you have?")
-    for row in mode_card_rows():
-        button_label = f"{row['accent']} {row['title']}\n{row['detail']}"
-        if st.button(button_label, type="primary", use_container_width=True, key=f"legacy_pisa_mode_{row['value']}"):
-            _select_mode(str(row["value"]))
+    row = next(
+        (
+            item
+            for item in mode_card_rows()
+            if str(item.get("value") or "") == "quick"
+        ),
+        {"value": "quick", "title": "Quick pulse", "detail": "~ 3 minutes", "accent": "🧊"},
+    )
+    st.markdown("### Let's have a quick temperature check.")
+    st.caption("We will start with the quick pulse. You can extend it later.")
+    button_label = f"{row['accent']} {row['title']}\n{row['detail']}"
+    if st.button(
+        button_label,
+        type="primary",
+        use_container_width=True,
+        key="legacy_pisa_mode_quick",
+    ):
+        _select_mode("quick")
     summary_card("Anonymous first", STEP_COPY["welcome"]["note"])
 
 
@@ -200,6 +293,7 @@ def _render_question_step(step: str) -> None:
     question = question_by_step(step)
     if not question:
         return
+    _render_question_flag_control(question)
     field = str(question["field"])
     draft = get_draft()
     current_value = draft.get(field)
@@ -269,6 +363,7 @@ def _render_review() -> None:
             continue
         field = str(model["field"])
         summary_card(model["prompt"], _labels_for(field, payload.get(field)))
+    _render_question_flag_summary()
     identity_parts = [
         str(payload.get("alias") or "").strip(),
         str(payload.get("identity") or "").strip(),
@@ -337,31 +432,15 @@ def main() -> None:
         st.error("Conference session is missing. Ensure `pisa-conference-session` exists in the shared sessions DB.")
         return
 
-    _hydrate_existing_submission(repo, session["id"])
-    if current_step() not in active_step_sequence():
-        set_step("welcome")
-    step = current_step()
-    copy = STEP_COPY[step]
-    sequence = active_step_sequence()
-    step_index = sequence.index(step) + 1 if step in sequence else 1
-    step_label = f"{step_index} / {len(sequence)}" if step != "done" else "complete"
-    conference_header(copy["title"], "", step=step_label)
-    st.caption("Legacy Pisa experiment page.")
-    if copy.get("body"):
-        st.markdown(f"### {copy['body']}")
-
-    if step == "welcome":
-        _render_welcome()
-    elif step == IDENTITY_STEP:
-        _render_identity()
-    elif step == "review":
-        _render_review()
-    elif step == "done":
-        _render_done()
-    else:
-        _render_question_step(step)
-
-    _render_navigation(repo, session)
+    conference_header("Young experiment", "", step="paused")
+    st.warning(
+        "Known bug: the historical Young/Pisa experiment is paused while we repair the event mapping."
+    )
+    st.caption(
+        "Please do not add new entries here for now. "
+        "Use the current Complexity page instead."
+    )
+    st.stop()
 
 
 if __name__ == "__main__":

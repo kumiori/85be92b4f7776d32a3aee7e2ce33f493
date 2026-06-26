@@ -262,15 +262,23 @@ def main() -> None:
         "SESSION_ID",
         session_ids,
         index=default_idx,
+        key="session",
         format_func=lambda sid: next(
             (s["label"] for s in sessions if s["id"] == sid), sid
         ),
+        bind="query-params",
     )
     selected_session_label = next(
         (s["label"] for s in sessions if s["id"] == selected_session_id),
         selected_session_id,
     )
-    text_id = st.selectbox("TEXT_ID (optional)", TEXT_OPTIONS, index=0)
+    text_id = st.selectbox(
+        "TEXT_ID (optional)",
+        TEXT_OPTIONS,
+        index=0,
+        key="text_id",
+        bind="query-params",
+    )
     st.caption(TEXT_SNIPPETS.get(text_id, ""))
     depth = st.slider(
         "Question depth",
@@ -278,6 +286,8 @@ def main() -> None:
         max_value=10,
         value=requested_depth or 5,
         step=1,
+        key="depth",
+        bind="query-params",
     )
 
     actor_id, player_id = _actor_identity()

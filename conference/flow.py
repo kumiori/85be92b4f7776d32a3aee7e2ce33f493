@@ -26,11 +26,13 @@ from conference.models import (
     role_set,
     scale_set,
 )
+from conference.question_flags import normalize_question_flags
 
 
 DEFAULT_DRAFT: Dict[str, Any] = {
     "mode": "",
     "role": [],
+    "role_custom": "",
     "career_stage": "",
     "scientific_home_country": "",
     "scientific_home_city": "",
@@ -44,6 +46,8 @@ DEFAULT_DRAFT: Dict[str, Any] = {
     "follow_up_interest": "",
     "complexity_fingerprint": {axis: 0 for axis in FINGERPRINT_AXES},
     "open_question": "",
+    "boiler_room_contribution": "",
+    "question_flags": {},
     "alias": "",
     "identity": "",
     "contact": "",
@@ -78,10 +82,12 @@ FIELD_ALLOWED_VALUES: Dict[str, set[str]] = {
 
 MULTI_FIELDS = {"role", "assets", "motivations", "obstacle", "identity_reveal_targets"}
 TEXT_FIELDS = {
+    "role_custom",
     "scientific_home_country",
     "scientific_home_city",
     "scientific_home_institution",
     "open_question",
+    "boiler_room_contribution",
     "alias",
     "identity",
     "contact",
@@ -303,6 +309,7 @@ def build_session_payload(draft: Dict[str, Any]) -> Dict[str, Any]:
     active_fields = _active_fields(draft)
 
     role = _normalize_values(_coerce_values(draft.get("role", [])), FIELD_ALLOWED_VALUES["role"], 3)
+    role_custom = _normalize_text(draft.get("role_custom"))
     career_stage = _normalize_single(draft.get("career_stage", ""), FIELD_ALLOWED_VALUES["career_stage"])
     scale = _normalize_single(draft.get("scale", ""), FIELD_ALLOWED_VALUES["scale"])
     collaboration_style = _normalize_single(
@@ -328,6 +335,7 @@ def build_session_payload(draft: Dict[str, Any]) -> Dict[str, Any]:
 
     profile = {
         "role": role,
+        "role_custom": role_custom if "role" in active_fields else "",
         "career_stage": career_stage if "career_stage" in active_fields else "",
         "scientific_home": {
             "country": _normalize_text(draft.get("scientific_home_country")),
@@ -348,6 +356,10 @@ def build_session_payload(draft: Dict[str, Any]) -> Dict[str, Any]:
         "challenge": challenge if "challenge" in active_fields else "",
         "follow_up_interest": follow_up_interest if "follow_up_interest" in active_fields else "",
         "open_question": open_question,
+        "boiler_room_contribution": _normalize_text(
+            draft.get("boiler_room_contribution")
+        ),
+        "question_flags": normalize_question_flags(draft.get("question_flags")),
         "deferred_fields": deferred_fields,
         "identity_reveal_targets": _normalize_values(
             _coerce_values(draft.get("identity_reveal_targets", [])),
@@ -374,6 +386,7 @@ def flatten_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
         "schema_version": str(payload.get("schema_version") or CURRENT_SCHEMA_VERSION),
         "mode": str(session.get("depth") or payload.get("mode") or "").strip(),
         "role": list(profile.get("role") or []),
+        "role_custom": str(profile.get("role_custom") or "").strip(),
         "career_stage": str(profile.get("career_stage") or "").strip(),
         "scientific_home_country": str(scientific_home.get("country") or "").strip(),
         "scientific_home_city": str(scientific_home.get("city") or "").strip(),
@@ -388,10 +401,22 @@ def flatten_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
         "follow_up_interest": str(session.get("follow_up_interest") or "").strip(),
         "continue_conversation": str(session.get("follow_up_interest") or "").strip(),
         "open_question": str(session.get("open_question") or "").strip(),
+        "boiler_room_contribution": str(
+            session.get(
+                "boiler_room_contribution",
+                payload.get("boiler_room_contribution", ""),
+            )
+            or ""
+        ).strip(),
+        "question_flags": normalize_question_flags(
+            session.get("question_flags", payload.get("question_flags", {}))
+        ),
         "open_text": str(session.get("open_question") or "").strip(),
         "deferred_fields": list(session.get("deferred_fields") or []),
         "identity_reveal_targets": list(session.get("identity_reveal_targets") or []),
     }
+    if out["role_custom"] and out["role_custom"] not in out["role"]:
+        out["role"].append(out["role_custom"])
     return out
 
 
