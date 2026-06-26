@@ -9,7 +9,7 @@ import tomllib
 
 
 DEFAULT_NOTION_VERSION = "2025-09-03"
-DEFAULT_SESSION_CODE = "pisa-conference-session"
+DEFAULT_SESSION_CODE = "petnica_2026"
 
 
 @dataclass(frozen=True)
