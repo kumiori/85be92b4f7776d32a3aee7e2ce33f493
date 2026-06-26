@@ -3,16 +3,20 @@ from __future__ import annotations
 import hashlib
 import re
 import unicodedata
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence
 
 from conference.models import SESSION_QUESTIONS
+from conference.question_flags import normalize_question_flags
 from conference.settings import ConferenceSettings
 from infra.key_codec import hex_to_emoji, normalize_access_key, split_emoji_symbols
 from repositories.interaction_repo import NotionInteractionRepository
 
 
 QUESTION_IDENTITY = "PISA_IDENTITY_BLOCK"
-QUESTION_BUNDLE = "PISA_MEETING_BUNDLE"
+LEGACY_QUESTION_BUNDLE = "PISA_MEETING_BUNDLE"
+COMPLEXITY_QUESTION_BUNDLE = "COMPLEXITY_BUNDLE"
+QUESTION_BUNDLE_IDS = {LEGACY_QUESTION_BUNDLE, COMPLEXITY_QUESTION_BUNDLE}
+ANONYMOUS_COMPLEXITY_NAME = "🌀"
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 VARIATION_SELECTORS = {0xFE0E, 0xFE0F}
 ZWJ_CODEPOINT = 0x200D
@@ -164,6 +168,9 @@ def _normalize_bundle(bundle: Dict[str, Any]) -> Dict[str, Any]:
     )
 
     role = _as_list(profile.get("role", bundle.get("role", [])))
+    role_custom = _as_text(profile.get("role_custom", bundle.get("role_custom", "")))
+    if role_custom and role_custom not in role:
+        role.append(role_custom)
     career_stage = _as_text(profile.get("career_stage", bundle.get("career_stage", "")))
     country = _as_text(scientific_home.get("country", bundle.get("scientific_home_country", "")))
     city = _as_text(scientific_home.get("city", bundle.get("scientific_home_city", "")))
@@ -188,6 +195,15 @@ def _normalize_bundle(bundle: Dict[str, Any]) -> Dict[str, Any]:
         )
     )
     open_question = _as_text(session.get("open_question", bundle.get("open_question", bundle.get("open_text", ""))))
+    boiler_room_contribution = _as_text(
+        session.get(
+            "boiler_room_contribution",
+            bundle.get("boiler_room_contribution", bundle.get("notes", "")),
+        )
+    )
+    question_flags = normalize_question_flags(
+        session.get("question_flags", bundle.get("question_flags", {}))
+    )
     deferred_fields = _as_list(session.get("deferred_fields", bundle.get("deferred_fields", [])))
     identity_reveal_targets = _as_list(
         session.get("identity_reveal_targets", bundle.get("identity_reveal_targets", []))
@@ -216,11 +232,14 @@ def _normalize_bundle(bundle: Dict[str, Any]) -> Dict[str, Any]:
             "challenge": challenge,
             "follow_up_interest": follow_up_interest,
             "open_question": open_question,
+            "boiler_room_contribution": boiler_room_contribution,
+            "question_flags": question_flags,
             "deferred_fields": deferred_fields,
             "identity_reveal_targets": identity_reveal_targets,
         },
         "derived": derived,
         "role": role,
+        "role_custom": role_custom,
         "career_stage": career_stage,
         "scientific_home_country": country,
         "scientific_home_city": city,
@@ -235,6 +254,8 @@ def _normalize_bundle(bundle: Dict[str, Any]) -> Dict[str, Any]:
         "follow_up_interest": follow_up_interest,
         "continue_conversation": follow_up_interest,
         "open_question": open_question,
+        "boiler_room_contribution": boiler_room_contribution,
+        "question_flags": question_flags,
         "open_text": open_question,
         "deferred_fields": deferred_fields,
         "identity_reveal_targets": identity_reveal_targets,
@@ -295,8 +316,7 @@ class ConferenceRepo:
             return None
         if session_code:
             session = self.notion_repo.get_session_by_code(session_code)
-            if session:
-                return session
+            return session
         if prefer_active:
             active = getattr(self.notion_repo, "get_active_session", None)
             if callable(active):
@@ -332,7 +352,7 @@ class ConferenceRepo:
         nickname = (
             str(identity.get("alias") or "").strip()
             or str(identity.get("identity") or "").strip()
-            or f"Pisa {emoji_suffix(access_key)}"
+            or ANONYMOUS_COMPLEXITY_NAME
         )
         intent = str(normalized.get("open_question") or normalized.get("open_text") or "").strip()
         contact = str(identity.get("contact") or "").strip()
@@ -379,10 +399,15 @@ class ConferenceRepo:
         compact_bundle = _compact_bundle(payload)
         normalized = _normalize_bundle(compact_bundle)
         identity = identity_metadata or {}
+        bundle_id = (
+            LEGACY_QUESTION_BUNDLE
+            if str(text_id or "").strip() == "pisa_session_v2"
+            else COMPLEXITY_QUESTION_BUNDLE
+        )
         repo.save_response(
             session_id=session_id,
             player_id=player_id,
-            question_id=QUESTION_BUNDLE,
+            question_id=bundle_id,
             value={
                 "answer": compact_bundle,
                 "question_type": "other",
@@ -401,20 +426,34 @@ class ConferenceRepo:
             device_id=device_id,
         )
 
-    def get_session_rows(self, session_id: str) -> List[Dict[str, Any]]:
+    def get_session_rows(
+        self,
+        session_id: str,
+        *,
+        text_ids: Optional[Sequence[str]] = None,
+    ) -> List[Dict[str, Any]]:
         question_ids = {str(question["question_id"]) for question in SESSION_QUESTIONS}
         question_ids.add(QUESTION_IDENTITY)
-        question_ids.add(QUESTION_BUNDLE)
+        question_ids.update(QUESTION_BUNDLE_IDS)
         rows = self.interaction_repo().get_responses(session_id)
-        return [row for row in rows if str(row.get("item_id") or "") in question_ids]
+        filtered = [row for row in rows if str(row.get("item_id") or "") in question_ids]
+        allowed_text_ids = {str(item).strip() for item in text_ids or [] if str(item).strip()}
+        if not allowed_text_ids:
+            return filtered
+        return [
+            row
+            for row in filtered
+            if str(row.get("text_id") or "").strip() in allowed_text_ids
+        ]
 
     def latest_submission_by_access_key_hash(
         self,
         *,
         session_id: str,
         access_key_hash: str,
+        text_ids: Optional[Sequence[str]] = None,
     ) -> Dict[str, Any] | None:
-        rows = self.get_session_rows(session_id)
+        rows = self.get_session_rows(session_id, text_ids=text_ids)
         grouped = self.group_rows_by_submission(rows)
         matches = [
             item

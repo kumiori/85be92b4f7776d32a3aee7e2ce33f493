@@ -8,7 +8,16 @@ import pandas as pd
 import streamlit as st
 
 from conference.context import get_conference_bundle, get_conference_repo
+from conference.events import (
+    UNESCO_SESSION_CODE,
+    YOUNG_SESSION_CODE,
+    complexity_text_ids,
+    current_complexity_session_code,
+    text_ids_for_session_code,
+)
 from conference.models import FINGERPRINT_LABELS, field_option_label_map
+from conference.repo import ANONYMOUS_COMPLEXITY_NAME
+from conference.session_window import filter_rows_to_session_window
 from conference.topology import count_field, room_snapshot
 from infra.app_context import get_authenticator, get_notion_repo
 from infra.app_state import ensure_auth, ensure_session_state, remember_access, require_login
@@ -45,12 +54,12 @@ def _labels_for(field: str, value: Any) -> str:
 def _historical_session_counts(repo: Any, current_session_id: str) -> List[Dict[str, Any]]:
     sessions = [
         {
-            "code": "pisa-conference-session",
-            "label": "Pisa",
+            "code": YOUNG_SESSION_CODE,
+            "label": "Young",
             "question": "Who are you?",
         },
         {
-            "code": "global-session",
+            "code": UNESCO_SESSION_CODE,
             "label": "UNESCO",
             "question": "What resonates?",
         },
@@ -62,7 +71,12 @@ def _historical_session_counts(repo: Any, current_session_id: str) -> List[Dict[
             continue
         if str(session.get("id") or "") == str(current_session_id or ""):
             continue
-        submissions = repo.group_rows_by_submission(repo.get_session_rows(session["id"]))
+        submissions = repo.group_rows_by_submission(
+            repo.get_session_rows(
+                session["id"],
+                text_ids=text_ids_for_session_code(item["code"]),
+            )
+        )
         rows.append(
             {
                 "label": item["label"],
@@ -89,20 +103,24 @@ def main() -> None:
         st.error(repo.unavailable_reason if repo else "Conference repository is unavailable.")
         return
 
-    bundle = get_conference_bundle(prefer_active=True)
+    session_code = current_complexity_session_code(repo)
+    bundle = get_conference_bundle(session_code=session_code)
     session = bundle.get("session")
     if not session:
-        st.error("Conference session is missing. Ensure the shared sessions DB contains `pisa-conference-session`.")
+        st.error(
+            f"Conference session is missing. Ensure the shared sessions DB contains `{session_code}`."
+        )
         return
 
-    response_rows = repo.get_session_rows(session["id"])
-    submissions = repo.group_rows_by_submission(response_rows)
+    response_rows = repo.get_session_rows(session["id"], text_ids=complexity_text_ids())
+    filtered_rows = filter_rows_to_session_window(response_rows, session)
+    submissions = repo.group_rows_by_submission(filtered_rows)
     snapshot = room_snapshot(submissions)
     event_log = list_logged_events(page=PAGE_KEY, session_id=session["id"], limit=100)
 
     heading("Complexity host")
     microcopy(
-        f'{session.get("session_code", "pisa-conference-session")} · '
+        f'{session.get("session_code", session_code)} · '
         "persistent profiles, session questions, neighbours, and room-level signals"
     )
 
@@ -157,7 +175,10 @@ def main() -> None:
             rows.append(
                 {
                     "when": _format_timestamp(str(row.get("submitted_at", ""))),
-                    "who": row.get("identity") or row.get("alias") or row.get("contact") or "Anonymous",
+                    "who": row.get("identity")
+                    or row.get("alias")
+                    or row.get("contact")
+                    or ANONYMOUS_COMPLEXITY_NAME,
                     "role": _labels_for("role", row.get("role")),
                     "assets": _labels_for("assets", row.get("assets")),
                     "obstacle": _labels_for("obstacle", row.get("obstacle")),

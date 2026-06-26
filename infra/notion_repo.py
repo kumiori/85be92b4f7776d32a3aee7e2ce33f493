@@ -326,6 +326,11 @@ class NotionRepo:
             return {}
         return {name: {"checkbox": bool(value)}}
 
+    def _build_date(self, name: str, value: Optional[str]) -> Dict[str, Any]:
+        if not value:
+            return {}
+        return {name: {"date": {"start": str(value)}}}
+
     def _build_relation(self, name: str, ids: List[str]) -> Dict[str, Any]:
         return {name: {"relation": [{"id": rid} for rid in ids if rid]}}
 
@@ -436,15 +441,18 @@ class NotionRepo:
     ) -> Dict[str, Any]:
         db_id = self._sessions_db_id(session_db_id)
         title_name = self._prop_name(db_id, "session_code", "title")
-        status_name = self._prop_name(db_id, "status", "select")
-        mode_name = self._prop_name(db_id, "mode", "select")
-        round_name = self._prop_name(db_id, "round_index", "number")
 
         properties: Dict[str, Any] = {}
         properties.update(self._build_title(title_name, session_code))
-        properties.update(self._build_select(status_name, "Lobby"))
-        properties.update(self._build_select(mode_name, mode))
-        properties.update(self._build_number(round_name, 0))
+        if self._prop_exists(db_id, "status"):
+            status_name = self._prop_name(db_id, "status", "select")
+            properties.update(self._build_select(status_name, "Lobby"))
+        if self._prop_exists(db_id, "mode"):
+            mode_name = self._prop_name(db_id, "mode", "select")
+            properties.update(self._build_select(mode_name, mode))
+        if self._prop_exists(db_id, "round_index"):
+            round_name = self._prop_name(db_id, "round_index", "number")
+            properties.update(self._build_number(round_name, 0))
 
         response = _execute_with_retry(
             self.client.pages.create,
@@ -520,13 +528,13 @@ class NotionRepo:
                         "session_visualization", str(fields["session_visualisation"])
                     )
                 )
-        if "status" in fields:
+        if "status" in fields and self._prop_exists(db_id, "status"):
             name = self._prop_name(db_id, "status", "select")
             props.update(self._build_select(name, fields["status"]))
-        if "mode" in fields:
+        if "mode" in fields and self._prop_exists(db_id, "mode"):
             name = self._prop_name(db_id, "mode", "select")
             props.update(self._build_select(name, fields["mode"]))
-        if "round_index" in fields:
+        if "round_index" in fields and self._prop_exists(db_id, "round_index"):
             name = self._prop_name(db_id, "round_index", "number")
             props.update(self._build_number(name, fields["round_index"]))
         if "active" in fields and self._prop_exists(db_id, "active"):
@@ -541,6 +549,10 @@ class NotionRepo:
             )
         if "yellow_active" in fields and self._prop_exists(db_id, "yellow_active"):
             props.update(self._build_checkbox("yellow_active", fields["yellow_active"]))
+        if "start" in fields and self._prop_exists(db_id, "start"):
+            props.update(self._build_date("start", fields["start"]))
+        if "end" in fields and self._prop_exists(db_id, "end"):
+            props.update(self._build_date("end", fields["end"]))
         if not props:
             session = _execute_with_retry(
                 self.client.pages.retrieve, page_id=session_id

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import streamlit as st
 
+from conference.events import COMPLEXITY_OVERVIEW_PAGE, YOUNG_OVERVIEW_PAGE
 from ui import (
     apply_theme,
     display_centered_prompt,
@@ -79,15 +80,21 @@ def _visible_pages() -> dict[str, list[st.Page]]:
             ),
             st.Page(
                 "pages/19_Pisa_Experiment.py",
-                title="Pisa Experiment",
+                title="Young Experiment (Paused)",
                 icon=":material/history:",
                 url_path="pisa",
             ),
             st.Page(
-                "pages/17_Pisa_Overview.py",
-                title="Complexity Overview",
+                YOUNG_OVERVIEW_PAGE,
+                title="Young Overview",
                 icon=":material/travel_explore:",
-                url_path="pisa-overview",
+                url_path="young-overview",
+            ),
+            st.Page(
+                COMPLEXITY_OVERVIEW_PAGE,
+                title="Complexity Overview",
+                icon=":material/insights:",
+                url_path="complexity-overview",
             ),
             st.Page(
                 "pages/18_Pisa_Opening.py",
