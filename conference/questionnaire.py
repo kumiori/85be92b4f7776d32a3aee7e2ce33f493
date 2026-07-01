@@ -145,7 +145,10 @@ def _event_scope_text(session: Dict[str, Any]) -> str:
 
 
 def _sync_event_query(event_slug: str) -> None:
-    next_params: Dict[str, str] = {"event": str(event_slug or "").strip(), **public_query_params()}
+    next_params: Dict[str, str] = {
+        "event": str(event_slug or "").strip(),
+        **public_query_params(),
+    }
     st.query_params.clear()
     st.query_params.update(next_params)
 
@@ -160,7 +163,9 @@ def _event_is_read_only(session: Dict[str, Any]) -> bool:
     return not bool(_event_context(session).get("write_enabled"))
 
 
-def _render_event_selector(repo: Any, session: Dict[str, Any], *, selector_key: str) -> None:
+def _render_event_selector(
+    repo: Any, session: Dict[str, Any], *, selector_key: str
+) -> None:
     options = conference_event_options(repo)
     if len(options) <= 1:
         return
@@ -228,7 +233,11 @@ def _is_laptop_device() -> bool:
 
 def _quick_mode_card() -> Dict[str, str]:
     return next(
-        (row for row in mode_cards(question_set=current_question_set()) if str(row.get("value") or "") == "quick"),
+        (
+            row
+            for row in mode_cards(question_set=current_question_set())
+            if str(row.get("value") or "") == "quick"
+        ),
         {
             "value": "quick",
             "title": "Quick pulse",
@@ -240,7 +249,10 @@ def _quick_mode_card() -> Dict[str, str]:
 
 def _mode_start(mode: str) -> None:
     update_draft(question_set=current_question_set(), mode=mode)
-    set_step(first_active_question_step(question_set=current_question_set()), question_set=current_question_set())
+    set_step(
+        first_active_question_step(question_set=current_question_set()),
+        question_set=current_question_set(),
+    )
     st.rerun()
 
 
@@ -249,7 +261,9 @@ def _question_prompt_by_id(question_id: str) -> str:
 
 
 def _question_flag_entries() -> Dict[str, Dict[str, Any]]:
-    return normalize_question_flags(get_draft(question_set=current_question_set()).get("question_flags"))
+    return normalize_question_flags(
+        get_draft(question_set=current_question_set()).get("question_flags")
+    )
 
 
 def _set_question_flag(question_id: str, *, flags: List[str], note: str) -> None:
@@ -385,17 +399,25 @@ def _question_answered(question: QuestionDefinition, payload: Dict[str, Any]) ->
     value = _question_value(question, payload)
     input_type = str(question.input_type)
     if field_for_step(current_question_set(), str(question.step)) == "scientific_home":
-        return any(str(value.get(key) or "").strip() for key in ("country", "city", "institution"))
+        return any(
+            str(value.get(key) or "").strip()
+            for key in ("country", "city", "institution")
+        )
     if input_type == "multi":
         return bool(value)
     if input_type == "fingerprint" and isinstance(value, dict):
-        return any(int(value.get(axis, 0) or 0) > 0 for axis in current_question_set().fingerprint_axes)
+        return any(
+            int(value.get(axis, 0) or 0) > 0
+            for axis in current_question_set().fingerprint_axes
+        )
     if isinstance(value, str):
         return bool(value.strip())
     return bool(value)
 
 
-def _question_summary_body(question: QuestionDefinition, payload: Dict[str, Any]) -> str:
+def _question_summary_body(
+    question: QuestionDefinition, payload: Dict[str, Any]
+) -> str:
     field = str(question.field)
     value = _question_value(question, payload)
     if str(question.input_type) == "text":
@@ -403,11 +425,19 @@ def _question_summary_body(question: QuestionDefinition, payload: Dict[str, Any]
     else:
         body = html.escape(_labels_for(field, value))
     free_text_field = str(getattr(question, "free_text_field", "") or "").strip()
-    free_text_value = str(payload.get(free_text_field) or "").strip() if free_text_field else ""
+    free_text_value = (
+        str(payload.get(free_text_field) or "").strip() if free_text_field else ""
+    )
     if free_text_value:
-        free_text_label = html.escape(str(getattr(question, "free_text_label", "") or "Detail"))
+        free_text_label = html.escape(
+            str(getattr(question, "free_text_label", "") or "Detail")
+        )
         detail = html.escape(free_text_value)
-        body = f"{body}<br><span style='opacity:.72'>{free_text_label}</span><br>{detail}" if body else detail
+        body = (
+            f"{body}<br><span style='opacity:.72'>{free_text_label}</span><br>{detail}"
+            if body
+            else detail
+        )
     return body
 
 
@@ -431,11 +461,15 @@ def _question_summary_entries(
             continue
         if not _question_answered(question, payload):
             continue
-        entries.append((_question_title(question), _question_summary_body(question, payload)))
+        entries.append(
+            (_question_title(question), _question_summary_body(question, payload))
+        )
     return entries
 
 
-def _render_question_intro(step: str, question: QuestionDefinition | None, copy: Dict[str, str]) -> None:
+def _render_question_intro(
+    step: str, question: QuestionDefinition | None, copy: Dict[str, str]
+) -> None:
     if question:
         prompt = str(question.prompt or "").strip()
         title = str(copy.get("title") or "").strip()
@@ -468,8 +502,12 @@ def _step_for_field(field: str) -> str:
 
 
 def _resume_at_field(field: str, mode: str | None = None) -> None:
-    next_mode = mode or str(get_draft(question_set=current_question_set()).get("mode") or "standard")
-    target_step = _step_for_field(field) or first_active_question_step(question_set=current_question_set())
+    next_mode = mode or str(
+        get_draft(question_set=current_question_set()).get("mode") or "standard"
+    )
+    target_step = _step_for_field(field) or first_active_question_step(
+        question_set=current_question_set()
+    )
     update_draft(mode=next_mode, submitted=False, question_set=current_question_set())
     set_step(target_step, question_set=current_question_set())
     _set_entry_mode("new")
@@ -520,7 +558,9 @@ def _hydrate_existing_submission(repo: Any, session: Dict[str, Any]) -> None:
     if access_key and submission:
         submission = _normalize_hydrated_submission(submission)
         hydrated = {
-            key: value for key, value in submission.items() if key in get_draft(question_set=current_question_set())
+            key: value
+            for key, value in submission.items()
+            if key in get_draft(question_set=current_question_set())
         }
         hydrated["mode"] = str(submission.get("mode") or _infer_mode(submission))
         hydrated["access_key"] = access_key
@@ -529,8 +569,14 @@ def _hydrate_existing_submission(repo: Any, session: Dict[str, Any]) -> None:
         repo.upsert_conference_player(
             session_id=str(session.get("id") or ""),
             access_key=access_key,
-            payload=build_session_payload(get_draft(question_set=current_question_set()), question_set=current_question_set()),
-            identity_metadata=build_identity_metadata(get_draft(question_set=current_question_set()), question_set=current_question_set()),
+            payload=build_session_payload(
+                get_draft(question_set=current_question_set()),
+                question_set=current_question_set(),
+            ),
+            identity_metadata=build_identity_metadata(
+                get_draft(question_set=current_question_set()),
+                question_set=current_question_set(),
+            ),
         )
         _set_entry_mode("dashboard")
     elif access_key:
@@ -557,7 +603,9 @@ def _normalize_hydrated_submission(submission: Dict[str, Any]) -> Dict[str, Any]
         if isinstance(roles, list)
         else []
     )
-    role_extra = str(normalized.get(role_extra_field) or normalized.get("role_custom") or "").strip()
+    role_extra = str(
+        normalized.get(role_extra_field) or normalized.get("role_custom") or ""
+    ).strip()
     if not role_extra:
         extras = [item for item in role_values if item not in allowed_roles]
         role_extra = extras[0] if extras else ""
@@ -569,7 +617,9 @@ def _normalize_hydrated_submission(submission: Dict[str, Any]) -> Dict[str, Any]
 
 
 def _ensure_access_key() -> str:
-    access_key = str(get_draft(question_set=current_question_set()).get("access_key") or "").strip()
+    access_key = str(
+        get_draft(question_set=current_question_set()).get("access_key") or ""
+    ).strip()
     if access_key:
         return access_key
     access_key = generate_hex_key()
@@ -577,10 +627,14 @@ def _ensure_access_key() -> str:
     return access_key
 
 
-def _payload_for_session(draft: Dict[str, Any], session: Dict[str, Any]) -> Dict[str, Any]:
+def _payload_for_session(
+    draft: Dict[str, Any], session: Dict[str, Any]
+) -> Dict[str, Any]:
     payload = build_session_payload(draft, question_set=current_question_set())
     profile = payload.get("profile") if isinstance(payload.get("profile"), dict) else {}
-    session_payload = payload.get("session") if isinstance(payload.get("session"), dict) else {}
+    session_payload = (
+        payload.get("session") if isinstance(payload.get("session"), dict) else {}
+    )
     profile["persistence_scope"] = "persistent_profile"
     context = _event_context(session)
     session_payload["event_slug"] = context["event_slug"]
@@ -627,7 +681,9 @@ def _open_skip_question_dialog(question: QuestionDefinition) -> None:
     @st.dialog("Skip question")
     def _skip_dialog() -> None:
         st.markdown(f"### {question.prompt}")
-        st.caption("You can skip this question, but tell us why so we can improve the questionnaire.")
+        st.caption(
+            "You can skip this question, but tell us why so we can improve the questionnaire."
+        )
         selected = st.pills(
             "Why skip?",
             [str(item["value"]) for item in QUESTION_FLAG_OPTIONS],
@@ -647,7 +703,9 @@ def _open_skip_question_dialog(question: QuestionDefinition) -> None:
             if not selected and not str(note or "").strip():
                 st.warning("Tell us why you are skipping this question.")
                 return
-            _set_question_flag(question_id, flags=list(selected), note=str(note or "").strip())
+            _set_question_flag(
+                question_id, flags=list(selected), note=str(note or "").strip()
+            )
             if field in set(current_question_set().deferrable_fields):
                 defer_field(field, question_set=current_question_set())
             _advance_step()
@@ -666,7 +724,9 @@ def _submit(repo: Any, session: Dict[str, Any]) -> None:
     draft = get_draft(question_set=current_question_set())
     payload = _payload_for_session(draft, session)
     event_context = _event_context(session)
-    identity_metadata = build_identity_metadata(draft, question_set=current_question_set())
+    identity_metadata = build_identity_metadata(
+        draft, question_set=current_question_set()
+    )
     access_key = _ensure_access_key()
     access_key_hash = repo.access_key_hash(access_key)
     access_key_last4 = emoji_suffix(access_key)
@@ -689,7 +749,9 @@ def _submit(repo: Any, session: Dict[str, Any]) -> None:
     st.session_state["conference_submission_cache_key"] = (
         f"{session['id']}:{access_key_hash}:{event_context['text_id']}"
     )
-    st.session_state["conference_submission_cache"] = build_payload_view(draft, question_set=current_question_set()) | {
+    st.session_state["conference_submission_cache"] = build_payload_view(
+        draft, question_set=current_question_set()
+    ) | {
         "access_key_hash": access_key_hash,
         "access_key_last4": access_key_last4,
         "actor_key": f"player:{str((player or {}).get('id') or '')}"
@@ -697,7 +759,9 @@ def _submit(repo: Any, session: Dict[str, Any]) -> None:
         else f"response:{access_key_hash}",
     }
     st.session_state["conference_show_success"] = True
-    update_draft(question_set=current_question_set(), access_key=access_key, submitted=True)
+    update_draft(
+        question_set=current_question_set(), access_key=access_key, submitted=True
+    )
     mark_submitted(question_set=current_question_set())
 
 
@@ -744,7 +808,7 @@ def _open_confirm_send_dialog(repo: Any, session: Dict[str, Any]) -> None:
             height=64,
         )
         st.markdown(
-            f"### {_event_context(session)['event_label']} is making this anonymous first. "
+            "### We are making this anonymous first. "
             "This access key lets you return later to your profile and your pending reflections."
         )
         if st.button("Screenshot taken", type="primary", use_container_width=True):
@@ -789,8 +853,14 @@ def _login_with_key(repo: Any, session: Dict[str, Any], raw_key: str) -> None:
     repo.upsert_conference_player(
         session_id=str(session.get("id") or ""),
         access_key=access_key,
-        payload=build_session_payload(get_draft(question_set=current_question_set()), question_set=current_question_set()),
-        identity_metadata=build_identity_metadata(get_draft(question_set=current_question_set()), question_set=current_question_set()),
+        payload=build_session_payload(
+            get_draft(question_set=current_question_set()),
+            question_set=current_question_set(),
+        ),
+        identity_metadata=build_identity_metadata(
+            get_draft(question_set=current_question_set()),
+            question_set=current_question_set(),
+        ),
     )
     _clear_login_error()
     _set_entry_mode("dashboard")
@@ -799,7 +869,10 @@ def _login_with_key(repo: Any, session: Dict[str, Any], raw_key: str) -> None:
 
 def _resume_in_mode(mode: str) -> None:
     update_draft(question_set=current_question_set(), mode=mode, submitted=False)
-    set_step(first_active_question_step(question_set=current_question_set()), question_set=current_question_set())
+    set_step(
+        first_active_question_step(question_set=current_question_set()),
+        question_set=current_question_set(),
+    )
     _set_entry_mode("new")
     st.rerun()
 
@@ -833,7 +906,9 @@ def _render_entry(session: Dict[str, Any], repo: Any) -> None:
         st.markdown("### Enter your emoji access key.")
         raw_key = st.text_area(
             "Access key",
-            value=str(get_draft(question_set=current_question_set()).get("access_key") or ""),
+            value=str(
+                get_draft(question_set=current_question_set()).get("access_key") or ""
+            ),
             key="conference_existing_key",
             placeholder="Paste your 4-emoji or full access key here",
             label_visibility="collapsed",
@@ -876,7 +951,9 @@ def _render_welcome() -> None:
             _mode_start(str(qset.default_mode or "standard"))
     else:
         st.markdown("### Choose a depth.")
-        st.caption("Quick is the lightest route. Standard and Deep expose more profile and laboratory questions, including career stage.")
+        st.caption(
+            "Quick is the lightest route. Standard and Deep expose more profile and laboratory questions, including career stage."
+        )
         cards = mode_cards(question_set=qset)
         for row in cards:
             mode = str(row.get("value") or "").strip()
@@ -908,14 +985,14 @@ def _render_boiler_room_expander() -> None:
             label_visibility="collapsed",
             height=160,
         )
-        update_draft(question_set=current_question_set(), boiler_room_contribution=contribution)
+        update_draft(
+            question_set=current_question_set(), boiler_room_contribution=contribution
+        )
 
 
 def _render_pills(question: QuestionDefinition, current_value: Any) -> None:
     field = str(question.field)
-    option_map = {
-        str(item["value"]): str(item["label"]) for item in question.options
-    }
+    option_map = {str(item["value"]): str(item["label"]) for item in question.options}
     input_type = str(question.input_type)
     if input_type == "multi":
         selected = st.pills(
@@ -947,7 +1024,9 @@ def _render_pills(question: QuestionDefinition, current_value: Any) -> None:
             format_func=lambda value: option_map.get(value, value),
             label_visibility="collapsed",
         )
-        update_draft(question_set=current_question_set(), **{field: str(selected_single or "")})
+        update_draft(
+            question_set=current_question_set(), **{field: str(selected_single or "")}
+        )
         if selected_single:
             clear_deferred_field(field, question_set=current_question_set())
 
@@ -955,11 +1034,17 @@ def _render_pills(question: QuestionDefinition, current_value: Any) -> None:
     if free_text_field:
         detail_value = st.text_input(
             str(getattr(question, "free_text_label", "") or "Detail"),
-            value=str(get_draft(question_set=current_question_set()).get(free_text_field) or ""),
+            value=str(
+                get_draft(question_set=current_question_set()).get(free_text_field)
+                or ""
+            ),
             key=f"conference_widget_{free_text_field}",
             placeholder=str(getattr(question, "free_text_placeholder", "") or ""),
         )
-        update_draft(question_set=current_question_set(), **{free_text_field: str(detail_value or "").strip()})
+        update_draft(
+            question_set=current_question_set(),
+            **{free_text_field: str(detail_value or "").strip()},
+        )
 
 
 def _render_scientific_home() -> None:
@@ -1008,7 +1093,9 @@ def _render_fingerprint() -> None:
         )
     update_draft(question_set=current_question_set(), complexity_fingerprint=updated)
     if any(updated.values()):
-        clear_deferred_field("complexity_fingerprint", question_set=current_question_set())
+        clear_deferred_field(
+            "complexity_fingerprint", question_set=current_question_set()
+        )
 
 
 def _render_question_step(step: str) -> None:
@@ -1073,17 +1160,29 @@ def _render_identity() -> None:
         question_set=current_question_set(),
         alias=alias,
         identity=identity,
-        contact=contact if should_collect_contact(draft, question_set=current_question_set()) else "",
+        contact=contact
+        if should_collect_contact(draft, question_set=current_question_set())
+        else "",
     )
 
 
 def _render_review(session: Dict[str, Any]) -> None:
     _render_boiler_room_expander()
-    payload = build_payload_view(get_draft(question_set=current_question_set()), question_set=current_question_set())
-    active_steps = set(active_question_steps(get_draft(question_set=current_question_set()), question_set=current_question_set()))
+    payload = build_payload_view(
+        get_draft(question_set=current_question_set()),
+        question_set=current_question_set(),
+    )
+    active_steps = set(
+        active_question_steps(
+            get_draft(question_set=current_question_set()),
+            question_set=current_question_set(),
+        )
+    )
     summary_card("Mode", _labels_for("mode", str(payload.get("mode") or "quick")))
     summary_card("Profile", "Persistent across events unless you change it.")
-    for title, body in _question_summary_entries(payload, section="profile", active_steps=active_steps):
+    for title, body in _question_summary_entries(
+        payload, section="profile", active_steps=active_steps
+    ):
         summary_card(title, body)
 
     summary_card(
@@ -1091,7 +1190,9 @@ def _render_review(session: Dict[str, Any]) -> None:
         f"These answers belong to {_event_scope_text(session)} and can change next time.",
     )
     summary_card("Event context", _event_scope_text(session))
-    for title, body in _question_summary_entries(payload, section="session", active_steps=active_steps):
+    for title, body in _question_summary_entries(
+        payload, section="session", active_steps=active_steps
+    ):
         summary_card(title, body)
     if payload.get("boiler_room_contribution"):
         summary_card(
@@ -1100,7 +1201,10 @@ def _render_review(session: Dict[str, Any]) -> None:
         )
     _render_question_flag_summary()
 
-    pending = pending_reflection_fields(get_draft(question_set=current_question_set()), question_set=current_question_set())
+    pending = pending_reflection_fields(
+        get_draft(question_set=current_question_set()),
+        question_set=current_question_set(),
+    )
     if pending:
         summary_card(
             "Pending reflections",
@@ -1224,8 +1328,16 @@ def _render_other_sessions(repo: Any, current_session_id: str) -> None:
 
 def _render_personal_dashboard(repo: Any, session: Dict[str, Any]) -> None:
     event_context = _event_context(session)
-    payload = build_payload_view(get_draft(question_set=current_question_set()), question_set=current_question_set())
-    active_steps = set(active_question_steps(get_draft(question_set=current_question_set()), question_set=current_question_set()))
+    payload = build_payload_view(
+        get_draft(question_set=current_question_set()),
+        question_set=current_question_set(),
+    )
+    active_steps = set(
+        active_question_steps(
+            get_draft(question_set=current_question_set()),
+            question_set=current_question_set(),
+        )
+    )
     submissions = repo.group_rows_by_submission(
         repo.get_session_rows(
             session["id"],
@@ -1235,9 +1347,13 @@ def _render_personal_dashboard(repo: Any, session: Dict[str, Any]) -> None:
     conference_header(str(event_context["event_label"]), "", step="")
     st.markdown("### Your profile is loaded.")
     summary_card("Mode", _labels_for("mode", str(payload.get("mode") or "quick")))
-    for title, body in _question_summary_entries(payload, section="profile", active_steps=active_steps):
+    for title, body in _question_summary_entries(
+        payload, section="profile", active_steps=active_steps
+    ):
         summary_card(title, body)
-    for title, body in _question_summary_entries(payload, section="session", active_steps=active_steps):
+    for title, body in _question_summary_entries(
+        payload, section="session", active_steps=active_steps
+    ):
         summary_card(title, body)
     if payload.get("boiler_room_contribution"):
         summary_card(
@@ -1246,7 +1362,10 @@ def _render_personal_dashboard(repo: Any, session: Dict[str, Any]) -> None:
         )
     _render_question_flag_summary()
 
-    gaps = profile_completion_gaps(get_draft(question_set=current_question_set()), question_set=current_question_set())
+    gaps = profile_completion_gaps(
+        get_draft(question_set=current_question_set()),
+        question_set=current_question_set(),
+    )
     if gaps and not bool(st.session_state.get("conference_hide_migration_prompt")):
         st.markdown("### We’ve added new questions")
         st.caption(
@@ -1258,14 +1377,20 @@ def _render_personal_dashboard(repo: Any, session: Dict[str, Any]) -> None:
                 "Yes, enthusiastically", type="primary", use_container_width=True
             ):
                 _resume_at_field(
-                    gaps[0], suggested_mode_for_missing_profile_fields(gaps, question_set=current_question_set())
+                    gaps[0],
+                    suggested_mode_for_missing_profile_fields(
+                        gaps, question_set=current_question_set()
+                    ),
                 )
         with right:
             if st.button("Later", use_container_width=True):
                 st.session_state["conference_hide_migration_prompt"] = True
                 st.rerun()
 
-    pending = pending_reflection_fields(get_draft(question_set=current_question_set()), question_set=current_question_set())
+    pending = pending_reflection_fields(
+        get_draft(question_set=current_question_set()),
+        question_set=current_question_set(),
+    )
     if pending:
         st.markdown("### Pending reflections")
         for field in pending:
@@ -1355,7 +1480,9 @@ def _render_done(session: Dict[str, Any]) -> None:
         key="conference-done-open-overview",
     ):
         _switch_to_event_overview(session)
-    if st.button(current_question_set().step_copy["done"]["cta"], use_container_width=True):
+    if st.button(
+        current_question_set().step_copy["done"]["cta"], use_container_width=True
+    ):
         reset_flow_state(question_set=current_question_set())
         _set_entry_mode("")
         st.rerun()
@@ -1370,14 +1497,15 @@ def _render_navigation(repo: Any, session: Dict[str, Any]) -> None:
         left, right, side = st.columns([1, 1, 0.55])
         with left:
             if st.button("Edit", use_container_width=True):
-                set_step(first_active_question_step(question_set=current_question_set()), question_set=current_question_set())
+                set_step(
+                    first_active_question_step(question_set=current_question_set()),
+                    question_set=current_question_set(),
+                )
                 st.rerun()
         with right:
             review_help = None
             if _event_is_read_only(session):
-                review_help = (
-                    f"This event is {str(_event_context(session).get('event_status') or 'closed')}."
-                )
+                review_help = f"This event is {str(_event_context(session).get('event_status') or 'closed')}."
             if st.button(
                 current_question_set().step_copy["review"]["cta"],
                 type="primary",
@@ -1424,8 +1552,12 @@ def _render_navigation(repo: Any, session: Dict[str, Any]) -> None:
 
 
 def _render_questionnaire(repo: Any, session: Dict[str, Any]) -> None:
-    if _event_is_read_only(session) and not bool(get_draft(question_set=current_question_set()).get("submitted")):
-        conference_header(str(_event_context(session)["event_label"]), "", step="read-only")
+    if _event_is_read_only(session) and not bool(
+        get_draft(question_set=current_question_set()).get("submitted")
+    ):
+        conference_header(
+            str(_event_context(session)["event_label"]), "", step="read-only"
+        )
         st.warning(
             f"{_event_context(session)['event_label']} is currently "
             f"{_event_context(session)['event_status']}. New submissions are closed."
@@ -1489,7 +1621,9 @@ def run_conference_questionnaire_page(
         return
 
     bundle_spec = resolve_question_set_bundle(session=session)
-    question_set = _question_set_for_public_route(bundle_spec.question_set, public_route_path)
+    question_set = _question_set_for_public_route(
+        bundle_spec.question_set, public_route_path
+    )
     _ensure_local_state(question_set)
     route = public_route_config(public_route_path)
     sidebar_debug_state(
@@ -1506,7 +1640,9 @@ def run_conference_questionnaire_page(
             "question_set_module": bundle_spec.question_set_module,
             "question_ids": list(bundle_spec.question_ids),
             "shared_question_ids": list(bundle_spec.shared_question_ids),
-            "event_specific_question_ids": list(bundle_spec.event_specific_question_ids),
+            "event_specific_question_ids": list(
+                bundle_spec.event_specific_question_ids
+            ),
             "public_route": str(route.path) if route else "",
             "campaign_slug": str(route.campaign_slug) if route else "",
         }
