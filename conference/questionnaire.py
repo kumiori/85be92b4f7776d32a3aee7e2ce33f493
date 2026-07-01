@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 import html
 import hashlib
 import uuid
@@ -45,6 +46,7 @@ from conference.flow import (
     suggested_mode_for_missing_profile_fields,
     update_draft,
 )
+from conference.public_routes import public_query_params, public_route_config
 from conference.question_sets import (
     QuestionDefinition,
     QuestionSet,
@@ -103,6 +105,36 @@ def _event_context(session: Dict[str, Any]) -> Dict[str, Any]:
     return conference_event_context(session=session)
 
 
+def _public_route() -> Any | None:
+    return public_route_config()
+
+
+def _public_entry_title(session: Dict[str, Any]) -> str:
+    route = _public_route()
+    if route:
+        return str(route.welcome_title)
+    return str(_event_context(session)["event_label"])
+
+
+def _question_set_for_public_route(
+    question_set: QuestionSet,
+    public_route_path: str = "",
+) -> QuestionSet:
+    route = public_route_config(public_route_path)
+    if not route:
+        return question_set
+    step_copy = {
+        str(step): {str(key): str(value) for key, value in copy.items()}
+        for step, copy in question_set.step_copy.items()
+    }
+    welcome = dict(step_copy.get("welcome", {}))
+    welcome["title"] = str(route.welcome_title)
+    welcome["body"] = str(route.welcome_body)
+    welcome["note"] = str(route.welcome_note)
+    step_copy["welcome"] = welcome
+    return replace(question_set, step_copy=step_copy)
+
+
 def _event_scope_text(session: Dict[str, Any]) -> str:
     context = _event_context(session)
     location = str(context.get("event_location") or "").strip()
@@ -112,10 +144,7 @@ def _event_scope_text(session: Dict[str, Any]) -> str:
 
 
 def _sync_event_query(event_slug: str) -> None:
-    next_params: Dict[str, str] = {"event": str(event_slug or "").strip()}
-    key = str(st.query_params.get("key", "") or "").strip()
-    if key:
-        next_params["key"] = key
+    next_params: Dict[str, str] = {"event": str(event_slug or "").strip(), **public_query_params()}
     st.query_params.clear()
     st.query_params.update(next_params)
 
@@ -569,10 +598,16 @@ def _payload_for_session(draft: Dict[str, Any], session: Dict[str, Any]) -> Dict
 
 def _render_event_scope_notice(session: Dict[str, Any]) -> None:
     context = _event_context(session)
-    body = (
-        f"This response belongs to {_event_scope_text(session)}. "
-        "Profile questions persist across events; session answers belong only to this event."
-    )
+    if str(context.get("event_slug") or "").strip() == "dalembertiennes":
+        body = (
+            "You are answering the D’Alembertiennes version of the climate questionnaire. "
+            "Questions may evolve or may persist across events. Steal this format!"
+        )
+    else:
+        body = (
+            f"This response belongs to {_event_scope_text(session)}. "
+            "Profile questions persist across events; session answers belong only to this event."
+        )
     if _event_is_read_only(session):
         body += (
             f" This event is currently {str(context.get('event_status') or 'closed')}; "
@@ -767,7 +802,10 @@ def _resume_in_mode(mode: str) -> None:
 
 
 def _render_entry(session: Dict[str, Any], repo: Any) -> None:
-    conference_header(str(_event_context(session)["event_label"]), "", step="")
+    conference_header(_public_entry_title(session), "", step="")
+    route = _public_route()
+    if route:
+        st.caption(f"Current context: {_event_scope_text(session)}.")
     st.markdown("### Anonymous first.")
     _render_event_scope_notice(session)
     st.markdown("### Choose how to enter.")
@@ -1422,11 +1460,10 @@ def _render_questionnaire(repo: Any, session: Dict[str, Any]) -> None:
 def run_conference_questionnaire_page(
     *,
     session_code_resolver: Callable[[Any], str],
-    event_selector_key: str = "conference-event-selector",
+    public_route_path: str = "",
 ) -> None:
     set_page()
     apply_conference_styles()
-    sidebar_debug_state()
 
     repo = get_conference_repo()
     if not repo or not repo.is_ready():
@@ -1447,9 +1484,28 @@ def run_conference_questionnaire_page(
         return
 
     bundle_spec = resolve_question_set_bundle(session=session)
-    _ensure_local_state(bundle_spec.question_set)
-
-    _render_event_selector(repo, session, selector_key=event_selector_key)
+    question_set = _question_set_for_public_route(bundle_spec.question_set, public_route_path)
+    _ensure_local_state(question_set)
+    route = public_route_config(public_route_path)
+    sidebar_debug_state(
+        debug_context={
+            "current_page": "conference_questionnaire",
+            "event_log_page": "conference",
+            "event_slug": bundle_spec.event_slug,
+            "session_code": bundle_spec.session_code,
+            "session_id": str(session.get("id") or ""),
+            "event_label": str(_event_context(session).get("event_label") or ""),
+            "text_id": bundle_spec.text_id,
+            "question_set_id": bundle_spec.question_set_id,
+            "schema_id": bundle_spec.schema_id,
+            "question_set_module": bundle_spec.question_set_module,
+            "question_ids": list(bundle_spec.question_ids),
+            "shared_question_ids": list(bundle_spec.shared_question_ids),
+            "event_specific_question_ids": list(bundle_spec.event_specific_question_ids),
+            "public_route": str(route.path) if route else "",
+            "campaign_slug": str(route.campaign_slug) if route else "",
+        }
+    )
     _hydrate_existing_submission(repo, session)
 
     mode = _entry_mode()

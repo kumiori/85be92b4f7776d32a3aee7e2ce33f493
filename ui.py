@@ -1,7 +1,8 @@
+from collections import Counter
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import Iterator, Literal, Optional
+from typing import Any, Iterator, Literal, Optional
 import os
 
 import json
@@ -610,16 +611,136 @@ def viz_block(
     """
 
 
-def sidebar_debug_state() -> None:
+def _query_params_snapshot() -> dict[str, Any]:
+    snapshot: dict[str, Any] = {}
+    try:
+        for key in st.query_params.keys():
+            values = st.query_params.get_all(key)
+            snapshot[str(key)] = values if len(values) != 1 else values[0]
+    except Exception:
+        return {}
+    return snapshot
+
+
+def _conference_debug_snapshot() -> dict[str, Any]:
+    if "conference_question_set" not in st.session_state:
+        return {}
+    try:
+        from conference.flow import (
+            active_question_steps,
+            active_step_sequence,
+            current_question_set,
+            current_step,
+            get_draft,
+            pending_reflection_fields,
+        )
+    except Exception:
+        return {}
+
+    question_set = current_question_set()
+    draft = get_draft(question_set=question_set)
+    active_steps = active_question_steps(draft, question_set=question_set)
+    return {
+        "question_set_id": str(question_set.id),
+        "current_step": current_step(),
+        "active_steps": active_steps,
+        "step_sequence": active_step_sequence(draft, question_set=question_set),
+        "mode": str(draft.get("mode") or ""),
+        "submitted": bool(draft.get("submitted")),
+        "pending_reflection_fields": pending_reflection_fields(
+            draft,
+            question_set=question_set,
+        ),
+        "deferred_fields": list(draft.get("deferred_fields") or []),
+        "question_flags": draft.get("question_flags") or {},
+        "draft_preview": {
+            key: value
+            for key, value in draft.items()
+            if key not in {"access_key"}
+            and value not in ("", [], {}, None, False)
+        },
+    }
+
+
+def _event_log_rows(debug_context: dict[str, Any]) -> list[dict[str, Any]]:
+    session_id = str(debug_context.get("session_id") or "").strip()
+    if not session_id:
+        return []
+    page = str(debug_context.get("event_log_page") or "conference").strip()
+    try:
+        from infra.event_logger import list_logged_events
+
+        return list_logged_events(page=page, session_id=session_id, limit=25)
+    except Exception:
+        return []
+
+
+def _event_log_title(row: dict[str, Any]) -> str:
+    timestamp = str(row.get("timestamp") or "").replace("T", " ").replace("+00:00", " UTC")
+    short_id = str(row.get("id") or "")[:8]
+    event_type = str(row.get("event_type") or "event")
+    status = str(row.get("status") or "")
+    parts = [part for part in (timestamp, event_type, status, short_id) if part]
+    return " · ".join(parts)
+
+
+def sidebar_debug_state(*, debug_context: Optional[dict[str, Any]] = None) -> None:
     from infra.app_context import reset_notion_repo_cache
 
     if not settings.show_debug:
         return
+    if isinstance(debug_context, dict):
+        st.session_state["sidebar_debug_context"] = debug_context
+    persisted_context = st.session_state.get("sidebar_debug_context")
+    resolved_context = (
+        dict(persisted_context)
+        if isinstance(persisted_context, dict)
+        else {}
+    )
+
     with st.sidebar.expander("Debug · Session state", expanded=False):
         st.json({key: str(val) for key, val in st.session_state.items()})
         if st.button("Reset Notion cache"):
             reset_notion_repo_cache()
             st.toast("Notion cache cleared. Reload the page.")
+    if resolved_context:
+        with st.sidebar.expander("Debug · Conference context", expanded=True):
+            st.json(resolved_context, expanded=False)
+            query_snapshot = _query_params_snapshot()
+            if query_snapshot:
+                st.caption("Query params")
+                st.json(query_snapshot, expanded=False)
+    conference_snapshot = _conference_debug_snapshot()
+    if conference_snapshot:
+        with st.sidebar.expander("Debug · Conference flow", expanded=False):
+            st.json(conference_snapshot, expanded=False)
+    event_rows = _event_log_rows(resolved_context)
+    if event_rows:
+        with st.sidebar.expander("Debug · Event chain", expanded=False):
+            counts = Counter(
+                str(row.get("event_type") or "")
+                for row in event_rows
+                if str(row.get("event_type") or "").strip()
+            )
+            if counts:
+                st.caption("Recent event counts")
+                st.table(
+                    [
+                        {"event_type": event_type, "count": count}
+                        for event_type, count in counts.most_common()
+                    ]
+                )
+            st.caption("Latest persisted events")
+            for row in event_rows:
+                with st.container(border=True):
+                    st.caption(_event_log_title(row))
+                    if row.get("item_id"):
+                        st.code(str(row.get("item_id") or ""), language="text")
+                    if row.get("value_label"):
+                        st.caption(f"value_label: {row.get('value_label')}")
+                    metadata = row.get("metadata")
+                    if metadata:
+                        st.json(metadata, expanded=False)
     # st.components.v1.html(html, height=size_px + 20, scrolling=False)
 
 

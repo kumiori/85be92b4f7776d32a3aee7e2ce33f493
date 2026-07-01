@@ -255,10 +255,15 @@ def _lab_pages() -> list[st.Page]:
 
 
 def _hidden_pages() -> list[st.Page]:
-    hidden_paths = [
-        "pages/Splash_old.py",
+    return [
+        st.Page("pages/Splash_old.py", visibility="hidden"),
+        st.Page(
+            "pages/24_Climate.py",
+            title="Climate questionnaire",
+            url_path="climate",
+            visibility="hidden",
+        ),
     ]
-    return [st.Page(path, visibility="hidden") for path in hidden_paths]
 
 
 def main() -> None:

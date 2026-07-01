@@ -9,6 +9,7 @@ from conference.events import (
     conference_event_context,
     conference_event_options,
 )
+from conference.public_routes import public_query_params
 from infra.key_codec import generate_hex_key
 
 
@@ -38,10 +39,7 @@ def event_scope_text(session: Dict[str, Any]) -> str:
 
 
 def sync_event_query(event_slug: str) -> None:
-    next_params: Dict[str, str] = {"event": str(event_slug or "").strip()}
-    key = str(st.query_params.get("key", "") or "").strip()
-    if key:
-        next_params["key"] = key
+    next_params: Dict[str, str] = {"event": str(event_slug or "").strip(), **public_query_params()}
     st.query_params.clear()
     st.query_params.update(next_params)
 

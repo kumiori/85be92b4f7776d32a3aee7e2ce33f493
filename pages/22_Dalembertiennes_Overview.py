@@ -11,7 +11,6 @@ from conference.context import get_conference_bundle, get_conference_repo
 from conference.dalembertiennes import (
     event_context,
     event_scope_text,
-    render_event_selector,
     resolve_dalembertiennes_session,
 )
 from conference.events import text_ids_for_session_code
@@ -86,7 +85,6 @@ def _text_question_entries(submissions: list[dict[str, Any]], resolved_bundle: A
 def main() -> None:
     set_page()
     apply_conference_styles()
-    sidebar_debug_state()
 
     repo = get_conference_repo()
     if not repo or not repo.is_ready():
@@ -103,11 +101,22 @@ def main() -> None:
 
     context = event_context(session)
     resolved_bundle = resolve_question_set_bundle(session=session)
-    render_event_selector(
-        repo,
-        session,
-        key="dalembertiennes-overview-event-selector",
-        target_field="overview_page",
+    sidebar_debug_state(
+        debug_context={
+            "current_page": "dalembertiennes_overview",
+            "event_log_page": "conference",
+            "event_slug": resolved_bundle.event_slug,
+            "session_code": resolved_bundle.session_code,
+            "session_id": str(session.get("id") or ""),
+            "event_label": str(context.get("event_label") or ""),
+            "text_id": resolved_bundle.text_id,
+            "question_set_id": resolved_bundle.question_set_id,
+            "schema_id": resolved_bundle.schema_id,
+            "question_set_module": resolved_bundle.question_set_module,
+            "question_ids": list(resolved_bundle.question_ids),
+            "shared_question_ids": list(resolved_bundle.shared_question_ids),
+            "event_specific_question_ids": list(resolved_bundle.event_specific_question_ids),
+        }
     )
 
     response_rows = repo.get_session_rows(
