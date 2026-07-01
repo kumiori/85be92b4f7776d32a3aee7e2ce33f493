@@ -208,6 +208,12 @@ def _quick_mode_card() -> Dict[str, str]:
     )
 
 
+def _mode_start(mode: str) -> None:
+    update_draft(question_set=current_question_set(), mode=mode)
+    set_step(first_active_question_step(question_set=current_question_set()), question_set=current_question_set())
+    st.rerun()
+
+
 def _question_prompt_by_id(question_id: str) -> str:
     return flow_question_prompt_by_id(question_id, question_set=current_question_set())
 
@@ -399,6 +405,22 @@ def _question_summary_entries(
     return entries
 
 
+def _render_question_intro(step: str, question: QuestionDefinition | None, copy: Dict[str, str]) -> None:
+    if question:
+        prompt = str(question.prompt or "").strip()
+        title = str(copy.get("title") or "").strip()
+        context = str(getattr(question, "context", "") or "").strip()
+        if prompt and prompt != title:
+            st.markdown(f"### {prompt}")
+        if context:
+            st.caption(context)
+        elif copy.get("body"):
+            st.caption(str(copy["body"]))
+        return
+    if copy.get("body"):
+        st.markdown(f"### {copy['body']}")
+
+
 def _step_for_field(field: str) -> str:
     qset = current_question_set()
     for step in qset.step_order:
@@ -491,18 +513,26 @@ def _advance_step() -> None:
 def _normalize_hydrated_submission(submission: Dict[str, Any]) -> Dict[str, Any]:
     normalized = dict(submission)
     allowed_roles = field_value_set(current_question_set(), "role")
+    role_question = question_by_field(current_question_set(), "role")
+    role_extra_field = (
+        str(getattr(role_question, "free_text_field", "") or "").strip()
+        if role_question
+        else ""
+    )
     roles = normalized.get("role")
     role_values = (
         [str(item).strip() for item in roles if str(item).strip()]
         if isinstance(roles, list)
         else []
     )
-    role_custom = str(normalized.get("role_custom") or "").strip()
-    if not role_custom:
+    role_extra = str(normalized.get(role_extra_field) or normalized.get("role_custom") or "").strip()
+    if not role_extra:
         extras = [item for item in role_values if item not in allowed_roles]
-        role_custom = extras[0] if extras else ""
+        role_extra = extras[0] if extras else ""
     normalized["role"] = [item for item in role_values if item in allowed_roles]
-    normalized["role_custom"] = role_custom
+    normalized["role_custom"] = role_extra
+    if role_extra_field:
+        normalized[role_extra_field] = role_extra
     return normalized
 
 
@@ -549,6 +579,43 @@ def _render_event_scope_notice(session: Dict[str, Any]) -> None:
             "new responses are read-only."
         )
     st.caption(body)
+
+
+def _open_skip_question_dialog(question: QuestionDefinition) -> None:
+    question_id = str(question.question_id or "").strip()
+    field = str(question.field or "").strip()
+    existing = _question_flag_entries().get(question_id, {})
+
+    @st.dialog("Skip question")
+    def _skip_dialog() -> None:
+        st.markdown(f"### {question.prompt}")
+        st.caption("You can skip this question, but tell us why so we can improve the questionnaire.")
+        selected = st.pills(
+            "Why skip?",
+            [str(item["value"]) for item in QUESTION_FLAG_OPTIONS],
+            default=list(existing.get("flags") or []),
+            selection_mode="multi",
+            format_func=lambda value: QUESTION_FLAG_LABELS.get(value, value),
+            key=f"conference_skip_flags_{question_id}",
+        )
+        note = st.text_area(
+            "Optional note",
+            value=str(existing.get("note") or ""),
+            key=f"conference_skip_note_{question_id}",
+            placeholder="A short reason for skipping this question",
+            height=140,
+        )
+        if st.button("Skip and continue", type="primary", use_container_width=True):
+            if not selected and not str(note or "").strip():
+                st.warning("Tell us why you are skipping this question.")
+                return
+            _set_question_flag(question_id, flags=list(selected), note=str(note or "").strip())
+            if field in set(current_question_set().deferrable_fields):
+                defer_field(field, question_set=current_question_set())
+            _advance_step()
+            st.rerun()
+
+    _skip_dialog()
 
 
 def _submit(repo: Any, session: Dict[str, Any]) -> None:
@@ -754,19 +821,30 @@ def _render_entry(session: Dict[str, Any], repo: Any) -> None:
 
 
 def _render_welcome() -> None:
-    row = _quick_mode_card()
-    st.markdown("### Let's have a quick temperature check.")
-    st.caption("We will start with the quick pulse. You can extend it later.")
-    button_label = f"{row['accent']} {row['title']}\n{row['detail']}"
-    if st.button(
-        button_label,
-        type="primary",
-        use_container_width=True,
-        key="conference_mode_quick",
-    ):
-        update_draft(question_set=current_question_set(), mode="quick")
-        set_step(first_active_question_step(question_set=current_question_set()), question_set=current_question_set())
-        st.rerun()
+    qset = current_question_set()
+    if not qset.show_mode_selection:
+        cta = str(qset.step_copy["welcome"].get("cta") or "Start")
+        if st.button(
+            cta,
+            type="primary",
+            use_container_width=True,
+            key="conference_mode_default",
+        ):
+            _mode_start(str(qset.default_mode or "standard"))
+    else:
+        st.markdown("### Choose a depth.")
+        st.caption("Quick is the lightest route. Standard and Deep expose more profile and laboratory questions, including career stage.")
+        cards = mode_cards(question_set=qset)
+        for row in cards:
+            mode = str(row.get("value") or "").strip()
+            button_label = f"{row['accent']} {row['title']}\n{row['detail']}"
+            if st.button(
+                button_label,
+                type="primary" if mode == "quick" else "secondary",
+                use_container_width=True,
+                key=f"conference_mode_{mode}",
+            ):
+                _mode_start(mode)
     summary_card("Anonymous first", current_question_set().step_copy["welcome"]["note"])
 
 
@@ -812,16 +890,6 @@ def _render_pills(question: QuestionDefinition, current_value: Any) -> None:
         if isinstance(max_select, int) and len(selected) > max_select:
             selected = selected[:max_select]
         update_draft(question_set=current_question_set(), **{field: list(selected)})
-        if field == "role":
-            custom_value = st.text_input(
-                "Add one perspective label",
-                value=str(get_draft(question_set=current_question_set()).get("role_custom") or ""),
-                key="conference_widget_role_custom",
-                placeholder="Optional extra perspective",
-            )
-            update_draft(question_set=current_question_set(), role_custom=str(custom_value or "").strip())
-            if custom_value.strip():
-                clear_deferred_field(field, question_set=current_question_set())
         if selected:
             clear_deferred_field(field, question_set=current_question_set())
     else:
@@ -1280,24 +1348,22 @@ def _render_navigation(repo: Any, session: Dict[str, Any]) -> None:
                 _render_question_flag_control(question)
         return
 
-    if field_for_step(current_question_set(), step) in set(current_question_set().deferrable_fields):
+    if question:
         left, right, side = st.columns([1, 1, 0.55])
         with left:
-            if st.button("Reflect later", use_container_width=True):
-                defer_field(field_for_step(current_question_set(), step), question_set=current_question_set())
-                _advance_step()
-                st.rerun()
+            if st.button("Skip question", use_container_width=True):
+                _open_skip_question_dialog(question)
         with right:
             if st.button("Continue", type="primary", use_container_width=True):
                 draft = get_draft(question_set=current_question_set())
-                if not step_is_complete(step, draft, question_set=current_question_set()):
-                    st.warning("Answer this step or defer it for later.")
+                payload = build_payload_view(draft, question_set=current_question_set())
+                if not _question_answered(question, payload):
+                    st.warning("Answer this step or skip it with a reason.")
                     return
                 _advance_step()
                 st.rerun()
         with side:
-            if question:
-                _render_question_flag_control(question)
+            _render_question_flag_control(question)
         return
 
     action, side = st.columns([1, 0.55])
@@ -1332,13 +1398,12 @@ def _render_questionnaire(repo: Any, session: Dict[str, Any]) -> None:
         set_step("welcome", question_set=current_question_set())
     step = current_step()
     copy = current_question_set().step_copy[step]
+    question = question_by_step(current_question_set(), step)
     sequence = active_step_sequence(question_set=current_question_set())
     step_index = sequence.index(step) + 1 if step in sequence else 1
     step_label = f"{step_index} / {len(sequence)}" if step != "done" else "complete"
     conference_header(copy["title"], "", step=step_label)
-    if copy.get("body"):
-        st.markdown(f"### {copy['body']}")
-    _render_event_scope_notice(session)
+    _render_question_intro(step, question, copy)
 
     if step == "welcome":
         _render_welcome()

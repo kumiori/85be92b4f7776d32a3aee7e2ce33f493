@@ -5,9 +5,7 @@ from typing import Any, Dict
 from conference.question_sets import QuestionDefinition, QuestionSet, merge_questions
 from conference.question_sets.shared import (
     assets_question,
-    career_stage_question,
     follow_up_interest_question,
-    role_question,
 )
 
 
@@ -21,7 +19,6 @@ STEP_ORDER = (
     "lab_time_commitment",
     "lab_professional_responsibility",
     "lab_discussion_difficulty",
-    "lab_success_expectation",
     "lab_discussion_format",
     "lab_question",
     "follow_up_interest",
@@ -31,21 +28,10 @@ STEP_ORDER = (
 )
 
 FLOW_MODES: Dict[str, Dict[str, Any]] = {
-    "quick": {
-        "title": "Quick pulse",
-        "detail": "~ 3 minutes · first laboratory signal",
-        "accent": "📐",
-        "steps": [
-            "role",
-            "lab_discuss_interest",
-            "lab_time_commitment",
-            "lab_question",
-        ],
-    },
     "standard": {
         "title": "Standard",
         "detail": "~ 5 minutes · discussion conditions",
-        "accent": "🧭",
+        "accent": "📐",
         "steps": [
             "role",
             "career_stage",
@@ -54,26 +40,9 @@ FLOW_MODES: Dict[str, Dict[str, Any]] = {
             "lab_time_commitment",
             "lab_professional_responsibility",
             "lab_discussion_difficulty",
-            "lab_question",
-        ],
-    },
-    "deep": {
-        "title": "Deep dive",
-        "detail": "~ 7 minutes · fuller laboratory map",
-        "accent": "🔬",
-        "steps": [
-            "role",
-            "career_stage",
             "assets",
-            "lab_discuss_interest",
-            "lab_discussion_level",
-            "lab_time_commitment",
-            "lab_professional_responsibility",
-            "lab_discussion_difficulty",
-            "lab_success_expectation",
-            "lab_discussion_format",
-            "lab_question",
             "follow_up_interest",
+            "lab_question",
         ],
     },
 }
@@ -81,17 +50,18 @@ FLOW_MODES: Dict[str, Dict[str, Any]] = {
 STEP_COPY = {
     "welcome": {
         "title": "D'Alembertiennes Lab Questionnaire",
-        "body": "Climate, resources, research: is this a topic for the laboratory?",
-        "note": "Anonymous first. Shared profile questions stay gentle; Dalembertiennes session questions stay local to this event.",
+        "body": "Climate, resources, research: can the laboratory formulate a problem?",
+        "note": "This platform is anonymous and editable. The aim is to build a collective picture of what feels important, unclear, difficult, legitimate, or worth discussing at the scale of the laboratory.",
+        "cta": "Start here · Contribute to the picture",
     },
     "role": {
-        "title": "Role",
-        "body": "Choose the perspectives you genuinely inhabit here.",
+        "title": "Your scientific lens",
+        "body": "Different practices reveal different constraints, possibilities, and blind spots.",
         "cta": "Continue",
     },
     "career_stage": {
-        "title": "Career stage",
-        "body": "Scientific trajectories start from different distances and tempos.",
+        "title": "Where are you speaking from?",
+        "body": "Career stage can shape both vision and constraints.",
         "cta": "Continue",
     },
     "assets": {
@@ -101,42 +71,37 @@ STEP_COPY = {
     },
     "lab_discuss_interest": {
         "title": "Q1 · Would you like to discuss this further?",
-        "body": "Would you like these questions to be discussed within the laboratory?<br><br>By “these questions”, we mean climate, resources, energy, travel, the material conditions of research, collective decisions, and institutional responsibilities.",
+        "body": "By “these questions”, we mean climate, resources, energy, travel, the material conditions of research, collective decisions, and institutional responsibilities.",
         "cta": "Continue",
     },
     "lab_discussion_level": {
         "title": "Q2 · Level of discussion",
-        "body": "In your opinion, what would be the right level for this discussion?<br><br>This asks where such a discussion should live: informally, inside the laboratory, or as part of its official collective life.",
+        "body": "This asks where such a discussion should live: informally, inside the laboratory, or as part of its official collective life.",
         "cta": "Continue",
     },
     "lab_time_commitment": {
         "title": "Q3 · Time commitment",
-        "body": "How much time could the laboratory reasonably devote to these questions?<br><br>This is about the legitimate amount of collective time, not only individual willingness.",
+        "body": "This is about the legitimate amount of collective time, not only individual willingness.",
         "cta": "Continue",
     },
     "lab_professional_responsibility": {
         "title": "Q4 · Professional responsibilities",
-        "body": "Do you think that reflecting on the climate, energy, or material impacts of research is part of your professional responsibilities?<br><br>This asks whether these reflections belong to professional life, institutional responsibility, or somewhere else.",
+        "body": "This asks whether these reflections belong to professional life, institutional responsibility, or somewhere else.",
         "cta": "Continue",
     },
     "lab_discussion_difficulty": {
         "title": "Q5 · Difficulties in discussing this",
-        "body": "What makes these questions difficult to discuss within the laboratory?<br><br>This helps identify the constraints that make the problem hard to formulate collectively.",
-        "cta": "Continue",
-    },
-    "lab_success_expectation": {
-        "title": "Q6 · Expectations",
-        "body": "What would you expect from a successful collective discussion on these topics?<br><br>This asks what a useful discussion should produce, or deliberately not produce.",
+        "body": "This helps identify the constraints that make the problem hard to formulate collectively.",
         "cta": "Continue",
     },
     "lab_discussion_format": {
         "title": "Q7 · Format of discussion",
-        "body": "Which discussion format would seem most appropriate to you?<br><br>Several formats may be useful. Choose the ones that would make the discussion most constructive.",
+        "body": "Several formats may be useful. Choose the ones that would make the discussion most constructive.",
         "cta": "Continue",
     },
     "lab_question": {
         "title": "Q8 · Final open question",
-        "body": "What question would you like to ask the laboratory about climate, resources, and research?<br><br>This is the question you would like the laboratory to face collectively.",
+        "body": "This is the question you would like the laboratory to face collectively.",
         "cta": "Continue",
     },
     "follow_up_interest": {
@@ -169,15 +134,51 @@ QUESTION_SET = QuestionSet(
     flow_modes=FLOW_MODES,
     questions=merge_questions(
         (
-            role_question(
-                "DALEMBERTIENNES_ROLE",
-                prompt=STEP_COPY["role"]["title"],
-                subtitle=STEP_COPY["role"]["body"],
+            QuestionDefinition(
+                step="role",
+                field="role",
+                question_id="DALEMBERTIENNES_ROLE",
+                prompt="What perspectives shape how you see this problem?",
+                subtitle="Different practices reveal different constraints, possibilities, and blind spots.",
+                input_type="multi",
+                options=(
+                    {"value": "theory", "label": "Theory"},
+                    {"value": "modelling", "label": "Modelling"},
+                    {"value": "computation", "label": "Computation"},
+                    {"value": "experiments", "label": "Experiments"},
+                    {"value": "data_ai", "label": "Data / AI"},
+                    {"value": "community_convening", "label": "Community / convening"},
+                    {"value": "admin_support", "label": "Administration / support"},
+                    {"value": "teaching_supervision", "label": "Teaching / supervision"},
+                    {"value": "other", "label": "Other"},
+                ),
+                required=False,
+                max_select=4,
+                origin="shared",
+                free_text_field="role_extra",
+                free_text_label="Add another perspective",
+                free_text_placeholder="Another way you look at the problem",
             ),
-            career_stage_question(
-                "DALEMBERTIENNES_CAREER_STAGE",
-                prompt=STEP_COPY["career_stage"]["title"],
-                subtitle=STEP_COPY["career_stage"]["body"],
+            QuestionDefinition(
+                step="career_stage",
+                field="career_stage",
+                question_id="DALEMBERTIENNES_CAREER_STAGE",
+                prompt="Where are you in your research or professional trajectory?",
+                subtitle="Your position may shape both your view of the problem and your room for action.",
+                input_type="single",
+                options=(
+                    {"value": "msc", "label": "Master’s student"},
+                    {"value": "phd", "label": "PhD candidate"},
+                    {"value": "postdoc", "label": "Postdoc"},
+                    {"value": "engineer_technical", "label": "Engineer / technical staff"},
+                    {"value": "admin_support", "label": "Administrative or support staff"},
+                    {"value": "permanent_researcher_faculty_pi", "label": "Permanent researcher / faculty / PI"},
+                    {"value": "industry_external", "label": "Industry / external partner"},
+                    {"value": "independent_other", "label": "Independent / other"},
+                    {"value": "prefer_not_answer", "label": "Prefer not to answer"},
+                ),
+                required=False,
+                origin="shared",
             ),
             assets_question(
                 "DALEMBERTIENNES_ASSETS",
@@ -221,7 +222,7 @@ QUESTION_SET = QuestionSet(
                     {"value": "open_reflection_group", "label": "An open reflection group within the laboratory"},
                     {"value": "regular_lab_slot", "label": "A regular slot in the life of the laboratory"},
                     {"value": "officially_supported_lab", "label": "A discussion officially supported by the laboratory"},
-                    {"value": "no_organized_discussion", "label": "I do not think this discussion needs to be organized"},
+                    {"value": "no_organised_discussion", "label": "I do not think this discussion needs to be organised"},
                 ),
                 required=False,
                 group="laboratory_discussion",
@@ -279,7 +280,7 @@ QUESTION_SET = QuestionSet(
                 options=(
                     {"value": "lack_time", "label": "Lack of time"},
                     {"value": "lack_clear_data", "label": "Lack of clear data"},
-                    {"value": "fear_moral_judgment", "label": "Fear of moral judgment"},
+                    {"value": "fear_moral_judgement", "label": "Fear of moral judgement"},
                     {"value": "powerlessness", "label": "A feeling of powerlessness"},
                     {"value": "status_resources_constraints", "label": "Differences in status, resources, or constraints between people"},
                     {"value": "inappropriate_rules", "label": "The risk of creating inappropriate rules"},
@@ -291,31 +292,6 @@ QUESTION_SET = QuestionSet(
                 group="laboratory_constraints",
                 subgroup="constraints",
                 free_text_field="lab_discussion_difficulty_detail",
-                free_text_label="Any further details?",
-            ),
-            QuestionDefinition(
-                step="lab_success_expectation",
-                field="lab_success_expectation",
-                question_id="DALEMBERTIENNES_LAB_SUCCESS_EXPECTATION",
-                prompt="What would you expect from a successful collective discussion on these topics?",
-                subtitle="This asks what a useful discussion should produce, or deliberately not produce.",
-                input_type="multi",
-                max_select=3,
-                options=(
-                    {"value": "understand_real_impacts", "label": "To better understand the real impacts of our activities"},
-                    {"value": "share_practical_constraints", "label": "To share the practical constraints people face"},
-                    {"value": "identify_realistic_room_for_action", "label": "To identify realistic room for action"},
-                    {"value": "avoid_individual_only_responsibility", "label": "To avoid placing responsibility only on individuals"},
-                    {"value": "collective_recommendations", "label": "To produce collective recommendations"},
-                    {"value": "decisions_or_rules", "label": "To produce decisions or rules"},
-                    {"value": "reflection_without_immediate_decisions", "label": "To open a space for reflection without immediately seeking decisions"},
-                    {"value": "low_expectation", "label": "I do not expect much from this type of discussion"},
-                    {"value": "other", "label": "Other"},
-                ),
-                required=False,
-                group="laboratory_expectations",
-                subgroup="expectations",
-                free_text_field="lab_success_expectation_detail",
                 free_text_label="Any further details?",
             ),
             QuestionDefinition(
@@ -372,8 +348,6 @@ QUESTION_SET = QuestionSet(
         "lab_professional_responsibility_detail",
         "lab_discussion_difficulty",
         "lab_discussion_difficulty_detail",
-        "lab_success_expectation",
-        "lab_success_expectation_detail",
         "lab_discussion_format",
         "lab_discussion_format_detail",
         "lab_question",
@@ -387,4 +361,6 @@ QUESTION_SET = QuestionSet(
     fingerprint_labels={},
     follow_up_contact_values=("yes", "maybe"),
     migration_profile_fields=("assets",),
+    default_mode="standard",
+    show_mode_selection=False,
 )

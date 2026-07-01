@@ -24,6 +24,10 @@ class QuestionDefinition:
     free_text_placeholder: str = ""
     free_text_required: bool = False
 
+    @property
+    def context(self) -> str:
+        return self.subtitle
+
     def as_dict(self) -> dict[str, Any]:
         out: dict[str, Any] = {
             "step": self.step,
@@ -31,6 +35,7 @@ class QuestionDefinition:
             "question_id": self.question_id,
             "prompt": self.prompt,
             "subtitle": self.subtitle,
+            "context": self.context,
             "input_type": self.input_type,
             "options": [dict(item) for item in self.options],
             "required": self.required,
@@ -68,6 +73,8 @@ class QuestionSet:
     fingerprint_labels: Mapping[str, str]
     follow_up_contact_values: Sequence[str]
     migration_profile_fields: Sequence[str]
+    default_mode: str = "quick"
+    show_mode_selection: bool = True
 
 
 def question_ids(question_set: QuestionSet) -> list[str]:

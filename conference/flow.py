@@ -45,7 +45,7 @@ def current_question_set() -> QuestionSet:
 
 def _default_draft(question_set: QuestionSet) -> Dict[str, Any]:
     draft: Dict[str, Any] = {
-        "mode": "",
+        "mode": str(question_set.default_mode or ""),
         "boiler_room_contribution": "",
         "question_flags": {},
         "alias": "",
@@ -80,9 +80,10 @@ def active_question_steps(
     question_set: QuestionSet | None = None,
 ) -> List[str]:
     source = draft or get_draft(question_set=question_set)
+    qset = _resolve_question_set(question_set)
     return question_set_active_steps_for_mode(
-        _resolve_question_set(question_set),
-        str(source.get("mode") or "").strip(),
+        qset,
+        str(source.get("mode") or qset.default_mode or "").strip(),
     )
 
 
@@ -373,8 +374,21 @@ def build_session_payload(
             "city": _normalize_text(draft.get("scientific_home_city")) if "scientific_home_city" in active_fields else "",
             "institution": _normalize_text(draft.get("scientific_home_institution")) if "scientific_home_institution" in active_fields else "",
         }
-    if "role" in {str(question.field) for question in qset.questions}:
-        profile["role_custom"] = _normalize_text(draft.get("role_custom")) if "role" in active_fields else ""
+    role_question = question_by_field(qset, "role")
+    role_extra_field = (
+        str(getattr(role_question, "free_text_field", "") or "").strip()
+        if role_question
+        else ""
+    )
+    if role_question:
+        role_extra_value = (
+            _normalize_text(draft.get(role_extra_field or "role_custom"))
+            if "role" in active_fields
+            else ""
+        )
+        profile["role_custom"] = role_extra_value
+        if role_extra_field:
+            profile[role_extra_field] = role_extra_value
 
     for question in qset.questions:
         field = str(question.field)
@@ -449,9 +463,16 @@ def flatten_payload(
         if free_text_field:
             out[free_text_field] = str(source.get(free_text_field) or "").strip()
     roles = out.get("role")
-    role_custom = str(out.get("role_custom") or "").strip()
-    if isinstance(roles, list) and role_custom and role_custom not in roles:
-        roles.append(role_custom)
+    role_question = question_by_field(qset, "role")
+    role_extra_field = (
+        str(getattr(role_question, "free_text_field", "") or "").strip()
+        if role_question
+        else ""
+    )
+    role_extra = str(out.get(role_extra_field) or out.get("role_custom") or "").strip()
+    out["role_custom"] = role_extra
+    if isinstance(roles, list) and role_extra and role_extra not in roles:
+        roles.append(role_extra)
     return out
 
 

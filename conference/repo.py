@@ -218,7 +218,24 @@ def _normalize_bundle(bundle: Dict[str, Any]) -> Dict[str, Any]:
     )
 
     role = _as_list(profile.get("role", bundle.get("role", [])))
-    role_custom = _as_text(profile.get("role_custom", bundle.get("role_custom", "")))
+    question_set = _resolved_question_set(bundle)
+    role_question = None
+    if question_set:
+        role_question = next(
+            (question for question in question_set.questions if str(question.field) == "role"),
+            None,
+        )
+    role_extra_field = (
+        str(getattr(role_question, "free_text_field", "") or "").strip()
+        if role_question
+        else ""
+    )
+    role_custom = _as_text(
+        profile.get(
+            "role_custom",
+            profile.get(role_extra_field, bundle.get("role_custom", bundle.get(role_extra_field, ""))),
+        )
+    )
     if role_custom and role_custom not in role:
         role.append(role_custom)
     career_stage = _as_text(profile.get("career_stage", bundle.get("career_stage", "")))
@@ -278,8 +295,6 @@ def _normalize_bundle(bundle: Dict[str, Any]) -> Dict[str, Any]:
     persistence_scope = _as_text(
         profile.get("persistence_scope", bundle.get("persistence_scope", ""))
     )
-    question_set = _resolved_question_set(bundle)
-
     profile_block = {
         "role": role,
         "career_stage": career_stage,
@@ -336,6 +351,9 @@ def _normalize_bundle(bundle: Dict[str, Any]) -> Dict[str, Any]:
                 free_text_value = _as_text(source.get(free_text_field, bundle.get(free_text_field, "")))
                 generic_values[free_text_field] = free_text_value
                 target[free_text_field] = free_text_value
+                if field == "role":
+                    profile_block["role_custom"] = free_text_value
+                    generic_values["role_custom"] = free_text_value
 
     return {
         "schema_version": _as_text(bundle.get("schema_version")) or "1",
