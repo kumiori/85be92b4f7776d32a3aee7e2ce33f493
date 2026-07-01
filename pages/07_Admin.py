@@ -13,6 +13,9 @@ import time
 import streamlit as st
 import yaml
 
+from conference.events import conference_event_context, event_config_for_session_code
+from conference.context import get_conference_repo
+from conference.registry import bundle_inspector_rows, registry_validation_errors
 from infra.app_context import get_authenticator, get_notion_repo
 from infra.app_state import (
     ensure_auth,
@@ -761,6 +764,11 @@ def _render_sessions_panel(repo) -> None:
             session.get("session_visualisation")
             or (spec.session_visualisation if spec else "")
         )
+        event_context = (
+            conference_event_context(session=session)
+            if event_config_for_session_code(session_code)
+            else None
+        )
         is_global = session_code.upper() == "GLOBAL-SESSION"
         is_active = bool(session.get("active"))
         status_label = "Active" if is_active else "Inactive"
@@ -776,6 +784,13 @@ def _render_sessions_panel(repo) -> None:
                 st.caption(f"Title: {session_title} · Order: {session_order}")
                 if session_description:
                     st.caption(session_description)
+                if event_context:
+                    st.caption(
+                        "Event resolver: "
+                        f"{event_context['event_slug']} · "
+                        f"status {event_context['event_status']} · "
+                        f"question set {event_context['question_set_id']}"
+                    )
             with c2:
                 st.caption("Status")
                 if is_active:
@@ -877,6 +892,86 @@ def _render_sessions_panel(repo) -> None:
                         st.caption(q.prompt)
                         if q.context:
                             st.caption(q.context)
+
+
+def _render_conference_bundle_inspector(conference_repo) -> None:
+    st.subheader("Conference bundle inspector")
+    st.caption(
+        "Registry-backed view of conference question bundles. This is the current source for the conference questionnaire flow, separate from the legacy catalogue."
+    )
+    errors = registry_validation_errors()
+    if errors:
+        st.error("Conference registry validation errors detected:")
+        for err in errors:
+            st.caption(f"- {err}")
+
+    rows = bundle_inspector_rows()
+    if not rows:
+        st.info("No registered conference bundles.")
+        return
+
+    for item in rows:
+        text_id = str(item.get("text_id") or "")
+        recognized = bool(
+            conference_repo
+            and hasattr(conference_repo, "recognizes_questionnaire_text_id")
+            and conference_repo.recognizes_questionnaire_text_id(text_id)
+        )
+        warnings: list[str] = []
+        if not recognized:
+            warnings.append(f"text_id `{text_id}` is not recognized by the response writer")
+        question_set_id = str(item.get("question_set_id") or "")
+        module = str(item.get("question_set_module") or "")
+        if question_set_id and question_set_id not in module:
+            warnings.append(
+                f"module `{module}` does not visibly align with question_set_id `{question_set_id}`"
+            )
+        event_specific_ids = [str(token) for token in item.get("event_specific_question_ids", [])]
+        if str(item.get("event_slug") or "") == "dalembertiennes":
+            leaked = [
+                token
+                for token in event_specific_ids
+                if not token.startswith("DALEMBERTIENNES_")
+            ]
+            if leaked:
+                warnings.append(
+                    "Dalembertiennes event-specific ids should be prefixed `DALEMBERTIENNES_`: "
+                    + ", ".join(leaked)
+                )
+
+        with st.container(border=True):
+            c1, c2 = st.columns([4, 2])
+            with c1:
+                st.markdown(
+                    f"**{item['event_slug']}** · `{item['session_code']}` · `{item['question_set_id']}`"
+                )
+                st.caption(
+                    f"text_id `{text_id}` · schema `{item['schema_id']}` · module `{module}`"
+                )
+                if str(item.get("questionnaire_page") or "").strip():
+                    st.caption(
+                        "Routes: "
+                        f"questionnaire `{item['questionnaire_page']}` · "
+                        f"overview `{item['overview_page']}` · "
+                        f"host `{item['host_page']}`"
+                    )
+            with c2:
+                st.caption("Writer recognition")
+                if recognized:
+                    st.success("recognized")
+                else:
+                    st.error("unknown")
+
+            if warnings:
+                for warning in warnings:
+                    st.warning(warning)
+
+            st.markdown("**Shared questions**")
+            st.code("\n".join(item.get("shared_question_ids", [])) or "None", language="text")
+            st.markdown("**Event-specific questions**")
+            st.code("\n".join(item.get("event_specific_question_ids", [])) or "None", language="text")
+            st.markdown("**Ordered question ids**")
+            st.code("\n".join(item.get("question_ids", [])) or "None", language="text")
 
 
 def main() -> None:
@@ -1039,10 +1134,13 @@ def main() -> None:
                         )
 
     _render_sessions_panel(repo)
+    conference_repo = get_conference_repo()
+    _render_conference_bundle_inspector(conference_repo)
     _render_players_dashboard(repo, str(session_id))
     _render_duplicate_players_panel(repo)
 
     st.subheader("Question catalogue (legacy statements import)")
+    st.caption("Legacy / non-conference catalogue tools. Separate from the conference bundle registry above.")
     upload = st.file_uploader("Upload JSON or YAML", type=["json", "yaml", "yml"])
     if upload:
         content = StringIO(upload.getvalue().decode("utf-8")).read()

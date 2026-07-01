@@ -1013,6 +1013,7 @@ class NotionRepo:
             "created_at": page.get("created_time"),
             "joined_at": page.get("created_time"),
             "last_joined_on": page.get("last_edited_time"),
+            "last_seen": page.get("last_edited_time"),
         }
         if self._prop_exists(db_id, "status"):
             player["status"] = self._normalize_select(props, "status")
@@ -1034,6 +1035,11 @@ class NotionRepo:
                 player["last_joined_on"] = (
                     date_val.get("start") or player["last_joined_on"]
                 )
+        if self._prop_exists(db_id, "last_seen"):
+            seen_prop = props.get("last_seen")
+            if seen_prop and seen_prop.get("type") == "date":
+                date_val = seen_prop.get("date") or {}
+                player["last_seen"] = date_val.get("start") or player["last_seen"]
         if self._prop_exists(db_id, "preferred_mode"):
             player["preferred_mode"] = self._normalize_select(props, "preferred_mode")
         if self._prop_exists(db_id, "email"):

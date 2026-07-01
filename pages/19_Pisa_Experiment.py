@@ -8,7 +8,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 from conference.context import get_conference_bundle, get_conference_repo
-from conference.events import YOUNG_TEXT_ID
+from conference.events import YOUNG_TEXT_ID, conference_event_context
 from conference.pisa_legacy_flow import (
     active_question_steps,
     active_step_sequence,
@@ -38,7 +38,7 @@ from ui import set_page, sidebar_debug_state
 
 
 PAGE_KEY = "pisa-meeting-legacy"
-TEXT_ID = "pisa_session_v2"
+TEXT_ID = YOUNG_TEXT_ID
 IDENTITY_STEP = "identity"
 
 
@@ -188,8 +188,29 @@ def _ensure_access_key() -> str:
     return access_key
 
 
-def _submit(repo: Any, session: Dict[str, Any]) -> None:
+def _payload_for_session(session: Dict[str, Any]) -> Dict[str, Any]:
     payload = build_session_payload(get_draft())
+    context = conference_event_context(session=session)
+    payload["event_slug"] = str(context.get("event_slug") or "pisa")
+    payload["event_code"] = str(context.get("event_code") or session.get("session_code") or "")
+    payload["event_label"] = str(
+        context.get("event_label")
+        or session.get("session_title")
+        or session.get("session_name")
+        or "Pisa"
+    )
+    payload["event_status"] = str(context.get("event_status") or "")
+    payload["session_code"] = str(session.get("session_code") or "")
+    payload["session_id"] = str(session.get("id") or "")
+    payload["text_id"] = TEXT_ID
+    payload["schema_id"] = TEXT_ID
+    payload["question_set_id"] = TEXT_ID
+    payload["response_scope"] = "event_specific"
+    return payload
+
+
+def _submit(repo: Any, session: Dict[str, Any]) -> None:
+    payload = _payload_for_session(session)
     access_key = _ensure_access_key()
     access_key_hash = repo.access_key_hash(access_key)
     access_key_last4 = emoji_suffix(access_key)
