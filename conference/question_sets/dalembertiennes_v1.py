@@ -4,7 +4,6 @@ from typing import Any, Dict
 
 from conference.question_sets import QuestionDefinition, QuestionSet, merge_questions
 from conference.question_sets.shared import (
-    assets_question,
     follow_up_interest_question,
 )
 
@@ -65,8 +64,8 @@ STEP_COPY = {
         "cta": "Continue",
     },
     "assets": {
-        "title": "Assets",
-        "body": "Choose up to three things you could realistically bring into this discussion.",
+        "title": "What could you bring?",
+        "body": "This is not about expertise only. It can be a scientific lens, a practical skill, an experience, a concern, or a capacity to connect people.",
         "cta": "Continue",
     },
     "lab_discuss_interest": {
@@ -76,7 +75,7 @@ STEP_COPY = {
     },
     "lab_discussion_level": {
         "title": "Q2 · Level of discussion",
-        "body": "This asks where such a discussion should live: informally, inside the laboratory, or as part of its official collective life.",
+        "body": "This asks where such a discussion could live: informally, in a dedicated group, or as part of the laboratory's collective life.",
         "cta": "Continue",
     },
     "lab_time_commitment": {
@@ -180,10 +179,29 @@ QUESTION_SET = QuestionSet(
                 required=False,
                 origin="shared",
             ),
-            assets_question(
-                "DALEMBERTIENNES_ASSETS",
-                prompt=STEP_COPY["assets"]["title"],
+            QuestionDefinition(
+                step="assets",
+                field="assets",
+                question_id="DALEMBERTIENNES_ASSETS",
+                prompt="What perspectives, skills, or experiences could you bring into this discussion?",
                 subtitle=STEP_COPY["assets"]["body"],
+                input_type="multi",
+                options=(
+                    {"value": "theory", "label": "Theory"},
+                    {"value": "models", "label": "Models"},
+                    {"value": "computation", "label": "Computation"},
+                    {"value": "data", "label": "Data"},
+                    {"value": "experiments", "label": "Experiments"},
+                    {"value": "software", "label": "Software"},
+                    {"value": "teaching", "label": "Teaching"},
+                    {"value": "community", "label": "Community building"},
+                    {"value": "admin_support", "label": "Administration / support"},
+                    {"value": "lived_experience", "label": "Lived experience"},
+                    {"value": "listening_facilitation", "label": "Listening / facilitation"},
+                ),
+                required=True,
+                max_select=3,
+                origin="shared",
             ),
             follow_up_interest_question(
                 "DALEMBERTIENNES_FOLLOW_UP_INTEREST",
@@ -215,7 +233,7 @@ QUESTION_SET = QuestionSet(
                 field="lab_discussion_level",
                 question_id="DALEMBERTIENNES_LAB_DISCUSSION_LEVEL",
                 prompt="In your opinion, what would be the right level for this discussion?",
-                subtitle="This asks where such a discussion should live: informally, inside the laboratory, or as part of its official collective life.",
+                subtitle="This asks where such a discussion could live: informally, in a dedicated group, or as part of the laboratory's collective life.",
                 input_type="single",
                 options=(
                     {"value": "informal_interested_people", "label": "An informal discussion among interested people"},
