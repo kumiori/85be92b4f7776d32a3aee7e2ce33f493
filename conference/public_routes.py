@@ -16,6 +16,7 @@ class PublicRouteConfig:
     default_question_set_id: str
     welcome_title: str
     welcome_body: str
+    welcome_context: str
     welcome_note: str
 
 
@@ -28,9 +29,14 @@ _PUBLIC_ROUTES = (
         default_question_set_id="dalembertiennes_v1",
         welcome_title="Climate, resources, research",
         welcome_body="Can the laboratory formulate a problem?",
+        welcome_context=(
+            "It is difficult to formulate an actionable problem without assuming too much from "
+            "the start: what the problem is, who should act, what should change, and what should "
+            "be preserved."
+        ),
         welcome_note=(
-            "This anonymous questionnaire belongs to a broader climate, resources, and research family. "
-            "You are currently answering it in the context of D'Alembert Lab."
+            "Anonymous and editable. "
+            "You are answering the D’Alembertiennes version of a broader climate, resources, and research reflection."
         ),
     ),
 )

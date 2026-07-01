@@ -130,6 +130,7 @@ def _question_set_for_public_route(
     welcome = dict(step_copy.get("welcome", {}))
     welcome["title"] = str(route.welcome_title)
     welcome["body"] = str(route.welcome_body)
+    welcome["context"] = str(route.welcome_context)
     welcome["note"] = str(route.welcome_note)
     step_copy["welcome"] = welcome
     return replace(question_set, step_copy=step_copy)
@@ -448,6 +449,8 @@ def _render_question_intro(step: str, question: QuestionDefinition | None, copy:
         return
     if copy.get("body"):
         st.markdown(f"### {copy['body']}")
+    if copy.get("context"):
+        st.caption(str(copy["context"]))
 
 
 def _step_for_field(field: str) -> str:
@@ -805,7 +808,9 @@ def _render_entry(session: Dict[str, Any], repo: Any) -> None:
     conference_header(_public_entry_title(session), "", step="")
     route = _public_route()
     if route:
-        st.caption(f"Current context: {_event_scope_text(session)}.")
+        st.caption(
+            "A shared entry point to ask how climate, resources, and research become a question for laboratories."
+        )
     st.markdown("### Anonymous first.")
     _render_event_scope_notice(session)
     st.markdown("### Choose how to enter.")
@@ -1387,11 +1392,8 @@ def _render_navigation(repo: Any, session: Dict[str, Any]) -> None:
         return
 
     if question:
-        left, right, side = st.columns([1, 1, 0.55])
-        with left:
-            if st.button("Skip question", use_container_width=True):
-                _open_skip_question_dialog(question)
-        with right:
+        primary, flag_col, skip_col = st.columns([1.6, 0.45, 0.35])
+        with primary:
             if st.button("Continue", type="primary", use_container_width=True):
                 draft = get_draft(question_set=current_question_set())
                 payload = build_payload_view(draft, question_set=current_question_set())
@@ -1400,8 +1402,11 @@ def _render_navigation(repo: Any, session: Dict[str, Any]) -> None:
                     return
                 _advance_step()
                 st.rerun()
-        with side:
+        with flag_col:
             _render_question_flag_control(question)
+        with skip_col:
+            if st.button("Skip", use_container_width=True):
+                _open_skip_question_dialog(question)
         return
 
     action, side = st.columns([1, 0.55])
