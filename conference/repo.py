@@ -5,7 +5,7 @@ import re
 import unicodedata
 from typing import Any, Dict, List, Optional, Sequence
 
-from conference.models import SESSION_QUESTIONS
+from conference.registry import conference_question_ids, resolve_question_set_bundle
 from conference.question_flags import normalize_question_flags
 from conference.settings import ConferenceSettings
 from infra.key_codec import hex_to_emoji, normalize_access_key, split_emoji_symbols
@@ -61,6 +61,46 @@ def _as_fingerprint(value: Any) -> Dict[str, int]:
             level = 0
         out[axis] = max(0, min(5, level))
     return out
+
+
+def _resolved_question_set(bundle: Dict[str, Any]) -> Any | None:
+    session = bundle.get("session") if isinstance(bundle.get("session"), dict) else {}
+    session_code = _as_text(session.get("session_code", bundle.get("session_code", "")))
+    text_id = _as_text(session.get("text_id", bundle.get("text_id", "")))
+    try:
+        return resolve_question_set_bundle(session_code=session_code, text_id=text_id).question_set
+    except Exception:
+        return None
+
+
+def _normalize_question_value(question: Any, value: Any) -> Any:
+    input_type = str(getattr(question, "input_type", "") or "")
+    if input_type == "multi":
+        return _as_list(value)
+    if input_type == "fingerprint":
+        return _as_fingerprint(value)
+    return _as_text(value)
+
+
+def _primary_text_response(bundle: Dict[str, Any]) -> str:
+    question_set = _resolved_question_set(bundle)
+    session = bundle.get("session") if isinstance(bundle.get("session"), dict) else {}
+    profile = bundle.get("profile") if isinstance(bundle.get("profile"), dict) else {}
+    if question_set:
+        profile_fields = set(getattr(question_set, "profile_fields", ()))
+        for question in question_set.questions:
+            field = str(question.field)
+            if str(question.input_type) != "text":
+                continue
+            source = profile if field in profile_fields else session
+            text = _as_text(source.get(field, bundle.get(field, "")))
+            if text:
+                return text
+    for field in ("open_question", "open_text", "lab_question"):
+        text = _as_text(session.get(field, bundle.get(field, "")))
+        if text:
+            return text
+    return ""
 
 
 def _is_regional_indicator(char: str) -> bool:
@@ -238,46 +278,70 @@ def _normalize_bundle(bundle: Dict[str, Any]) -> Dict[str, Any]:
     persistence_scope = _as_text(
         profile.get("persistence_scope", bundle.get("persistence_scope", ""))
     )
+    question_set = _resolved_question_set(bundle)
+
+    profile_block = {
+        "role": role,
+        "career_stage": career_stage,
+        "scientific_home": {
+            "country": country,
+            "city": city,
+            "institution": institution,
+        },
+        "computational_scale": scale,
+        "collaboration_style": collaboration_style,
+        "assets": assets,
+        "complexity_fingerprint": fingerprint,
+    }
+    session_block = {
+        "depth": _as_text(session.get("depth", bundle.get("mode", ""))),
+        "motivations": motivations,
+        "obstacle": obstacle,
+        "challenge": challenge,
+        "follow_up_interest": follow_up_interest,
+        "open_question": open_question,
+        "boiler_room_contribution": boiler_room_contribution,
+        "question_flags": question_flags,
+        "deferred_fields": deferred_fields,
+        "identity_reveal_targets": identity_reveal_targets,
+        "event_slug": event_slug,
+        "event_code": event_code,
+        "event_label": event_label,
+        "event_location": event_location,
+        "event_status": event_status,
+        "session_code": session_code,
+        "session_id": session_id,
+        "text_id": text_id,
+        "schema_id": schema_id,
+        "question_set_id": question_set_id,
+        "response_scope": response_scope,
+    }
+    generic_values: Dict[str, Any] = {}
+    if question_set:
+        profile_fields = set(getattr(question_set, "profile_fields", ()))
+        for question in question_set.questions:
+            field = str(question.field)
+            if field == "scientific_home":
+                continue
+            source = profile if field in profile_fields else session
+            normalized_value = _normalize_question_value(
+                question,
+                source.get(field, bundle.get(field, "")),
+            )
+            generic_values[field] = normalized_value
+            target = profile_block if field in profile_fields else session_block
+            target[field] = normalized_value
+            free_text_field = str(getattr(question, "free_text_field", "") or "").strip()
+            if free_text_field:
+                free_text_value = _as_text(source.get(free_text_field, bundle.get(free_text_field, "")))
+                generic_values[free_text_field] = free_text_value
+                target[free_text_field] = free_text_value
 
     return {
         "schema_version": _as_text(bundle.get("schema_version")) or "1",
         "mode": _as_text(session.get("depth", bundle.get("mode", ""))),
-        "profile": {
-            "role": role,
-            "career_stage": career_stage,
-            "scientific_home": {
-                "country": country,
-                "city": city,
-                "institution": institution,
-            },
-            "computational_scale": scale,
-            "collaboration_style": collaboration_style,
-            "assets": assets,
-            "complexity_fingerprint": fingerprint,
-        },
-        "session": {
-            "depth": _as_text(session.get("depth", bundle.get("mode", ""))),
-            "motivations": motivations,
-            "obstacle": obstacle,
-            "challenge": challenge,
-            "follow_up_interest": follow_up_interest,
-            "open_question": open_question,
-            "boiler_room_contribution": boiler_room_contribution,
-            "question_flags": question_flags,
-            "deferred_fields": deferred_fields,
-            "identity_reveal_targets": identity_reveal_targets,
-            "event_slug": event_slug,
-            "event_code": event_code,
-            "event_label": event_label,
-            "event_location": event_location,
-            "event_status": event_status,
-            "session_code": session_code,
-            "session_id": session_id,
-            "text_id": text_id,
-            "schema_id": schema_id,
-            "question_set_id": question_set_id,
-            "response_scope": response_scope,
-        },
+        "profile": profile_block,
+        "session": session_block,
         "derived": derived,
         "role": role,
         "role_custom": role_custom,
@@ -312,6 +376,7 @@ def _normalize_bundle(bundle: Dict[str, Any]) -> Dict[str, Any]:
         "question_set_id": question_set_id,
         "response_scope": response_scope,
         "persistence_scope": persistence_scope,
+        **generic_values,
     }
 
 
@@ -339,6 +404,7 @@ def _bundle_id_for_text_id(text_id: str) -> str:
         "petnica_2026": COMPLEXITY_QUESTION_BUNDLE,
         "complexity_session_v2": COMPLEXITY_QUESTION_BUNDLE,
         "dalembertiennes_v0": DALEMBERTIENNES_QUESTION_BUNDLE,
+        "dalembertiennes_v1": DALEMBERTIENNES_QUESTION_BUNDLE,
     }
     bundle_id = mapping.get(token)
     if bundle_id:
@@ -353,7 +419,7 @@ def _anonymous_name_for_bundle(bundle: Dict[str, Any]) -> str:
     if (
         event_slug == "dalembertiennes"
         or session_code == "dalembertiennes_2026"
-        or text_id == "dalembertiennes_v0"
+        or text_id in {"dalembertiennes_v0", "dalembertiennes_v1"}
     ):
         return ANONYMOUS_DALEMBERTIENNES_NAME
     return ANONYMOUS_COMPLEXITY_NAME
@@ -439,7 +505,7 @@ class ConferenceRepo:
             or str(identity.get("identity") or "").strip()
             or _anonymous_name_for_bundle(normalized)
         )
-        intent = str(normalized.get("open_question") or normalized.get("open_text") or "").strip()
+        intent = _primary_text_response(normalized)
         contact = str(identity.get("contact") or "").strip()
         email = contact if EMAIL_RE.match(contact) else ""
         emoji_key = hex_to_emoji(access_key)
@@ -512,12 +578,16 @@ class ConferenceRepo:
             failure_reasons.append("missing_response_scope")
         if event_status.lower() in {"closed", "archived"}:
             failure_reasons.append(f"event_{event_status.lower()}")
-        if canonical_text_id == "dalembertiennes_v0":
+        if canonical_text_id in {"dalembertiennes_v0", "dalembertiennes_v1"}:
             if event_slug != "dalembertiennes":
                 failure_reasons.append("dalembertiennes_wrong_event_slug")
             if session_code != "dalembertiennes_2026":
                 failure_reasons.append("dalembertiennes_wrong_session_code")
-            if question_set_id not in {"dalembertiennes_v0", "dalembertiennes_lab_questionnaire_v0"}:
+            if question_set_id not in {
+                "dalembertiennes_v0",
+                "dalembertiennes_v1",
+                "dalembertiennes_lab_questionnaire_v0",
+            }:
                 failure_reasons.append("dalembertiennes_wrong_question_set_id")
 
         if failure_reasons:
@@ -647,7 +717,7 @@ class ConferenceRepo:
         *,
         text_ids: Optional[Sequence[str]] = None,
     ) -> List[Dict[str, Any]]:
-        question_ids = {str(question["question_id"]) for question in SESSION_QUESTIONS}
+        question_ids = set(conference_question_ids())
         question_ids.add(QUESTION_IDENTITY)
         question_ids.update(QUESTION_BUNDLE_IDS)
         rows = self.interaction_repo().get_responses(session_id)
@@ -660,6 +730,13 @@ class ConferenceRepo:
             for row in filtered
             if str(row.get("text_id") or "").strip() in allowed_text_ids
         ]
+
+    def recognizes_questionnaire_text_id(self, text_id: str) -> bool:
+        try:
+            _bundle_id_for_text_id(text_id)
+        except ValueError:
+            return False
+        return True
 
     def latest_submission_by_access_key_hash(
         self,
