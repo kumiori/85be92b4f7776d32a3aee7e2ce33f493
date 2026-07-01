@@ -11,7 +11,8 @@ from conference.context import get_conference_bundle, get_conference_repo
 from conference.events import (
     UNESCO_SESSION_CODE,
     YOUNG_SESSION_CODE,
-    complexity_text_ids,
+    conference_event_context,
+    conference_event_options,
     current_complexity_session_code,
     text_ids_for_session_code,
 )
@@ -26,6 +27,56 @@ from ui import apply_admin_dark_mode, heading, microcopy, set_page, sidebar_debu
 
 
 PAGE_KEY = "complexity"
+
+
+def _event_context(session: Dict[str, Any]) -> Dict[str, Any]:
+    return conference_event_context(session=session)
+
+
+def _event_scope_text(session: Dict[str, Any]) -> str:
+    context = _event_context(session)
+    location = str(context.get("event_location") or "").strip()
+    if location:
+        return f"{context['event_label']} in {location}"
+    return str(context.get("event_label") or context.get("event_code") or "this event")
+
+
+def _sync_event_query(event_slug: str) -> None:
+    st.query_params.clear()
+    st.query_params.update({"event": str(event_slug or "").strip()})
+
+
+def _render_event_selector(repo: Any, session: Dict[str, Any]) -> None:
+    options = conference_event_options(repo)
+    if len(options) <= 1:
+        return
+    code_to_option = {str(item["session_code"]): item for item in options}
+    current_code = str(session.get("session_code") or "")
+    option_codes = [str(item["session_code"]) for item in options]
+    if current_code not in code_to_option:
+        option_codes.insert(0, current_code)
+        code_to_option[current_code] = {
+            "event_slug": str(current_code).lower(),
+            "session_code": current_code,
+            "event_label": str(session.get("session_title") or current_code),
+            "event_location": "",
+            "available": True,
+        }
+    selected_code = st.selectbox(
+        "Event",
+        option_codes,
+        index=option_codes.index(current_code),
+        key="conference-host-event-selector",
+        format_func=lambda code: (
+            f"{code_to_option[code]['event_label']} · {code_to_option[code]['event_location']}"
+            if str(code_to_option[code].get("event_location") or "").strip()
+            else str(code_to_option[code]["event_label"])
+        ),
+    )
+    if selected_code != current_code:
+        selected = code_to_option[selected_code]
+        _sync_event_query(str(selected["event_slug"]))
+        st.switch_page(str(selected["host_page"]))
 
 
 def _format_timestamp(value: str) -> str:
@@ -108,17 +159,25 @@ def main() -> None:
     session = bundle.get("session")
     if not session:
         st.error(
-            f"Conference session is missing. Ensure the shared sessions DB contains `{session_code}`."
+            "Conference session is missing. "
+            f"Ensure the shared sessions DB contains `{session_code}`, or run "
+            "`scripts/bootstrap_dalembertiennes_session.py` for the Dalembertiennes scaffold."
         )
         return
 
-    response_rows = repo.get_session_rows(session["id"], text_ids=complexity_text_ids())
+    _render_event_selector(repo, session)
+
+    response_rows = repo.get_session_rows(
+        session["id"],
+        text_ids=text_ids_for_session_code(str(session.get("session_code") or "")),
+    )
     filtered_rows = filter_rows_to_session_window(response_rows, session)
     submissions = repo.group_rows_by_submission(filtered_rows)
     snapshot = room_snapshot(submissions)
     event_log = list_logged_events(page=PAGE_KEY, session_id=session["id"], limit=100)
+    event_context = _event_context(session)
 
-    heading("Complexity host")
+    heading(f"{event_context['event_label']} host")
     microcopy(
         f'{session.get("session_code", session_code)} · '
         "persistent profiles, session questions, neighbours, and room-level signals"

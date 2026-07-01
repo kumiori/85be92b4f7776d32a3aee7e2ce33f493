@@ -10,14 +10,10 @@ import streamlit.components.v1 as components
 
 from conference.context import get_conference_bundle, get_conference_repo
 from conference.events import (
-    COMPLEXITY_EVENT_CODE,
-    COMPLEXITY_EVENT_LABEL,
-    COMPLEXITY_EVENT_LOCATION,
-    COMPLEXITY_TEXT_ID,
-    COMPLEXITY_OVERVIEW_PAGE,
     UNESCO_SESSION_CODE,
     YOUNG_SESSION_CODE,
-    complexity_text_ids,
+    conference_event_context,
+    conference_event_options,
     current_complexity_session_code,
     text_ids_for_session_code,
 )
@@ -70,10 +66,11 @@ from ui import set_page, sidebar_debug_state
 
 
 PAGE_KEY = "complexity"
-TEXT_ID = COMPLEXITY_TEXT_ID
 IDENTITY_STEP = "identity"
 ENTRY_KEY = "conference_entry_mode"
 LOGIN_ERROR_KEY = "conference_login_error"
+
+
 def _ensure_local_state() -> None:
     init_flow_state()
     st.session_state.setdefault("conference_device_id", uuid.uuid4().hex[:16])
@@ -96,6 +93,73 @@ def _clear_login_error() -> None:
 
 def _set_login_error(message: str) -> None:
     st.session_state[LOGIN_ERROR_KEY] = message
+
+
+def _event_context(session: Dict[str, Any]) -> Dict[str, Any]:
+    return conference_event_context(session=session)
+
+
+def _event_scope_text(session: Dict[str, Any]) -> str:
+    context = _event_context(session)
+    location = str(context.get("event_location") or "").strip()
+    if location:
+        return f"{context['event_label']} in {location}"
+    return str(context.get("event_label") or context.get("event_code") or "this event")
+
+
+def _sync_event_query(event_slug: str) -> None:
+    next_params: Dict[str, str] = {"event": str(event_slug or "").strip()}
+    key = str(st.query_params.get("key", "") or "").strip()
+    if key:
+        next_params["key"] = key
+    st.query_params.clear()
+    st.query_params.update(next_params)
+
+
+def _switch_to_event_overview(session: Dict[str, Any]) -> None:
+    context = _event_context(session)
+    _sync_event_query(str(context["event_slug"]))
+    st.switch_page(str(context["overview_page"]))
+
+
+def _event_is_read_only(session: Dict[str, Any]) -> bool:
+    return not bool(_event_context(session).get("write_enabled"))
+
+
+def _render_event_selector(repo: Any, session: Dict[str, Any]) -> None:
+    options = conference_event_options(repo)
+    if len(options) <= 1:
+        return
+    code_to_option = {str(item["session_code"]): item for item in options}
+    current_code = str(session.get("session_code") or "")
+    option_codes = [str(item["session_code"]) for item in options]
+    if current_code not in code_to_option:
+        option_codes.insert(0, current_code)
+        code_to_option[current_code] = {
+            "event_slug": str(current_code).lower(),
+            "session_code": current_code,
+            "event_label": str(session.get("session_title") or current_code),
+            "event_location": "",
+            "available": True,
+        }
+    selected_code = st.selectbox(
+        "Event",
+        option_codes,
+        index=option_codes.index(current_code),
+        key="conference-event-selector",
+        format_func=lambda code: (
+            f"{code_to_option[code]['event_label']} · {code_to_option[code]['event_location']}"
+            if str(code_to_option[code].get("event_location") or "").strip()
+            else str(code_to_option[code]["event_label"])
+        ),
+    )
+    if selected_code != current_code:
+        reset_flow_state()
+        _set_entry_mode("")
+        _clear_login_error()
+        selected = code_to_option[selected_code]
+        _sync_event_query(str(selected["event_slug"]))
+        st.switch_page(str(selected["questionnaire_page"]))
 
 
 def _browser_headers() -> Dict[str, str]:
@@ -296,32 +360,35 @@ def _resume_at_field(field: str, mode: str | None = None) -> None:
 
 def _load_submission_for_key(
     repo: Any,
-    session_id: str,
+    session: Dict[str, Any],
     raw_key: str,
 ) -> tuple[str | None, Dict[str, Any] | None, str]:
     token = str(raw_key or "").strip()
     if not token:
         return None, None, ""
+    session_id = str(session.get("id") or "")
+    session_code = str(session.get("session_code") or "")
+    allowed_text_ids = text_ids_for_session_code(session_code)
     access_key, error = resolve_access_key_input(
         getattr(repo, "notion_repo", None), token
     )
     if not access_key:
         return None, None, str(error or "")
     access_key_hash = repo.access_key_hash(access_key)
-    cache_key = f"{session_id}:{access_key_hash}"
+    cache_key = f"{session_id}:{access_key_hash}:{'|'.join(allowed_text_ids)}"
     submission = st.session_state.get("conference_submission_cache")
     if st.session_state.get("conference_submission_cache_key") != cache_key:
         submission = repo.latest_submission_by_access_key_hash(
             session_id=session_id,
             access_key_hash=access_key_hash,
-            text_ids=complexity_text_ids(),
+            text_ids=allowed_text_ids,
         )
         st.session_state["conference_submission_cache_key"] = cache_key
         st.session_state["conference_submission_cache"] = submission
     return access_key, submission, ""
 
 
-def _hydrate_existing_submission(repo: Any, session_id: str) -> None:
+def _hydrate_existing_submission(repo: Any, session: Dict[str, Any]) -> None:
     if st.session_state.get("conference_hydrated"):
         return
     draft = get_draft()
@@ -331,7 +398,7 @@ def _hydrate_existing_submission(repo: Any, session_id: str) -> None:
     if not raw_key:
         st.session_state["conference_hydrated"] = True
         return
-    access_key, submission, _ = _load_submission_for_key(repo, session_id, raw_key)
+    access_key, submission, _ = _load_submission_for_key(repo, session, raw_key)
     if access_key and submission:
         submission = _normalize_hydrated_submission(submission)
         hydrated = {
@@ -342,7 +409,7 @@ def _hydrate_existing_submission(repo: Any, session_id: str) -> None:
         hydrated["submitted"] = True
         update_draft(**hydrated)
         repo.upsert_conference_player(
-            session_id=session_id,
+            session_id=str(session.get("id") or ""),
             access_key=access_key,
             payload=build_session_payload(get_draft()),
             identity_metadata=build_identity_metadata(get_draft()),
@@ -389,29 +456,47 @@ def _payload_for_session(draft: Dict[str, Any], session: Dict[str, Any]) -> Dict
     profile = payload.get("profile") if isinstance(payload.get("profile"), dict) else {}
     session_payload = payload.get("session") if isinstance(payload.get("session"), dict) else {}
     profile["persistence_scope"] = "persistent_profile"
-    session_payload["event_label"] = COMPLEXITY_EVENT_LABEL
-    session_payload["event_code"] = COMPLEXITY_EVENT_CODE
-    session_payload["event_location"] = COMPLEXITY_EVENT_LOCATION
+    context = _event_context(session)
+    session_payload["event_slug"] = context["event_slug"]
+    session_payload["event_label"] = context["event_label"]
+    session_payload["event_code"] = context["event_code"]
+    session_payload["event_location"] = context["event_location"]
+    session_payload["event_status"] = str(context.get("event_status") or "")
     session_payload["session_code"] = str(session.get("session_code") or "")
     session_payload["session_id"] = str(session.get("id") or "")
-    session_payload["text_id"] = TEXT_ID
-    session_payload["schema_id"] = "complexity_v2"
-    session_payload["response_scope"] = "event_specific"
+    session_payload["text_id"] = context["text_id"]
+    session_payload["schema_id"] = context["schema_id"]
+    session_payload["question_set_id"] = context["question_set_id"]
+    session_payload["response_scope"] = context["response_scope"]
     payload["profile"] = profile
     payload["session"] = session_payload
     return payload
 
 
 def _render_event_scope_notice(session: Dict[str, Any]) -> None:
-    st.caption(
-        f"This response belongs to {COMPLEXITY_EVENT_LABEL} in {COMPLEXITY_EVENT_LOCATION}. "
+    context = _event_context(session)
+    body = (
+        f"This response belongs to {_event_scope_text(session)}. "
         "Profile questions persist across events; session answers belong only to this event."
     )
+    if _event_is_read_only(session):
+        body += (
+            f" This event is currently {str(context.get('event_status') or 'closed')}; "
+            "new responses are read-only."
+        )
+    st.caption(body)
 
 
 def _submit(repo: Any, session: Dict[str, Any]) -> None:
+    if _event_is_read_only(session):
+        st.error(
+            f"{_event_context(session)['event_label']} is read-only right now. "
+            "New responses are closed for this event."
+        )
+        return
     draft = get_draft()
     payload = _payload_for_session(draft, session)
+    event_context = _event_context(session)
     identity_metadata = build_identity_metadata(draft)
     access_key = _ensure_access_key()
     access_key_hash = repo.access_key_hash(access_key)
@@ -425,7 +510,7 @@ def _submit(repo: Any, session: Dict[str, Any]) -> None:
     repo.save_session_response_set(
         session["id"],
         str((player or {}).get("id") or ""),
-        TEXT_ID,
+        _event_context(session)["text_id"],
         str(st.session_state.get("conference_device_id", "")),
         access_key_hash,
         access_key_last4,
@@ -433,7 +518,7 @@ def _submit(repo: Any, session: Dict[str, Any]) -> None:
         identity_metadata,
     )
     st.session_state["conference_submission_cache_key"] = (
-        f"{session['id']}:{access_key_hash}"
+        f"{session['id']}:{access_key_hash}:{event_context['text_id']}"
     )
     st.session_state["conference_submission_cache"] = build_payload_view(draft) | {
         "access_key_hash": access_key_hash,
@@ -490,7 +575,8 @@ def _open_confirm_send_dialog(repo: Any, session: Dict[str, Any]) -> None:
             height=64,
         )
         st.markdown(
-            "### Complexity is making this anonymous first. Simply, this access key lets you return later to your profile and your pending reflections."
+            f"### {_event_context(session)['event_label']} is making this anonymous first. "
+            "This access key lets you return later to your profile and your pending reflections."
         )
         if st.button("Screenshot taken", type="primary", use_container_width=True):
             _submit(repo, session)
@@ -512,8 +598,8 @@ def _open_existing_login() -> None:
     _set_entry_mode("existing")
 
 
-def _login_with_key(repo: Any, session_id: str, raw_key: str) -> None:
-    access_key, submission, error = _load_submission_for_key(repo, session_id, raw_key)
+def _login_with_key(repo: Any, session: Dict[str, Any], raw_key: str) -> None:
+    access_key, submission, error = _load_submission_for_key(repo, session, raw_key)
     if not access_key:
         _set_login_error(error or "This access key could not be decoded.")
         return
@@ -528,7 +614,7 @@ def _login_with_key(repo: Any, session_id: str, raw_key: str) -> None:
     hydrated["submitted"] = True
     update_draft(**hydrated)
     repo.upsert_conference_player(
-        session_id=session_id,
+        session_id=str(session.get("id") or ""),
         access_key=access_key,
         payload=build_session_payload(get_draft()),
         identity_metadata=build_identity_metadata(get_draft()),
@@ -546,11 +632,21 @@ def _resume_in_mode(mode: str) -> None:
 
 
 def _render_entry(session: Dict[str, Any], repo: Any) -> None:
-    conference_header("Pattenrs and Complexity", "", step="")
+    conference_header(str(_event_context(session)["event_label"]), "", step="")
     st.markdown("### Anonymous first.")
     _render_event_scope_notice(session)
     st.markdown("### Choose how to enter.")
-    if st.button("🆕 New participant", type="primary", use_container_width=True):
+    if st.button(
+        "🆕 New participant",
+        type="primary",
+        use_container_width=True,
+        disabled=_event_is_read_only(session),
+        help=(
+            "New responses are closed for this event."
+            if _event_is_read_only(session)
+            else None
+        ),
+    ):
         _start_new_participant()
     if st.button("🔑 I already have an access key", use_container_width=True):
         _open_existing_login()
@@ -572,15 +668,21 @@ def _render_entry(session: Dict[str, Any], repo: Any) -> None:
             disabled=True,
             help="Disabled for now while the overview page takes over this material.",
         )
-        st.page_link(
-            COMPLEXITY_OVERVIEW_PAGE,
-            label="Open the Complexity overview",
+        if st.button(
+            f"Open the {_event_context(session)['event_label']} overview",
             use_container_width=True,
-            icon=":material/travel_explore:",
-        )
+            key="conference-entry-open-overview",
+        ):
+            _switch_to_event_overview(session)
         error = str(st.session_state.get(LOGIN_ERROR_KEY, "") or "")
         if error:
             st.warning(error)
+    elif _event_is_read_only(session):
+        st.info(
+            f"{_event_context(session)['event_label']} is currently "
+            f"{_event_context(session)['event_status']}. Existing responses stay visible, "
+            "but new submissions are closed."
+        )
 
 
 def _render_welcome() -> None:
@@ -824,9 +926,9 @@ def _render_review(session: Dict[str, Any]) -> None:
 
     summary_card(
         "Session",
-        "These answers belong to this Complexity event and can change next time.",
+        f"These answers belong to {_event_scope_text(session)} and can change next time.",
     )
-    summary_card("Event context", f"{COMPLEXITY_EVENT_LABEL} · {COMPLEXITY_EVENT_LOCATION}")
+    summary_card("Event context", _event_scope_text(session))
     summary_card("Motivations", _labels_for("motivations", payload.get("motivations")))
     summary_card("Obstacle", _labels_for("obstacle", payload.get("obstacle")))
     summary_card("Challenge", _labels_for("challenge", payload.get("challenge")))
@@ -952,11 +1054,15 @@ def _render_other_sessions(repo: Any, current_session_id: str) -> None:
 
 
 def _render_personal_dashboard(repo: Any, session: Dict[str, Any]) -> None:
+    event_context = _event_context(session)
     payload = build_payload_view(get_draft())
     submissions = repo.group_rows_by_submission(
-        repo.get_session_rows(session["id"], text_ids=complexity_text_ids())
+        repo.get_session_rows(
+            session["id"],
+            text_ids=text_ids_for_session_code(str(session.get("session_code") or "")),
+        )
     )
-    conference_header("Complexity", "", step="")
+    conference_header(str(event_context["event_label"]), "", step="")
     st.markdown("### Your profile is loaded.")
     summary_card("Mode", _labels_for("mode", str(payload.get("mode") or "quick")))
     summary_card("Perspective", _labels_for("role", payload.get("role")))
@@ -1033,23 +1139,23 @@ def _render_personal_dashboard(repo: Any, session: Dict[str, Any]) -> None:
         ):
             _resume_in_mode("deep")
 
-    st.page_link(
-        COMPLEXITY_OVERVIEW_PAGE,
-        label="Open the Complexity overview",
+    if st.button(
+        f"Open the {event_context['event_label']} overview",
         use_container_width=True,
-        icon=":material/travel_explore:",
-    )
+        key="conference-dashboard-open-overview",
+    ):
+        _switch_to_event_overview(session)
     if st.button("Use another access key", use_container_width=True):
         _set_entry_mode("existing")
         _clear_login_error()
         st.rerun()
 
 
-def _render_done() -> None:
+def _render_done(session: Dict[str, Any]) -> None:
     draft = get_draft()
     if st.session_state.pop("conference_show_success", False):
         st.balloons()
-    st.success("Integrated into the current Complexity event.")
+    st.success(f"Integrated into {_event_scope_text(session)}.")
     access_key = str(draft.get("access_key") or "")
     emoji_key = hex_to_emoji(access_key) if access_key else ""
     access_key_hash = (
@@ -1076,12 +1182,12 @@ def _render_done() -> None:
         disabled=True,
         help="Disabled for now while the overview page takes over this material.",
     )
-    st.page_link(
-        COMPLEXITY_OVERVIEW_PAGE,
-        label="Open the Complexity overview",
+    if st.button(
+        f"Open the {_event_context(session)['event_label']} overview",
         use_container_width=True,
-        icon=":material/travel_explore:",
-    )
+        key="conference-done-open-overview",
+    ):
+        _switch_to_event_overview(session)
     if st.button(STEP_COPY["done"]["cta"], use_container_width=True):
         reset_flow_state()
         _set_entry_mode("")
@@ -1100,8 +1206,17 @@ def _render_navigation(repo: Any, session: Dict[str, Any]) -> None:
                 set_step(first_active_question_step())
                 st.rerun()
         with right:
+            review_help = None
+            if _event_is_read_only(session):
+                review_help = (
+                    f"This event is {str(_event_context(session).get('event_status') or 'closed')}."
+                )
             if st.button(
-                STEP_COPY["review"]["cta"], type="primary", use_container_width=True
+                STEP_COPY["review"]["cta"],
+                type="primary",
+                use_container_width=True,
+                disabled=_event_is_read_only(session),
+                help=review_help,
             ):
                 _open_confirm_send_dialog(repo, session)
         with side:
@@ -1144,6 +1259,19 @@ def _render_navigation(repo: Any, session: Dict[str, Any]) -> None:
 
 
 def _render_questionnaire(repo: Any, session: Dict[str, Any]) -> None:
+    if _event_is_read_only(session) and not bool(get_draft().get("submitted")):
+        conference_header(str(_event_context(session)["event_label"]), "", step="read-only")
+        st.warning(
+            f"{_event_context(session)['event_label']} is currently "
+            f"{_event_context(session)['event_status']}. New submissions are closed."
+        )
+        if st.button(
+            f"Open the {_event_context(session)['event_label']} overview",
+            use_container_width=True,
+            key="conference-read-only-open-overview",
+        ):
+            _switch_to_event_overview(session)
+        return
     if current_step() not in active_step_sequence():
         set_step("welcome")
     step = current_step()
@@ -1163,7 +1291,7 @@ def _render_questionnaire(repo: Any, session: Dict[str, Any]) -> None:
     elif step == "review":
         _render_review(session)
     elif step == "done":
-        _render_done()
+        _render_done(session)
     else:
         _render_question_step(step)
 
@@ -1188,11 +1316,14 @@ def main() -> None:
     session = bundle.get("session")
     if not session:
         st.error(
-            f"Conference session is missing. Ensure `{session_code}` exists in the shared sessions DB."
+            "Conference session is missing. "
+            f"Ensure `{session_code}` exists in the shared sessions DB, or run "
+            "`scripts/bootstrap_dalembertiennes_session.py` for the Dalembertiennes scaffold."
         )
         return
 
-    _hydrate_existing_submission(repo, session["id"])
+    _render_event_selector(repo, session)
+    _hydrate_existing_submission(repo, session)
 
     mode = _entry_mode()
     if mode == "dashboard":

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import streamlit as st
 
-from conference.events import COMPLEXITY_OVERVIEW_PAGE, YOUNG_OVERVIEW_PAGE
+from conference import events as conference_events
 from ui import (
     apply_theme,
     display_centered_prompt,
@@ -10,6 +10,24 @@ from ui import (
     is_production_runtime,
     render_event_details,
     set_page,
+)
+
+
+YOUNG_OVERVIEW_PAGE = getattr(
+    conference_events, "YOUNG_OVERVIEW_PAGE", "pages/17_Young_Overview.py"
+)
+COMPLEXITY_OVERVIEW_PAGE = getattr(
+    conference_events, "COMPLEXITY_OVERVIEW_PAGE", "pages/20_Complexity_Overview.py"
+)
+DALAMBERTIENNES_OVERVIEW_PAGE = getattr(
+    conference_events,
+    "DALAMBERTIENNES_OVERVIEW_PAGE",
+    "pages/22_Dalembertiennes_Overview.py",
+)
+DALAMBERTIENNES_HOST_PAGE = getattr(
+    conference_events,
+    "DALAMBERTIENNES_HOST_PAGE",
+    "pages/23_Dalembertiennes_Host.py",
 )
 
 
@@ -79,6 +97,12 @@ def _visible_pages() -> dict[str, list[st.Page]]:
                 url_path="complexity",
             ),
             st.Page(
+                "pages/21_Dalembertiennes.py",
+                title="D'Alembertiennes",
+                icon=":material/science:",
+                url_path="dalembertiennes",
+            ),
+            st.Page(
                 "pages/19_Pisa_Experiment.py",
                 title="Young Experiment (Paused)",
                 icon=":material/history:",
@@ -97,6 +121,12 @@ def _visible_pages() -> dict[str, list[st.Page]]:
                 url_path="complexity-overview",
             ),
             st.Page(
+                DALAMBERTIENNES_OVERVIEW_PAGE,
+                title="D'Alembertiennes Overview",
+                icon=":material/insights:",
+                url_path="dalembertiennes-overview",
+            ),
+            st.Page(
                 "pages/18_Pisa_Opening.py",
                 title="Pisa Opening",
                 icon=":material/auto_stories:",
@@ -107,6 +137,12 @@ def _visible_pages() -> dict[str, list[st.Page]]:
                 title="Complexity Host",
                 icon=":material/insights:",
                 url_path="pisa-meeting-host",
+            ),
+            st.Page(
+                DALAMBERTIENNES_HOST_PAGE,
+                title="D'Alembertiennes Host",
+                icon=":material/insights:",
+                url_path="dalembertiennes-host",
             ),
         ],
         "**Decade**": [

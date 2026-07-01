@@ -8,20 +8,71 @@ import streamlit as st
 
 from conference.context import get_conference_bundle, get_conference_repo
 from conference.events import (
-    COMPLEXITY_EVENT_LABEL,
-    COMPLEXITY_EVENT_LOCATION,
     UNESCO_SESSION_CODE,
     YOUNG_SESSION_CODE,
-    complexity_text_ids,
+    conference_event_context,
+    conference_event_options,
     current_complexity_session_code,
     text_ids_for_session_code,
 )
 from conference.models import FINGERPRINT_LABELS, field_option_label_map
 from conference.question_flags import QUESTION_FLAG_LABELS
+from conference.repo import QUESTION_BUNDLE_IDS
 from conference.session_window import filter_rows_to_session_window
 from conference.topology import count_field, room_snapshot
 from conference.ui import apply_conference_styles, conference_header
 from ui import set_page, sidebar_debug_state
+
+
+def _event_context(session: Dict[str, Any]) -> Dict[str, Any]:
+    return conference_event_context(session=session)
+
+
+def _event_scope_text(session: Dict[str, Any]) -> str:
+    context = _event_context(session)
+    location = str(context.get("event_location") or "").strip()
+    if location:
+        return f"{context['event_label']} in {location}"
+    return str(context.get("event_label") or context.get("event_code") or "this event")
+
+
+def _sync_event_query(event_slug: str) -> None:
+    next_params = {"event": str(event_slug or "").strip()}
+    st.query_params.clear()
+    st.query_params.update(next_params)
+
+
+def _render_event_selector(repo: Any, session: Dict[str, Any]) -> None:
+    options = conference_event_options(repo)
+    if len(options) <= 1:
+        return
+    code_to_option = {str(item["session_code"]): item for item in options}
+    current_code = str(session.get("session_code") or "")
+    option_codes = [str(item["session_code"]) for item in options]
+    if current_code not in code_to_option:
+        option_codes.insert(0, current_code)
+        code_to_option[current_code] = {
+            "event_slug": str(current_code).lower(),
+            "session_code": current_code,
+            "event_label": str(session.get("session_title") or current_code),
+            "event_location": "",
+            "available": True,
+        }
+    selected_code = st.selectbox(
+        "Event",
+        option_codes,
+        index=option_codes.index(current_code),
+        key="conference-overview-event-selector",
+        format_func=lambda code: (
+            f"{code_to_option[code]['event_label']} · {code_to_option[code]['event_location']}"
+            if str(code_to_option[code].get("event_location") or "").strip()
+            else str(code_to_option[code]["event_label"])
+        ),
+    )
+    if selected_code != current_code:
+        selected = code_to_option[selected_code]
+        _sync_event_query(str(selected["event_slug"]))
+        st.switch_page(str(selected["overview_page"]))
 
 
 def _labels_for(field: str, value: Any) -> str:
@@ -186,14 +237,17 @@ def _debug_rows(repo: Any, session: Dict[str, Any]) -> None:
         st.caption(f"Debug rows unavailable: {exc}")
         return
 
-    active_text_ids = set(complexity_text_ids())
+    current_session_code = str(
+        session.get("session_code") or current_complexity_session_code(repo)
+    )
+    active_text_ids = set(text_ids_for_session_code(current_session_code))
     session_start = str(session.get("start") or session.get("created_at") or "")
     session_end = str(session.get("end") or "")
     included_rows = filter_rows_to_session_window(
         [
             row
             for row in raw_rows
-            if str(row.get("item_id") or "").strip() in {"PISA_MEETING_BUNDLE", "COMPLEXITY_BUNDLE"}
+            if str(row.get("item_id") or "").strip() in QUESTION_BUNDLE_IDS
             and str(row.get("text_id") or "").strip() in active_text_ids
         ],
         session,
@@ -201,17 +255,16 @@ def _debug_rows(repo: Any, session: Dict[str, Any]) -> None:
     included_ids = {str(row.get("response_id") or "") for row in included_rows}
 
     debug_rows: List[Dict[str, Any]] = []
-    current_session_code = str(session.get("session_code") or current_complexity_session_code(repo))
     for row in raw_rows:
         payload = row.get("value_json") if isinstance(row.get("value_json"), dict) else {}
         field = str(payload.get("field") or "")
         item_id = str(row.get("item_id") or "")
         text_id = str(row.get("text_id") or "")
         response_id = str(row.get("response_id") or "")
-        if field != "session_bundle" and item_id not in {"PISA_MEETING_BUNDLE", "COMPLEXITY_BUNDLE"}:
+        if field != "session_bundle" and item_id not in QUESTION_BUNDLE_IDS:
             continue
         reasons: List[str] = []
-        if item_id not in {"PISA_MEETING_BUNDLE", "COMPLEXITY_BUNDLE"}:
+        if item_id not in QUESTION_BUNDLE_IDS:
             reasons.append("bundle prefix mismatch")
         if text_id not in active_text_ids:
             reasons.append("text_id mismatch")
@@ -259,17 +312,25 @@ def main() -> None:
     session = bundle.get("session")
     if not session:
         st.error(
-            f"Conference session is missing. Ensure `{session_code}` exists in the shared sessions DB."
+            "Conference session is missing. "
+            f"Ensure `{session_code}` exists in the shared sessions DB, or run "
+            "`scripts/bootstrap_dalembertiennes_session.py` for the Dalembertiennes scaffold."
         )
         return
 
-    response_rows = repo.get_session_rows(session["id"], text_ids=complexity_text_ids())
+    _render_event_selector(repo, session)
+
+    response_rows = repo.get_session_rows(
+        session["id"],
+        text_ids=text_ids_for_session_code(str(session.get("session_code") or "")),
+    )
     filtered_rows = filter_rows_to_session_window(response_rows, session)
     submissions = repo.group_rows_by_submission(filtered_rows)
     snapshot = room_snapshot(submissions)
+    event_context = _event_context(session)
 
-    conference_header("Complexity overview", "", step="")
-    st.markdown(f"### A public snapshot of {COMPLEXITY_EVENT_LABEL} in {COMPLEXITY_EVENT_LOCATION}.")
+    conference_header(f"{event_context['event_label']} overview", "", step="")
+    st.markdown(f"### A public snapshot of {_event_scope_text(session)}.")
 
     metrics = st.columns(4)
     metrics[0].metric("Participants", int(snapshot["participants"]))

@@ -412,8 +412,72 @@ Shared core questions plus event-specific extensions.
 Default must always be event-scoped.
 Cross-event comparisons are a later explicit feature.
 
+### Verification constraint
+
+No event-scoped write is considered complete just because the questionnaire shows success.
+
+For every new event flow, the same checkpoint must pass end to end:
+
+1. open the event entry point
+2. submit one known answer
+3. read it back through the event-specific overview/export path
+4. confirm other events remain unchanged
+
+If the scoped overview cannot read the scoped write, the task is not done.
+
+### Naming isolation constraint
+
+Event-specific persistence names must not leak another event lineage.
+
+Examples:
+
+- Dalembertiennes rows must not be saved under `COMPLEXITY_BUNDLE`.
+- UNESCO rows must not reuse Dalembertiennes identifiers.
+- Export labels, bundle ids, and event-facing item names must stay event-specific or neutral.
+
+If an event write succeeds but its persisted identifiers still reference another event family, the task is not done.
+
+### Event-local anonymity constraint
+
+Anonymous fallback markers are part of the event-facing identity layer and must also stay scoped.
+
+Examples:
+
+- Dalembertiennes must not default to the Complexity anonymous symbol.
+- Event-specific player nicknames created during anonymous-first flows must be derived from the resolved event context.
+- If a fallback anonymous label is reused, it must be intentionally shared, not inherited accidentally from another event path.
+
+If the write path stores the right response but still assigns another event's anonymous identity marker, the task is not done.
+
+### Bundle routing constraint
+
+Bundle routing must be explicit and fail closed.
+
+Required rule:
+
+- `event_slug`
+- `session_code`
+- `text_id`
+- `question_set_id`
+- `response_scope`
+
+must agree before any event-scoped write is accepted.
+
+In particular:
+
+- unknown `text_id` must be rejected, never routed to `COMPLEXITY_BUNDLE`
+- if outer `text_id` and payload `session.text_id` disagree, the write must fail
+- the saved `text_id` must be the canonical event text id used for bundle routing
+- combinations like `COMPLEXITY_BUNDLE · dalembertiennes_v0` must be impossible after validation
+
 ## Recent checkpoints
 
+- 2026-06-30: Dalembertiennes route and write guardrails added. Files changed: `app.py`, `conference/events.py`, `conference/page_loader.py`, `conference/repo.py`, `models/sessions.py`, `pages/07_Admin.py`, `pages/15_Pisa_Meeting.py`, `pages/16_Pisa_Meeting_Host.py`, `pages/20_Complexity_Overview.py`, `pages/21_Dalembertiennes.py`, `pages/22_Dalembertiennes_Overview.py`, `pages/23_Dalembertiennes_Host.py`, `scripts/bootstrap_dalembertiennes_session.py`. Result: `dalembertiennes` now resolves through explicit event/session metadata, has first-class Streamlit entry points, overview and host aliases, read-only lifecycle gating for closed or archived events, and response writes now fail loudly when session or event scope is incomplete.
+- 2026-06-30: Dalembertiennes questionnaire isolated from Complexity copy. Files changed: `conference/dalembertiennes.py`, `pages/21_Dalembertiennes.py`, `pages/22_Dalembertiennes_Overview.py`, `pages/23_Dalembertiennes_Host.py`. Result: Dalembertiennes now starts from a blank placeholder flow with dedicated state, writes a session-scoped placeholder response, and exposes a dedicated overview/export path that does not reuse the Complexity questionnaire UI.
+- 2026-07-01: Dalembertiennes scoped read path bug identified and patched. Files changed: `repositories/interaction_repo.py`. Result: when the interaction database lacks a physical `text_id` column, the reader now derives `text_id` from `value_json`, so event-specific overviews can read back conference bundle rows instead of silently dropping them.
+- 2026-07-01: Dalembertiennes persistence naming separated from Complexity. Files changed: `conference/repo.py`, `pages/20_Complexity_Overview.py`, `tests/test_conference_repo.py`. Result: Dalembertiennes writes now use an event-specific bundle id instead of falling into Complexity, the shared debug reader no longer assumes all non-Pisa conference bundles are Complexity, and the repository contract now guards against this naming leak.
+- 2026-07-01: Dalembertiennes anonymous fallback separated from Complexity. Files changed: `conference/repo.py`, `tests/test_conference_repo.py`, `PLAN.md`. Result: anonymous-first player upserts now derive their fallback nickname from event metadata, so Dalembertiennes uses its own marker instead of inheriting the Complexity spiral.
+- 2026-07-01: Dalembertiennes bundle routing made fail-closed. Files changed: `conference/repo.py`, `tests/test_conference_repo.py`, `scripts/migrate_dalembertiennes_bundle_ids.py`, `PLAN.md`. Result: event writes now derive a canonical `text_id`, reject text-id mismatches instead of silently falling back to Complexity, and route Dalembertiennes rows to `DALEMBERTIENNES_BUNDLE`.
 - 2026-03-XX: UNESCO flow produced response data and overview charts.
 - 2026-03-XX: Event logger available in `infra/event_logger.py`.
 - 2026-03-XX: Admin page available in `pages/07_Admin.py`.
@@ -425,11 +489,11 @@ Cross-event comparisons are a later explicit feature.
 
 Bounded step:
 
-Create the Dalembertiennes scaffold in draft state, map it to an explicit `session_code`, and route all writes through explicit session or event context.
+Run the live checkpoint: open Dalembertiennes, submit one placeholder answer, confirm it appears only in Dalembertiennes overview/export, then add explicit lifecycle controls in admin for draft/open/closed/archived.
 
 Expected result:
 
-`dalembertiennes` appears in admin, has its own question set id, and can be opened without showing or writing UNESCO data.
+Dalembertiennes accepts one placeholder response, the response appears only in Dalembertiennes overview/export, and UNESCO, Complexity, and Pisa remain unchanged.
 
 After completing this step, update this file with:
 

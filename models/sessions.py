@@ -42,6 +42,15 @@ SESSION_CATALOG: list[SessionSpec] = [
         session_visualisation="metro_map",
         session_active=True,
     ),
+    SessionSpec(
+        session_id="dalembertiennes_2026",
+        session_name="D'Alembertiennes",
+        session_order=30,
+        session_title="D'Alembertiennes Lab Questionnaire",
+        session_description="Draft internal laboratory questionnaire scaffold for the D'Alembert event line.",
+        session_visualisation="conference",
+        session_active=False,
+    ),
 ]
 
 

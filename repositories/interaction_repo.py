@@ -49,6 +49,42 @@ def _rich_text_blocks(content: str, max_chunk_size: int = 1900) -> List[Dict[str
     ]
 
 
+def _nested_text(value: Any, *path: str) -> str:
+    current = value
+    for key in path:
+        if not isinstance(current, dict):
+            return ""
+        current = current.get(key)
+    return str(current or "").strip()
+
+
+def _derived_text_id(parsed: Any) -> str:
+    return (
+        _nested_text(parsed, "bundle", "session", "text_id")
+        or _nested_text(parsed, "answer", "session", "text_id")
+        or _nested_text(parsed, "bundle", "text_id")
+        or _nested_text(parsed, "answer", "text_id")
+        or _nested_text(parsed, "text_id")
+    )
+
+
+def _derived_device_id(parsed: Any) -> str:
+    return (
+        _nested_text(parsed, "bundle", "session", "device_id")
+        or _nested_text(parsed, "answer", "session", "device_id")
+        or _nested_text(parsed, "device_id")
+    )
+
+
+def _derived_access_key(parsed: Any) -> str:
+    return (
+        _nested_text(parsed, "access_key")
+        or _nested_text(parsed, "access_key_hash")
+        or _nested_text(parsed, "bundle", "access_key")
+        or _nested_text(parsed, "bundle", "access_key_hash")
+    )
+
+
 def _resolve_data_source_id(client: Any, db_or_ds_id: str) -> str:
     data_sources_endpoint = getattr(client, "data_sources", None)
     ds_retrieve = getattr(data_sources_endpoint, "retrieve", None) if data_sources_endpoint else None
@@ -391,9 +427,18 @@ class NotionInteractionRepository(InteractionRepository):
                         "value_label": _extract_rich_text(props, value_label_prop) if value_label_prop else "",
                         "question_type": _extract_select_name(props, question_type_prop) if question_type_prop else "",
                         "score": score,
-                        "text_id": _extract_rich_text(props, text_prop) if text_prop else "",
-                        "device_id": _extract_rich_text(props, device_prop) if device_prop else "",
-                        "access_key": _extract_rich_text(props, access_key_prop) if access_key_prop else "",
+                        "text_id": (
+                            (_extract_rich_text(props, text_prop) if text_prop else "")
+                            or _derived_text_id(parsed)
+                        ),
+                        "device_id": (
+                            (_extract_rich_text(props, device_prop) if device_prop else "")
+                            or _derived_device_id(parsed)
+                        ),
+                        "access_key": (
+                            (_extract_rich_text(props, access_key_prop) if access_key_prop else "")
+                            or _derived_access_key(parsed)
+                        ),
                         "timestamp": timestamp or submitted or created or page.get("created_time"),
                         "created_at": submitted or created or page.get("created_time"),
                     }
@@ -511,9 +556,18 @@ class NotionInteractionRepository(InteractionRepository):
                         "value_label": _extract_rich_text(props, value_label_prop) if value_label_prop else "",
                         "question_type": _extract_select_name(props, question_type_prop) if question_type_prop else "",
                         "score": score,
-                        "text_id": _extract_rich_text(props, text_prop) if text_prop else "",
-                        "device_id": _extract_rich_text(props, device_prop) if device_prop else "",
-                        "access_key": _extract_rich_text(props, access_key_prop) if access_key_prop else "",
+                        "text_id": (
+                            (_extract_rich_text(props, text_prop) if text_prop else "")
+                            or _derived_text_id(parsed)
+                        ),
+                        "device_id": (
+                            (_extract_rich_text(props, device_prop) if device_prop else "")
+                            or _derived_device_id(parsed)
+                        ),
+                        "access_key": (
+                            (_extract_rich_text(props, access_key_prop) if access_key_prop else "")
+                            or _derived_access_key(parsed)
+                        ),
                         "timestamp": timestamp or submitted or created or page.get("created_time"),
                         "created_at": submitted or created or page.get("created_time"),
                     }
