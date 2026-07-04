@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 import streamlit as st
 
-from conference.events import DALAMBERTIENNES_SESSION_CODE
+from conference.events import DALAMBERTIENNES_SESSION_CODE, UN_WG2_SESSION_CODE
 
 
 @dataclass(frozen=True)
@@ -37,6 +37,23 @@ _PUBLIC_ROUTES = (
         welcome_note=(
             "Anonymous and editable. "
             "You are answering the D’Alembertiennes version of a broader climate, resources, and research reflection."
+        ),
+    ),
+    PublicRouteConfig(
+        path="un-wg2-icebreaker",
+        campaign_slug="un-cryosphere-decade",
+        default_event_slug="un_wg2_first_iteration",
+        default_session_code=UN_WG2_SESSION_CODE,
+        default_question_set_id="un_wg2_v1",
+        welcome_title="Working Group 2 — First Iteration",
+        welcome_body="Actionable Cryosphere Projections",
+        welcome_context=(
+            "The questionnaire is the interface through which coordination begins. "
+            "This first WG2 route is designed to make the group visible to itself."
+        ),
+        welcome_note=(
+            "Anonymous and editable. "
+            "This pilot is the first coordination layer of WG2, starting with the core group before a wider rollout."
         ),
     ),
 )

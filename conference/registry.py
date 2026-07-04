@@ -8,6 +8,8 @@ from conference.events import (
     COMPLEXITY_TEXT_ID,
     DALAMBERTIENNES_SESSION_CODE,
     DALAMBERTIENNES_TEXT_ID,
+    UN_WG2_SESSION_CODE,
+    UN_WG2_TEXT_ID,
     YOUNG_SESSION_CODE,
     YOUNG_TEXT_ID,
     conference_event_context,
@@ -25,6 +27,7 @@ from conference.question_sets.dalembertiennes_v1 import (
     QUESTION_SET as DALEMBERTIENNES_V1_QUESTION_SET,
 )
 from conference.question_sets.pisa_session_v2 import QUESTION_SET as PISA_SESSION_V2_QUESTION_SET
+from conference.question_sets.un_wg2_v1 import QUESTION_SET as UN_WG2_V1_QUESTION_SET
 
 
 @dataclass(frozen=True)
@@ -75,6 +78,14 @@ _REGISTRY: tuple[QuestionSetRegistryEntry, ...] = (
         question_set_id="pisa_session_v2",
         schema_id="pisa_session_v2",
         question_set=PISA_SESSION_V2_QUESTION_SET,
+    ),
+    QuestionSetRegistryEntry(
+        event_slug="un_wg2_first_iteration",
+        session_code=UN_WG2_SESSION_CODE,
+        text_ids=(UN_WG2_TEXT_ID,),
+        question_set_id="un_wg2_v1",
+        schema_id="questionnaire_v1",
+        question_set=UN_WG2_V1_QUESTION_SET,
     ),
 )
 

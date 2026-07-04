@@ -24,6 +24,21 @@ DALAMBERTIENNES_OVERVIEW_PAGE = getattr(
     "DALAMBERTIENNES_OVERVIEW_PAGE",
     "pages/22_Dalembertiennes_Overview.py",
 )
+UN_WG2_ENTRY_PAGE = getattr(
+    conference_events,
+    "UN_WG2_ENTRY_PAGE",
+    "pages/25_UN_WG2_Icebreaker.py",
+)
+UN_WG2_OVERVIEW_PAGE = getattr(
+    conference_events,
+    "UN_WG2_OVERVIEW_PAGE",
+    "pages/26_UN_WG2_Overview.py",
+)
+UN_WG2_HOST_PAGE = getattr(
+    conference_events,
+    "UN_WG2_HOST_PAGE",
+    "pages/27_UN_WG2_Host.py",
+)
 DALAMBERTIENNES_HOST_PAGE = getattr(
     conference_events,
     "DALAMBERTIENNES_HOST_PAGE",
@@ -84,6 +99,24 @@ def _visible_pages() -> dict[str, list[st.Page]]:
                 title="UNESCO-opening",
                 icon=":material/location_on:",
                 url_path="unesco-opening",
+            ),
+            st.Page(
+                UN_WG2_ENTRY_PAGE,
+                title="UN WG2 Icebreaker",
+                icon=":material/public:",
+                url_path="un-wg2-icebreaker",
+            ),
+            st.Page(
+                UN_WG2_OVERVIEW_PAGE,
+                title="UN WG2 Overview",
+                icon=":material/insights:",
+                url_path="un-wg2-overview",
+            ),
+            st.Page(
+                UN_WG2_HOST_PAGE,
+                title="UN WG2 Host",
+                icon=":material/tune:",
+                url_path="un-wg2-host",
             ),
             st.Page("pages/08_Overview.py", title="Overview", icon=":material/travel_explore:"),
             st.Page("pages/12_Report.py", title="Report", icon=":material/article:"),

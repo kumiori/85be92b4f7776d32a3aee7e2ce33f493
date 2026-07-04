@@ -51,6 +51,15 @@ SESSION_CATALOG: list[SessionSpec] = [
         session_visualisation="conference",
         session_active=False,
     ),
+    SessionSpec(
+        session_id="un_wg2_core_2026",
+        session_name="WG2 Core",
+        session_order=40,
+        session_title="Working Group 2 — First Iteration",
+        session_description="Draft WG2 coordination pilot scaffold for the first icebreaker iteration.",
+        session_visualisation="conference",
+        session_active=False,
+    ),
 ]
 
 
