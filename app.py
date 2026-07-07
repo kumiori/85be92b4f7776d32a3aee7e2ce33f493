@@ -230,6 +230,16 @@ def _lab_pages() -> list[st.Page]:
             icon=":material/view_quilt:",
         ),
         st.Page(
+            "pages/test_questionnaire_landing_native.py",
+            title="Test · Questionnaire landing",
+            icon=":material/assignment:",
+        ),
+        st.Page(
+            "pages/test_typewolf_reference.py",
+            title="Test · Typewolf reference",
+            icon=":material/format_shapes:",
+        ),
+        st.Page(
             "pages/test_git_pulse.py",
             title="Test · Git pulse",
             icon=":material/show_chart:",

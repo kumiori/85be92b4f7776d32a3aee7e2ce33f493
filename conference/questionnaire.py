@@ -7,6 +7,7 @@ import uuid
 from collections.abc import Mapping
 from typing import Any, Callable, Dict, List
 
+import requests
 import streamlit as st
 import streamlit.components.v1 as components
 
@@ -31,6 +32,7 @@ from conference.flow import (
     first_active_question_step,
     get_draft,
     infer_mode_from_submission,
+    initial_step,
     init_flow_state,
     mark_submitted,
     mode_cards,
@@ -65,6 +67,7 @@ from conference.question_flags import (
 from conference.repo import emoji_suffix, resolve_access_key_input
 from conference.topology import count_field, room_snapshot
 from conference.ui import apply_conference_styles, conference_header, summary_card
+from infra.event_logger import log_event
 from infra.key_codec import generate_hex_key, hex_to_emoji, split_emoji_symbols
 from ui import set_page, sidebar_debug_state
 
@@ -72,6 +75,8 @@ from ui import set_page, sidebar_debug_state
 IDENTITY_STEP = "identity"
 ENTRY_KEY = "conference_entry_mode"
 LOGIN_ERROR_KEY = "conference_login_error"
+QUESTION_VALIDATION_KEY = "conference_question_validation"
+OPENCAGE_ENDPOINT = "https://api.opencagedata.com/geocode/v1/json"
 
 
 def _ensure_local_state(question_set: QuestionSet) -> None:
@@ -101,8 +106,88 @@ def _set_login_error(message: str) -> None:
     st.session_state[LOGIN_ERROR_KEY] = message
 
 
+def _question_validation_messages() -> dict[str, str]:
+    existing = st.session_state.get(QUESTION_VALIDATION_KEY, {})
+    if isinstance(existing, dict):
+        return {str(key): str(value) for key, value in existing.items()}
+    return {}
+
+
+def _set_question_validation(step: str, message: str) -> None:
+    messages = _question_validation_messages()
+    token = str(step or "").strip()
+    if not token:
+        return
+    if str(message or "").strip():
+        messages[token] = str(message).strip()
+    else:
+        messages.pop(token, None)
+    st.session_state[QUESTION_VALIDATION_KEY] = messages
+
+
+def _question_validation(step: str) -> str:
+    return str(_question_validation_messages().get(str(step or "").strip(), "") or "")
+
+
 def _event_context(session: Dict[str, Any]) -> Dict[str, Any]:
     return conference_event_context(session=session)
+
+
+def _route_event_metadata(
+    session: Dict[str, Any],
+    *,
+    step: str = "",
+    question: QuestionDefinition | None = None,
+    extra: Dict[str, Any] | None = None,
+) -> Dict[str, Any]:
+    context = _event_context(session)
+    route = _public_route()
+    metadata: Dict[str, Any] = {
+        "campaign_slug": str(route.campaign_slug) if route else "",
+        "public_route": str(route.path) if route else "",
+        "event_slug": str(context.get("event_slug") or ""),
+        "session_code": str(context.get("session_code") or ""),
+        "text_id": str(context.get("text_id") or ""),
+        "question_set_id": str(context.get("question_set_id") or ""),
+        "schema_id": str(context.get("schema_id") or ""),
+    }
+    if step:
+        metadata["step"] = step
+    if question:
+        metadata["question_id"] = str(question.question_id or "")
+        metadata["field"] = str(question.field or "")
+    if extra:
+        metadata.update(extra)
+    return metadata
+
+
+def _log_route_event(
+    session: Dict[str, Any],
+    *,
+    event_type: str,
+    step: str = "",
+    question: QuestionDefinition | None = None,
+    status: str = "ok",
+    value_label: str = "",
+    player_id: str = "",
+    level: str = "INFO",
+    extra: Dict[str, Any] | None = None,
+) -> None:
+    log_event(
+        module="iceicebaby.conference",
+        event_type=event_type,
+        page="conference_questionnaire",
+        session_id=str(session.get("id") or ""),
+        player_id=player_id,
+        item_id=str((question.question_id if question else "") or step or ""),
+        value_label=value_label,
+        device_id=str(st.session_state.get("conference_device_id", "") or ""),
+        status=status,
+        metadata=_route_event_metadata(
+            session, step=step, question=question, extra=extra
+        ),
+        level=level,
+    )
 
 
 def _public_route() -> Any | None:
@@ -114,6 +199,59 @@ def _public_entry_title(session: Dict[str, Any]) -> str:
     if route:
         return str(route.welcome_title)
     return str(_event_context(session)["event_label"])
+
+
+def _render_public_entry_hero(route: Any) -> None:
+    title = str(route.welcome_title or "").strip()
+    module = str(route.welcome_body or "").strip()
+    purpose = str(route.welcome_context or "").strip()
+    pilot = str(route.welcome_note or "").strip()
+    kicker = ""
+    metadata = ""
+    display = title
+    if str(route.path or "") == "un-wg2-icebreaker":
+        display = title
+        kicker = module
+        metadata = "WG2 • Actionable Cryosphere Projections"
+    elif "—" in title:
+        display, _, suffix = title.partition("—")
+        display = display.strip() or title
+        kicker = suffix.strip()
+
+    parts = ['<div class="entry-hero">']
+    if display:
+        parts.append(f'<div class="entry-display">{html.escape(display)}</div>')
+    if kicker:
+        parts.append(f'<div class="entry-kicker">{html.escape(kicker)}</div>')
+    if metadata:
+        parts.append(f'<div class="entry-meta">{html.escape(metadata)}</div>')
+    if purpose or pilot:
+        parts.append('<div class="entry-block-grid">')
+    if purpose:
+        parts.append('<div class="entry-block">')
+        parts.append('<div class="entry-block-label">Purpose</div>')
+        parts.append(f'<div class="entry-lead">{html.escape(purpose)}</div>')
+        parts.append("</div>")
+    if pilot:
+        bullets = [
+            token.strip(" -•")
+            for token in pilot.replace(";", "\n").splitlines()
+            if token.strip(" -•")
+        ]
+        parts.append('<div class="entry-block">')
+        parts.append('<div class="entry-block-label">This pilot</div>')
+        if bullets:
+            parts.append('<div class="entry-note"><ul>')
+            parts.extend(f"<li>{html.escape(item)}</li>" for item in bullets)
+            parts.append("</ul></div>")
+        else:
+            parts.append(f'<div class="entry-note">{html.escape(pilot)}</div>')
+        parts.append("</div>")
+    if purpose or pilot:
+        parts.append("</div>")
+    parts.append('<div class="entry-action-title">Choose how to participate</div>')
+    parts.append("</div>")
+    st.markdown("\n".join(parts), unsafe_allow_html=True)
 
 
 def _question_set_for_public_route(
@@ -279,7 +417,10 @@ def _set_question_flag(question_id: str, *, flags: List[str], note: str) -> None
     update_draft(question_set=current_question_set(), question_flags=entries)
 
 
-def _render_question_flag_control(question: QuestionDefinition) -> None:
+def _render_question_flag_control(
+    question: QuestionDefinition,
+    session: Dict[str, Any],
+) -> None:
     question_id = str(question.question_id or "").strip()
     if not question_id:
         return
@@ -289,8 +430,9 @@ def _render_question_flag_control(question: QuestionDefinition) -> None:
     count = len(flags) + (1 if note else 0)
     label = f"Flag ({count})" if count else "Flag"
     with st.popover(label):
-        st.caption(
-            "Mark if the question feels incomplete, misleading, narrow, or otherwise off."
+        st.markdown(
+            '<div class="caption">Mark if the question feels incomplete, misleading, narrow, or otherwise off.</div>',
+            unsafe_allow_html=True,
         )
         selected = st.pills(
             "Question issue",
@@ -308,7 +450,19 @@ def _render_question_flag_control(question: QuestionDefinition) -> None:
             placeholder="Optional short note",
             label_visibility="collapsed",
         )
-        _set_question_flag(question_id, flags=list(selected), note=comment)
+        normalized_flags = list(selected)
+        normalized_note = str(comment or "").strip()
+        if normalized_flags != flags or normalized_note != note:
+            _set_question_flag(question_id, flags=normalized_flags, note=normalized_note)
+            if normalized_flags or normalized_note:
+                _log_route_event(
+                    session,
+                    event_type="question_flagged",
+                    step=str(question.step or ""),
+                    question=question,
+                    value_label=", ".join(normalized_flags) or normalized_note,
+                    extra={"note": normalized_note},
+                )
 
 
 def _render_question_flag_summary() -> None:
@@ -336,6 +490,21 @@ def _infer_mode(submission: Dict[str, Any]) -> str:
 def _labels_for(field: str, value: Any) -> str:
     if field == "mode":
         return mode_label(str(value or "quick"), question_set=current_question_set())
+    if field in {"wg2_geography_context", "wg2_main_location"} and isinstance(value, dict):
+        parts = [
+            str(value.get("country_region") or "").strip(),
+            str(value.get("institution_location") or "").strip(),
+        ]
+        geocode_label = str(value.get("geocode_label") or "").strip()
+        if geocode_label:
+            parts.append(f"Lookup match: {geocode_label}")
+        coordinates = str(value.get("coordinates") or "").strip()
+        if coordinates:
+            parts.append(f"Approx. coordinates: {coordinates}")
+        geocode_source = str(value.get("geocode_source") or "").strip()
+        if geocode_source:
+            parts.append(f"Source: {geocode_source}")
+        return " · ".join(part for part in parts if part) or "No answer"
     if field == "scientific_home":
         parts = (
             [
@@ -398,10 +567,20 @@ def _question_value(question: QuestionDefinition, payload: Dict[str, Any]) -> An
 def _question_answered(question: QuestionDefinition, payload: Dict[str, Any]) -> bool:
     value = _question_value(question, payload)
     input_type = str(question.input_type)
+    if str(question.field) == "wg2_main_location":
+        region_value = payload.get("wg2_region")
+        region_detail = str(payload.get("wg2_region_detail") or "").strip()
+        if region_value or region_detail:
+            return True
     if field_for_step(current_question_set(), str(question.step)) == "scientific_home":
         return any(
             str(value.get(key) or "").strip()
             for key in ("country", "city", "institution")
+        )
+    if input_type == "geography_context" and isinstance(value, dict):
+        return any(
+            str(value.get(key) or "").strip()
+            for key in ("country_region", "institution_location", "coordinates")
         )
     if input_type == "multi":
         return bool(value)
@@ -457,7 +636,15 @@ def _question_summary_entries(
             continue
         if section == "session" and is_profile:
             continue
-        if active_steps is not None and str(question.step) not in active_steps:
+        if (
+            active_steps is not None
+            and str(question.step) not in active_steps
+            and not (
+                str(question.step) == "region"
+                and "main_location" in active_steps
+                and field == "wg2_region"
+            )
+        ):
             continue
         if not _question_answered(question, payload):
             continue
@@ -474,17 +661,53 @@ def _render_question_intro(
         prompt = str(question.prompt or "").strip()
         title = str(copy.get("title") or "").strip()
         context = str(getattr(question, "context", "") or "").strip()
-        if prompt and prompt != title:
-            st.markdown(f"### {prompt}")
         if context:
-            st.caption(context)
+            st.markdown(
+                f'<div class="question-context"><span class="question-context-label">Context:</span> {html.escape(context)}</div>',
+                unsafe_allow_html=True,
+            )
         elif copy.get("body"):
-            st.caption(str(copy["body"]))
+            st.markdown(
+                f'<div class="question-context"><span class="question-context-label">Context:</span> {html.escape(str(copy["body"]))}</div>',
+                unsafe_allow_html=True,
+            )
+        if prompt and prompt != title:
+            st.markdown(
+                f'<div class="question-title">{html.escape(prompt)}</div>',
+                unsafe_allow_html=True,
+            )
         return
     if copy.get("body"):
-        st.markdown(f"### {copy['body']}")
+        st.markdown(
+            f'<div class="page-subtitle">{html.escape(str(copy["body"]))}</div>',
+            unsafe_allow_html=True,
+        )
     if copy.get("context"):
-        st.caption(str(copy["context"]))
+        st.markdown(
+            f'<div class="helper-text">{html.escape(str(copy["context"]))}</div>',
+            unsafe_allow_html=True,
+        )
+
+
+def _render_question_page_header(
+    *,
+    step_label: str,
+    section_title: str,
+    question: QuestionDefinition,
+    copy: Dict[str, str],
+) -> None:
+    progress = str(step_label or "").strip()
+    title = str(section_title or "").strip()
+    if title and progress:
+        progress = f"{progress} · {title}"
+    elif title:
+        progress = title
+    if progress:
+        st.markdown(
+            f'<div class="question-progress">{html.escape(progress)}</div>',
+            unsafe_allow_html=True,
+        )
+    _render_question_intro(str(question.step or ""), question, copy)
 
 
 def _step_for_field(field: str) -> str:
@@ -655,11 +878,14 @@ def _payload_for_session(
 
 def _render_event_scope_notice(session: Dict[str, Any]) -> None:
     context = _event_context(session)
+    route = _public_route()
     if str(context.get("event_slug") or "").strip() == "dalembertiennes":
         body = (
             "You are answering the D’Alembertiennes version of the climate questionnaire. "
             "Questions may evolve or may persist across events. Steal this format!"
         )
+    elif route:
+        body = str(route.welcome_note or "").strip()
     else:
         body = (
             f"This response belongs to {_event_scope_text(session)}. "
@@ -670,10 +896,16 @@ def _render_event_scope_notice(session: Dict[str, Any]) -> None:
             f" This event is currently {str(context.get('event_status') or 'closed')}; "
             "new responses are read-only."
         )
-    st.caption(body)
+    st.markdown(
+        f'<div class="caption">{html.escape(body)}</div>',
+        unsafe_allow_html=True,
+    )
 
 
-def _open_skip_question_dialog(question: QuestionDefinition) -> None:
+def _open_skip_question_dialog(
+    question: QuestionDefinition,
+    session: Dict[str, Any],
+) -> None:
     question_id = str(question.question_id or "").strip()
     field = str(question.field or "").strip()
     existing = _question_flag_entries().get(question_id, {})
@@ -681,8 +913,9 @@ def _open_skip_question_dialog(question: QuestionDefinition) -> None:
     @st.dialog("Skip question")
     def _skip_dialog() -> None:
         st.markdown(f"### {question.prompt}")
-        st.caption(
-            "You can skip this question, but tell us why so we can improve the questionnaire."
+        st.markdown(
+            '<div class="caption">You can skip this question, but tell us why so we can improve the questionnaire.</div>',
+            unsafe_allow_html=True,
         )
         selected = st.pills(
             "Why skip?",
@@ -708,6 +941,14 @@ def _open_skip_question_dialog(question: QuestionDefinition) -> None:
             )
             if field in set(current_question_set().deferrable_fields):
                 defer_field(field, question_set=current_question_set())
+            _log_route_event(
+                session,
+                event_type="question_skipped",
+                step=str(question.step or ""),
+                question=question,
+                value_label=", ".join(selected) or str(note or "").strip(),
+                extra={"note": str(note or "").strip()},
+            )
             _advance_step()
             st.rerun()
 
@@ -730,22 +971,36 @@ def _submit(repo: Any, session: Dict[str, Any]) -> None:
     access_key = _ensure_access_key()
     access_key_hash = repo.access_key_hash(access_key)
     access_key_last4 = emoji_suffix(access_key)
-    player = repo.upsert_conference_player(
-        session_id=session["id"],
-        access_key=access_key,
-        payload=payload,
-        identity_metadata=identity_metadata,
-    )
-    repo.save_session_response_set(
-        session["id"],
-        str((player or {}).get("id") or ""),
-        _event_context(session)["text_id"],
-        str(st.session_state.get("conference_device_id", "")),
-        access_key_hash,
-        access_key_last4,
-        payload,
-        identity_metadata,
-    )
+    try:
+        player = repo.upsert_conference_player(
+            session_id=session["id"],
+            access_key=access_key,
+            payload=payload,
+            identity_metadata=identity_metadata,
+        )
+        repo.save_session_response_set(
+            session["id"],
+            str((player or {}).get("id") or ""),
+            _event_context(session)["text_id"],
+            str(st.session_state.get("conference_device_id", "")),
+            access_key_hash,
+            access_key_last4,
+            payload,
+            identity_metadata,
+        )
+    except Exception as exc:
+        _log_route_event(
+            session,
+            event_type="write_failed",
+            step="review",
+            status="error",
+            player_id=str((locals().get("player") or {}).get("id") or ""),
+            value_label=str(exc),
+            level="ERROR",
+            extra={"error": str(exc)},
+        )
+        st.error(f"Could not save this WG2 submission: {exc}")
+        return
     st.session_state["conference_submission_cache_key"] = (
         f"{session['id']}:{access_key_hash}:{event_context['text_id']}"
     )
@@ -762,6 +1017,17 @@ def _submit(repo: Any, session: Dict[str, Any]) -> None:
     update_draft(
         question_set=current_question_set(), access_key=access_key, submitted=True
     )
+    _log_route_event(
+        session,
+        event_type="route_submitted",
+        step="review",
+        player_id=str((player or {}).get("id") or ""),
+        value_label=access_key_last4,
+        extra={
+            "access_key_last4": access_key_last4,
+            "submitted_mode": str(draft.get("mode") or ""),
+        },
+    )
     mark_submitted(question_set=current_question_set())
 
 
@@ -776,7 +1042,7 @@ def _open_confirm_send_dialog(repo: Any, session: Dict[str, Any]) -> None:
         )
         st.markdown(
             f"""
-            <div style="text-align:center; font-size:4.6rem; line-height:1.15; letter-spacing:.16em; margin: 1rem 0 1.15rem 0;">
+            <div style="text-align:center; font-size:4.6rem; line-height:1.15; letter-spacing:0; margin: 1rem 0 1.15rem 0;">
                 {short_emoji}
             </div>
             """,
@@ -878,30 +1144,51 @@ def _resume_in_mode(mode: str) -> None:
 
 
 def _render_entry(session: Dict[str, Any], repo: Any) -> None:
-    conference_header(_public_entry_title(session), "", step="")
     route = _public_route()
     if route:
-        st.caption(
-            "A shared entry point to ask how climate, resources, and research become a question for laboratories."
+        with st.container(key="conference_entry_card"):
+            _render_public_entry_hero(route)
+            if st.button(
+                "🆕 New participant",
+                type="primary",
+                use_container_width=True,
+                disabled=_event_is_read_only(session),
+                help=(
+                    "New responses are closed for this event."
+                    if _event_is_read_only(session)
+                    else None
+                ),
+            ):
+                _start_new_participant()
+            if st.button("🔑 I already have an access key", use_container_width=True):
+                _open_existing_login()
+                st.rerun()
+    else:
+        conference_header(_public_entry_title(session), "", step="")
+        st.markdown(
+            '<div class="page-subtitle">Anonymous first.</div>',
+            unsafe_allow_html=True,
         )
-    st.markdown("### Anonymous first.")
-    _render_event_scope_notice(session)
-    st.markdown("### Choose how to enter.")
-    if st.button(
-        "🆕 New participant",
-        type="primary",
-        use_container_width=True,
-        disabled=_event_is_read_only(session),
-        help=(
-            "New responses are closed for this event."
-            if _event_is_read_only(session)
-            else None
-        ),
-    ):
-        _start_new_participant()
-    if st.button("🔑 I already have an access key", use_container_width=True):
-        _open_existing_login()
-        st.rerun()
+        _render_event_scope_notice(session)
+        st.markdown(
+            '<div class="entry-action-title">Choose how to enter</div>',
+            unsafe_allow_html=True,
+        )
+        if st.button(
+            "🆕 New participant",
+            type="primary",
+            use_container_width=True,
+            disabled=_event_is_read_only(session),
+            help=(
+                "New responses are closed for this event."
+                if _event_is_read_only(session)
+                else None
+            ),
+        ):
+            _start_new_participant()
+        if st.button("🔑 I already have an access key", use_container_width=True):
+            _open_existing_login()
+            st.rerun()
     if _entry_mode() == "existing":
         st.markdown("### Enter your emoji access key.")
         raw_key = st.text_area(
@@ -950,9 +1237,13 @@ def _render_welcome() -> None:
         ):
             _mode_start(str(qset.default_mode or "standard"))
     else:
-        st.markdown("### Choose a depth.")
-        st.caption(
-            "Quick is the lightest route. Standard and Deep expose more profile and laboratory questions, including career stage."
+        st.markdown(
+            '<div class="section-title">Choose a depth.</div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            '<div class="helper-text">Quick is the lightest route. Standard and Deep expose more profile and laboratory questions, including career stage.</div>',
+            unsafe_allow_html=True,
         )
         cards = mode_cards(question_set=qset)
         for row in cards:
@@ -972,9 +1263,10 @@ def _render_boiler_room_expander() -> None:
     if not _is_laptop_device():
         return
     draft = get_draft(question_set=current_question_set())
-    with st.expander("Drop your contribution in the boiler room", expanded=False):
-        st.caption(
-            "Poster, lecture, presentation, text, images, data. You name it. Leave a short note or a link."
+    with st.expander("Optional material or note", expanded=False):
+        st.markdown(
+            '<div class="caption">Add a short note, a link, a document reference, or any material you want connected to this first coordination layer.</div>',
+            unsafe_allow_html=True,
         )
         contribution = st.text_area(
             "Boiler room contribution",
@@ -1075,6 +1367,212 @@ def _render_scientific_home() -> None:
     )
 
 
+def _opencage_api_key() -> str:
+    try:
+        cfg = st.secrets.get("opencage", {})
+    except Exception:
+        return ""
+    for key in ("OPENCAGE_KEY", "api_key", "key"):
+        value = str(cfg.get(key, "") or "").strip() if hasattr(cfg, "get") else ""
+        if value:
+            return value
+    return ""
+
+
+def _location_lookup_query(country_region: str, institution_location: str) -> str:
+    return ", ".join(
+        part
+        for part in (
+            str(institution_location or "").strip(),
+            str(country_region or "").strip(),
+        )
+        if part
+    )
+
+
+def _lookup_location_coordinates(query: str) -> dict[str, str]:
+    token = str(query or "").strip()
+    if not token:
+        raise ValueError("Enter a country, region, city, or institution first.")
+    api_key = _opencage_api_key()
+    if not api_key:
+        raise RuntimeError("OpenCage is not configured in Streamlit secrets.")
+    response = requests.get(
+        OPENCAGE_ENDPOINT,
+        params={
+            "q": token,
+            "key": api_key,
+            "limit": 1,
+            "no_annotations": 1,
+            "language": "en",
+        },
+        timeout=8,
+    )
+    response.raise_for_status()
+    payload = response.json()
+    results = payload.get("results") if isinstance(payload, dict) else []
+    if not results:
+        raise LookupError("No location match found.")
+    first = results[0]
+    geometry = first.get("geometry") if isinstance(first, dict) else {}
+    lat = geometry.get("lat") if isinstance(geometry, dict) else None
+    lng = geometry.get("lng") if isinstance(geometry, dict) else None
+    if lat is None or lng is None:
+        raise LookupError("The location match did not include coordinates.")
+    return {
+        "coordinates": f"{float(lat):.6f}, {float(lng):.6f}",
+        "geocode_label": str(first.get("formatted") or token).strip(),
+        "geocode_query": token,
+        "geocode_source": "opencage",
+    }
+
+
+def _render_geography_context(question: QuestionDefinition) -> None:
+    draft = get_draft(question_set=current_question_set())
+    existing = draft.get(str(question.field), {})
+    current = existing if isinstance(existing, dict) else {}
+    country_region = st.text_input(
+        "Country, region, or main base",
+        value=str(current.get("country_region") or ""),
+        key=f"conference_widget_{question.field}_country_region",
+        placeholder="Country, region, or main base",
+    )
+    institution_location = st.text_input(
+        "Institution or city",
+        value=str(current.get("institution_location") or ""),
+        key=f"conference_widget_{question.field}_institution_location",
+        placeholder="Institution, city, or local context",
+    )
+    lookup_query = _location_lookup_query(country_region, institution_location)
+    lookup_disabled = not bool(lookup_query)
+    if st.button(
+        "Look up approximate coordinates",
+        key=f"conference_widget_{question.field}_lookup",
+        use_container_width=True,
+        disabled=lookup_disabled,
+        help=(
+            "Uses the entered place through OpenCage geocoding. "
+            "No IP location inference is used."
+        ),
+    ):
+        try:
+            with st.spinner("Looking up approximate coordinates..."):
+                looked_up = _lookup_location_coordinates(lookup_query)
+            current = {
+                **current,
+                **looked_up,
+                "coordinates_consent": "lookup",
+            }
+            st.success(
+                f"Found approximate coordinates for {looked_up['geocode_label']}."
+            )
+        except Exception as exc:
+            st.warning(f"Could not look up that location: {exc}")
+    consent = st.checkbox(
+        "I want to add or edit approximate coordinates manually",
+        value=str(current.get("coordinates_consent") or "").strip().lower()
+        in {"yes", "manual"},
+        key=f"conference_widget_{question.field}_coordinates_consent",
+    )
+    coordinates = str(current.get("coordinates") or "").strip()
+    current_coordinates = str(current.get("coordinates") or "").strip()
+    if consent or current_coordinates:
+        coordinates = st.text_input(
+            "Approximate coordinates",
+            value=current_coordinates,
+            key=f"conference_widget_{question.field}_coordinates",
+            placeholder="Latitude, longitude or another approximate cue",
+        )
+        st.markdown(
+            '<div class="caption">Coordinates come from your explicit lookup or manual entry. We do not infer location from IP.</div>',
+            unsafe_allow_html=True,
+        )
+    geocode_label = str(current.get("geocode_label") or "").strip()
+    if geocode_label:
+        st.markdown(
+            f'<div class="caption">Lookup match: {html.escape(geocode_label)}</div>',
+            unsafe_allow_html=True,
+        )
+    coordinates_consent = ""
+    if consent:
+        coordinates_consent = "manual"
+    elif str(current.get("coordinates_consent") or "").strip().lower() == "lookup":
+        coordinates_consent = "lookup"
+    update_draft(
+        question_set=current_question_set(),
+        **{
+            str(question.field): {
+                "country_region": str(country_region or "").strip(),
+                "institution_location": str(institution_location or "").strip(),
+                "coordinates_consent": coordinates_consent,
+                "coordinates": str(coordinates or "").strip(),
+                "geocode_query": str(current.get("geocode_query") or "").strip(),
+                "geocode_label": geocode_label,
+                "geocode_source": str(current.get("geocode_source") or "").strip(),
+            }
+        },
+    )
+
+
+def _render_wg2_spatial_context(question: QuestionDefinition) -> None:
+    _render_geography_context(question)
+    if "region" in active_question_steps(question_set=current_question_set()):
+        return
+    region_question = question_by_step(current_question_set(), "region")
+    if not region_question:
+        return
+    st.markdown(
+        '<div class="section-title">Which regions matter in your work?</div>',
+        unsafe_allow_html=True,
+    )
+    if str(region_question.context or "").strip():
+        st.markdown(
+            f'<div class="question-context">{html.escape(str(region_question.context))}</div>',
+            unsafe_allow_html=True,
+        )
+    draft = get_draft(question_set=current_question_set())
+    _render_pills(region_question, draft.get(str(region_question.field)))
+
+
+def _render_scale(question: QuestionDefinition, current_value: Any) -> None:
+    try:
+        default_value = int(current_value)
+    except Exception:
+        default_value = 0
+    value = st.slider(
+        "Resonance",
+        min_value=-5,
+        max_value=5,
+        value=default_value,
+        key=f"conference_widget_{question.field}",
+        label_visibility="collapsed",
+    )
+    st.markdown(
+        '<div class="caption">-5 = dissonates · 0 = neutral · 5 = strongly resonates</div>',
+        unsafe_allow_html=True,
+    )
+    update_draft(
+        question_set=current_question_set(),
+        **{str(question.field): str(value)},
+    )
+    free_text_field = str(getattr(question, "free_text_field", "") or "").strip()
+    if free_text_field:
+        comment = st.text_area(
+            str(getattr(question, "free_text_label", "") or "Optional comment"),
+            value=str(
+                get_draft(question_set=current_question_set()).get(free_text_field)
+                or ""
+            ),
+            key=f"conference_widget_{free_text_field}",
+            placeholder=str(getattr(question, "free_text_placeholder", "") or ""),
+            height=120,
+        )
+        update_draft(
+            question_set=current_question_set(),
+            **{free_text_field: str(comment or "").strip()},
+        )
+
+
 def _render_fingerprint() -> None:
     draft = get_draft(question_set=current_question_set())
     fingerprint = draft.get("complexity_fingerprint", {})
@@ -1115,13 +1613,24 @@ def _render_question_step(step: str) -> None:
         _render_scientific_home()
         return
 
+    if input_type == "geography_context":
+        if str(question.field) == "wg2_main_location":
+            _render_wg2_spatial_context(question)
+        else:
+            _render_geography_context(question)
+        return
+
     if input_type == "fingerprint":
         _render_fingerprint()
         return
 
+    if input_type == "scale":
+        _render_scale(question, current_value)
+        return
+
     if input_type == "text":
         value = st.text_area(
-            "",
+            str(question.prompt or field or "Response"),
             value=str(current_value or ""),
             key=f"conference_widget_{field}",
             placeholder=str(question.placeholder or ""),
@@ -1136,6 +1645,13 @@ def _render_question_step(step: str) -> None:
 
 def _render_identity() -> None:
     draft = get_draft(question_set=current_question_set())
+    copy = current_question_set().step_copy.get("identity", {})
+    body = str(copy.get("body") or "").strip()
+    if body:
+        st.markdown(
+            f'<div class="helper-text">{html.escape(body)}</div>',
+            unsafe_allow_html=True,
+        )
     alias = st.text_input(
         "Alias",
         value=str(draft.get("alias") or ""),
@@ -1143,15 +1659,15 @@ def _render_identity() -> None:
         placeholder="Optional public alias",
     )
     identity = st.text_input(
-        "Identity",
+        "Name and affiliation",
         value=str(draft.get("identity") or ""),
         key="conference_widget_identity",
-        placeholder="Optional name or affiliation",
+        placeholder="Name, affiliation, or role",
     )
     contact = str(draft.get("contact") or "")
     if should_collect_contact(draft, question_set=current_question_set()):
         contact = st.text_input(
-            "Contact",
+            "Contact cue",
             value=contact,
             key="conference_widget_contact",
             placeholder="Optional email, website, or contact cue",
@@ -1305,7 +1821,10 @@ def _render_room_aggregates(submissions: List[Dict[str, Any]]) -> None:
         title = _question_title(question)
         st.markdown(f"### {title}")
         if not counter:
-            st.caption("No signals yet.")
+            st.markdown(
+                '<div class="caption">No signals yet.</div>',
+                unsafe_allow_html=True,
+            )
             continue
         lines = [
             f"{value} · {html.escape(_labels_for(field, key))}"
@@ -1367,9 +1886,13 @@ def _render_personal_dashboard(repo: Any, session: Dict[str, Any]) -> None:
         question_set=current_question_set(),
     )
     if gaps and not bool(st.session_state.get("conference_hide_migration_prompt")):
-        st.markdown("### We’ve added new questions")
-        st.caption(
-            f"We have added {len(gaps)} question(s) to better understand your perspective."
+        st.markdown(
+            '<div class="section-title">We have added new questions</div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            f'<div class="helper-text">We have added {len(gaps)} question(s) to better understand your perspective.</div>',
+            unsafe_allow_html=True,
         )
         left, right = st.columns(2)
         with left:
@@ -1392,7 +1915,10 @@ def _render_personal_dashboard(repo: Any, session: Dict[str, Any]) -> None:
         question_set=current_question_set(),
     )
     if pending:
-        st.markdown("### Pending reflections")
+        st.markdown(
+            '<div class="section-title">Pending reflections</div>',
+            unsafe_allow_html=True,
+        )
         for field in pending:
             summary_card(_field_label(field), "Deferred. You can answer later.")
         if st.button(
@@ -1409,7 +1935,10 @@ def _render_personal_dashboard(repo: Any, session: Dict[str, Any]) -> None:
     _render_room_aggregates(submissions)
     _render_other_sessions(repo, str(session.get("id") or ""))
     if teasers:
-        st.markdown("### Questions in the room")
+        st.markdown(
+            '<div class="section-title">Questions in the room</div>',
+            unsafe_allow_html=True,
+        )
         for item in teasers:
             title, _, text = item.partition("|||")
             summary_card(title or "Question", html.escape(text))
@@ -1447,7 +1976,10 @@ def _render_done(session: Dict[str, Any]) -> None:
     draft = get_draft(question_set=current_question_set())
     if st.session_state.pop("conference_show_success", False):
         st.balloons()
-    st.success(f"Integrated into {_event_scope_text(session)}.")
+    st.markdown(
+        f'<div class="helper-text">Integrated into {html.escape(_event_scope_text(session))}.</div>',
+        unsafe_allow_html=True,
+    )
     access_key = str(draft.get("access_key") or "")
     emoji_key = hex_to_emoji(access_key) if access_key else ""
     access_key_hash = (
@@ -1488,6 +2020,20 @@ def _render_done(session: Dict[str, Any]) -> None:
         st.rerun()
 
 
+def _log_step_page_view(session: Dict[str, Any], step: str) -> None:
+    question = question_by_step(current_question_set(), step)
+    token = f"{str(session.get('id') or '')}:{step}:{str(question.question_id or '') if question else ''}"
+    if st.session_state.get("conference_last_step_view") == token:
+        return
+    st.session_state["conference_last_step_view"] = token
+    _log_route_event(
+        session,
+        event_type="page_view",
+        step=step,
+        question=question,
+    )
+
+
 def _render_navigation(repo: Any, session: Dict[str, Any]) -> None:
     step = current_step()
     question = question_by_step(current_question_set(), step)
@@ -1516,25 +2062,57 @@ def _render_navigation(repo: Any, session: Dict[str, Any]) -> None:
                 _open_confirm_send_dialog(repo, session)
         with side:
             if question:
-                _render_question_flag_control(question)
+                _render_question_flag_control(question, session)
         return
 
     if question:
+        validation = _question_validation(step)
+        st.markdown(
+            (
+                f'<div class="question-validation" role="alert">{html.escape(validation)}</div>'
+                if validation
+                else '<div class="question-validation question-validation-empty" aria-hidden="true"></div>'
+            ),
+            unsafe_allow_html=True,
+        )
         primary, flag_col, skip_col = st.columns([1.6, 0.45, 0.35])
         with primary:
             if st.button("Continue", type="primary", use_container_width=True):
                 draft = get_draft(question_set=current_question_set())
                 payload = build_payload_view(draft, question_set=current_question_set())
-                if not _question_answered(question, payload):
-                    st.warning("Answer this step or skip it with a reason.")
+                answered = _question_answered(question, payload)
+                if not answered:
+                    _set_question_validation(
+                        step, "Answer this step or skip it with a reason."
+                    )
+                    _log_route_event(
+                        session,
+                        event_type="question_continue_blocked",
+                        step=step,
+                        question=question,
+                        status="blocked",
+                    )
+                    st.rerun()
                     return
+                _set_question_validation(step, "")
+                if answered:
+                    _log_route_event(
+                        session,
+                        event_type="question_answered",
+                        step=step,
+                        question=question,
+                        value_label=_labels_for(
+                            str(question.field),
+                            _question_value(question, payload),
+                        )[:240],
+                    )
                 _advance_step()
                 st.rerun()
         with flag_col:
-            _render_question_flag_control(question)
+            _render_question_flag_control(question, session)
         with skip_col:
             if st.button("Skip", use_container_width=True):
-                _open_skip_question_dialog(question)
+                _open_skip_question_dialog(question, session)
         return
 
     action, side = st.columns([1, 0.55])
@@ -1548,7 +2126,7 @@ def _render_navigation(repo: Any, session: Dict[str, Any]) -> None:
             st.rerun()
     with side:
         if question:
-            _render_question_flag_control(question)
+            _render_question_flag_control(question, session)
 
 
 def _render_questionnaire(repo: Any, session: Dict[str, Any]) -> None:
@@ -1570,15 +2148,32 @@ def _render_questionnaire(repo: Any, session: Dict[str, Any]) -> None:
             _switch_to_event_overview(session)
         return
     if current_step() not in active_step_sequence(question_set=current_question_set()):
-        set_step("welcome", question_set=current_question_set())
+        set_step(initial_step(question_set=current_question_set()), question_set=current_question_set())
     step = current_step()
     copy = current_question_set().step_copy[step]
     question = question_by_step(current_question_set(), step)
     sequence = active_step_sequence(question_set=current_question_set())
-    step_index = sequence.index(step) + 1 if step in sequence else 1
-    step_label = f"{step_index} / {len(sequence)}" if step != "done" else "complete"
-    conference_header(copy["title"], "", step=step_label)
-    _render_question_intro(step, question, copy)
+    question_sequence = [
+        token
+        for token in sequence
+        if question_by_step(current_question_set(), str(token)) is not None
+    ]
+    if question and step in question_sequence:
+        step_label = f"{question_sequence.index(step) + 1}/{len(question_sequence)}"
+    else:
+        step_index = sequence.index(step) + 1 if step in sequence else 1
+        step_label = f"{step_index}/{len(sequence)}" if step != "done" else "complete"
+    _log_step_page_view(session, step)
+    if question:
+        _render_question_page_header(
+            step_label=step_label,
+            section_title=str(copy.get("title") or ""),
+            question=question,
+            copy=copy,
+        )
+    else:
+        conference_header(copy["title"], "", step=step_label)
+        _render_question_intro(step, question, copy)
 
     if step == "welcome":
         _render_welcome()
@@ -1638,6 +2233,14 @@ def run_conference_questionnaire_page(
             "question_set_id": bundle_spec.question_set_id,
             "schema_id": bundle_spec.schema_id,
             "question_set_module": bundle_spec.question_set_module,
+            "question_set_source_kind": bundle_spec.question_set_source_kind,
+            "question_set_source_path": bundle_spec.question_set_source_path,
+            "question_set_source_note": bundle_spec.question_set_source_note,
+            "question_count": len(bundle_spec.question_ids),
+            "shared_question_count": len(bundle_spec.shared_question_ids),
+            "event_specific_question_count": len(
+                bundle_spec.event_specific_question_ids
+            ),
             "question_ids": list(bundle_spec.question_ids),
             "shared_question_ids": list(bundle_spec.shared_question_ids),
             "event_specific_question_ids": list(

@@ -1,0 +1,677 @@
+question_set:
+    id: un_wg2_v1
+    default_mode: quick
+    show_mode_selection: false
+    show_welcome_step: false
+
+step_order:
+    - welcome
+    - role_lens
+    - expertise
+    - support_needs
+    - work_style
+    - main_location
+    - region
+    - cryosphere_domain
+    - needs
+    - policy_interface
+    - uncertainty
+    - timescale
+    - stakeholder_group
+    - contribution
+    - coordination_signal
+    - coordination_resonance
+    - identity
+    - review
+    - done
+
+flow_modes:
+    quick:
+        title: Icebreaker
+        detail: '~10 minutes · first WG2 visibility layer'
+        accent: '*'
+        steps:
+            - role_lens
+            - expertise
+            - support_needs
+            - work_style
+            - main_location
+            - region
+            - cryosphere_domain
+            - needs
+            - policy_interface
+            - uncertainty
+            - timescale
+            - stakeholder_group
+            - contribution
+            - coordination_signal
+            - coordination_resonance
+
+step_copy:
+    welcome:
+        title: 'Working Group 2 — Module 1: Visibility'
+        body: 'Actionable Cryosphere Projections'
+        note: 'A first coordination layer for making WG2 visible to itself: needs, expertise, regions, missing links, and projection-use contexts.'
+        cta: 'Start the WG2 icebreaker'
+    needs:
+        title: 'III. Needs'
+        body: 'Think about Working Group 2 as a whole.'
+        cta: 'Continue'
+    main_location:
+        title: 'II. Spatial context'
+        body: 'One coordinate is you. The other is where your work matters.'
+        context: 'Where are you based, and which regions matter in your WG2 work?'
+        cta: 'Continue'
+    region:
+        title: 'II. Spatial context'
+        body: 'WG2 connects global projection capacity with regional contexts of risk, adaptation, and decision-making.'
+        cta: 'Continue'
+    cryosphere_domain:
+        title: 'II. Spatial context'
+        body: 'Locate your work in the cryosphere system.'
+        cta: 'Continue'
+    role_lens:
+        title: 'I. Who is speaking?'
+        body: 'Start with your role or lens inside WG2.'
+        cta: 'Continue'
+    expertise:
+        title: 'I. Who is speaking?'
+        body: 'Make visible the capacities already present in WG2.'
+        cta: 'Continue'
+    support_needs:
+        title: 'I. Who is speaking?'
+        body: 'Make visible where coordination can support participants.'
+        cta: 'Continue'
+    work_style:
+        title: 'I. Who is speaking?'
+        body: 'Make working rhythms visible before coordination begins.'
+        cta: 'Continue'
+    policy_interface:
+        title: 'III. Needs'
+        body: 'Actionable projections depend on the interfaces where science meets decisions.'
+        cta: 'Continue'
+    uncertainty:
+        title: 'III. Needs'
+        body: 'Uncertainty is not only a technical issue. It shapes how projections are trusted, translated, and used.'
+        cta: 'Continue'
+    timescale:
+        title: 'III. Needs'
+        body: 'Time is a shared coordinate for WG2: near-term needs, decade-scale planning, and long-term cryosphere trajectories.'
+        cta: 'Continue'
+    stakeholder_group:
+        title: 'IV. Action'
+        body: 'Actionable projections become useful when their users and contexts are made visible.'
+        cta: 'Continue'
+    contribution:
+        title: 'IV. Action'
+        body: 'Surface one capacity, dataset, connection, method, question, or initiative that could help WG2.'
+        cta: 'Continue'
+    coordination_signal:
+        title: 'IV. Action'
+        body: 'A short shared signal about where coordination could reduce friction now.'
+        cta: 'Continue'
+    coordination_resonance:
+        title: 'IV. Action'
+        body: 'A quick check on whether the central bottleneck feels like coordination and interface work.'
+        cta: 'Continue'
+    identity:
+        title: 'Name and affiliation'
+        body: 'Useful for internal visibility. Privacy is a priority: names and affiliations are only used inside the WG2 coordination context.'
+        cta: 'Continue'
+    review:
+        title: 'Review before submitting'
+        body: 'These answers belong only to this WG2 module. Profile information may later be reused only if WG2 explicitly opts into it.'
+        cta: 'Submit'
+    done:
+        title: 'Thank you.'
+        body: 'This first layer helps WG2 see itself before broader coordination work begins.'
+        cta: 'Start again'
+
+questions:
+    - step: needs
+      field: wg2_needs
+      question_id: UN_WG2_NEEDS
+      prompt: 'What do we need to coordinate better?'
+      context: 'What would strengthen WG2 as a whole?'
+      input_type: multi
+      required: false
+      max_select: 3
+      group: coordination
+      subgroup: needs
+      options:
+          - value: clearer_use_cases
+            label: 'Clearer use cases'
+          - value: data_access
+            label: 'Data access'
+          - value: model_comparison
+            label: 'Model comparison'
+          - value: regional_translation
+            label: 'Regional translation'
+          - value: uncertainty_guidance
+            label: 'Uncertainty guidance'
+          - value: policy_interface
+            label: 'Policy interface'
+          - value: stakeholder_mapping
+            label: 'Stakeholder mapping'
+          - value: workplan_clarity
+            label: 'Workplan clarity'
+          - value: expertise_visibility
+            label: 'Visibility of expertise'
+          - value: existing_initiatives
+            label: 'Map existing initiatives'
+          - value: other
+            label: 'Other'
+      free_text:
+          field: wg2_needs_detail
+          label: 'Add one detail'
+          placeholder: 'What would make this immediately useful?'
+
+    - step: main_location
+      field: wg2_main_location
+      question_id: UN_WG2_MAIN_LOCATION
+      prompt: 'Where are you based?'
+      context: 'Knowing where people are primarily based helps coordinate meetings, understand regional contexts, and reveal the geographical distribution of WG2.'
+      input_type: geography_context
+      required: false
+      group: profile
+      subgroup: main_location
+
+    - step: region
+      field: wg2_region
+      question_id: UN_WG2_REGION
+      prompt: 'Which regions matter in your work?'
+      context: 'Mapping regional focus reveals coverage, overlaps, gaps, and opportunities for collaboration.'
+      input_type: multi
+      required: false
+      max_select: 4
+      group: profile
+      subgroup: geography
+      options:
+          - value: global
+            label: 'Global'
+          - value: arctic
+            label: 'Arctic'
+          - value: antarctica
+            label: 'Antarctica'
+          - value: greenland
+            label: 'Greenland'
+          - value: high_mountain_asia
+            label: 'High Mountain Asia'
+          - value: european_alps
+            label: 'European Alps'
+          - value: andes
+            label: 'Andes'
+          - value: north_america_mountains
+            label: 'North American mountains'
+          - value: southern_ocean
+            label: 'Southern Ocean'
+          - value: small_islands_coasts
+            label: 'Small islands and coastal regions'
+          - value: polar_oceans
+            label: 'Polar oceans'
+          - value: multiple_regions
+            label: 'Multiple regions'
+          - value: other
+            label: 'Other'
+      free_text:
+          field: wg2_region_detail
+          label: 'Specify region or country if useful'
+          placeholder: 'Country, basin, mountain range, community, or decision context'
+
+    - step: cryosphere_domain
+      field: wg2_cryosphere_domain
+      question_id: UN_WG2_CRYOSPHERE_DOMAIN
+      prompt: 'Which cryosphere domain is most relevant to your work?'
+      context: 'Select the cryosphere systems where most of your work, expertise, or decision context is focused.'
+      input_type: multi
+      required: false
+      max_select: 4
+      group: profile
+      subgroup: cryosphere
+      options:
+          - value: glaciers
+            label: 'Glaciers'
+          - value: ice_sheets
+            label: 'Ice sheets'
+          - value: ice_shelves
+            label: 'Ice shelves'
+          - value: sea_ice
+            label: 'Sea ice'
+          - value: snow
+            label: 'Snow'
+          - value: permafrost
+            label: 'Permafrost'
+          - value: frozen_ground
+            label: 'Frozen ground'
+          - value: polar_oceans
+            label: 'Polar oceans'
+          - value: mountain_hydrology
+            label: 'Mountain hydrology'
+          - value: sea_level
+            label: 'Sea level'
+          - value: hazards
+            label: 'Cryosphere hazards'
+          - value: coupled_systems
+            label: 'Coupled cryosphere-climate systems'
+          - value: other
+            label: 'Other'
+
+    - step: role_lens
+      field: wg2_role_lens
+      question_id: UN_WG2_ROLE_LENS
+      prompt: 'What is your main role or lens in WG2?'
+      context: 'Different roles see different parts of the same system. Coordination begins by making those perspectives visible.'
+      input_type: multi
+      required: false
+      max_select: 3
+      group: profile
+      subgroup: role
+      options:
+          - value: core_wg2_leadership
+            label: 'Core WG2 leadership'
+          - value: contributing_scientist
+            label: 'Contributing scientist'
+          - value: modeller
+            label: 'Modeller'
+          - value: observer_data_provider
+            label: 'Observation or data provider'
+          - value: regional_expert
+            label: 'Regional expert'
+          - value: decision_support
+            label: 'Decision-support interface'
+          - value: policy_interface
+            label: 'Policy interface'
+          - value: partner_institution
+            label: 'Partner institution'
+          - value: coordination_support
+            label: 'Coordination support'
+          - value: observer_invited_participant
+            label: 'Observer / invited participant'
+          - value: other
+            label: 'Other'
+      free_text:
+          field: wg2_role_detail
+          label: 'If other or useful, specify'
+          placeholder: 'Your role in a few words'
+
+    - step: expertise
+      field: wg2_expertise
+      question_id: UN_WG2_EXPERTISE
+      prompt: 'What areas of expertise do you bring?'
+      context: 'Your expertise helps WG2 build, interpret, translate, and apply cryosphere projections.'
+      input_type: multi
+      required: false
+      max_select: 5
+      group: profile
+      subgroup: expertise
+      options:
+          - value: cryosphere_processes
+            label: 'Cryosphere processes'
+          - value: observations
+            label: 'Observations and monitoring'
+          - value: modelling
+            label: 'Modelling'
+          - value: projections
+            label: 'Projections'
+          - value: uncertainty
+            label: 'Uncertainty'
+          - value: risk
+            label: 'Risk'
+          - value: impacts
+            label: 'Impacts'
+          - value: adaptation
+            label: 'Adaptation'
+          - value: policy
+            label: 'Policy interface'
+          - value: stakeholder_engagement
+            label: 'Stakeholder engagement'
+          - value: data_infrastructure
+            label: 'Data infrastructure'
+          - value: visualisation
+            label: 'Visualisation and mapping'
+          - value: coordination
+            label: 'Coordination and facilitation'
+          - value: other
+            label: 'Other'
+      free_text:
+          field: wg2_expertise_detail
+          label: 'Add one detail if useful'
+          placeholder: 'A method, region, dataset, community, or experience'
+
+    - step: support_needs
+      field: wg2_support_needs
+      question_id: UN_WG2_SUPPORT_NEEDS
+      prompt: 'Where would support from WG2 be most useful to you?'
+      context: 'This helps identify where coordination can reduce friction and unlock collaboration.'
+      input_type: multi
+      required: false
+      max_select: 4
+      group: profile
+      subgroup: support
+      options:
+          - value: finding_partners
+            label: 'Finding collaborators'
+          - value: accessing_data
+            label: 'Accessing data'
+          - value: comparing_models
+            label: 'Comparing models'
+          - value: interpreting_uncertainty
+            label: 'Interpreting uncertainty'
+          - value: regional_translation
+            label: 'Regional translation'
+          - value: stakeholder_connection
+            label: 'Stakeholder connection'
+          - value: policy_translation
+            label: 'Policy translation'
+          - value: communication
+            label: 'Communication'
+          - value: technical_infrastructure
+            label: 'Technical infrastructure'
+          - value: coordination_time
+            label: 'Coordination time'
+          - value: funding_visibility
+            label: 'Funding or visibility'
+          - value: other
+            label: 'Other'
+      free_text:
+          field: wg2_support_needs_detail
+          label: 'Add one detail'
+          placeholder: 'Where would coordination help you most?'
+
+    - step: work_style
+      field: wg2_work_style
+      question_id: UN_WG2_WORK_STYLE
+      prompt: 'How do you usually work best?'
+      context: 'Good coordination respects different ways of working. Making them visible helps people collaborate more effectively.'
+      input_type: multi
+      required: false
+      max_select: 3
+      group: profile
+      subgroup: work_style
+      options:
+          - value: task_based
+            label: 'Task-based'
+          - value: curiosity_driven
+            label: 'Curiosity-driven'
+          - value: data_driven
+            label: 'Data-driven'
+          - value: field_based
+            label: 'Field-based'
+          - value: model_based
+            label: 'Model-based'
+          - value: synthesis_oriented
+            label: 'Synthesis-oriented'
+          - value: facilitation_oriented
+            label: 'Facilitation-oriented'
+          - value: stakeholder_oriented
+            label: 'Stakeholder-oriented'
+          - value: writing_oriented
+            label: 'Writing-oriented'
+          - value: rapid_prototyping
+            label: 'Rapid prototyping'
+          - value: long_form_research
+            label: 'Long-form research'
+          - value: other
+            label: 'Other'
+
+    - step: policy_interface
+      field: wg2_policy_interface
+      question_id: UN_WG2_POLICY_INTERFACE
+      prompt: 'Where should WG2 projections connect most directly to decisions?'
+      context: 'Projections create value only when they inform decisions. This helps identify where those interfaces should be strengthened.'
+      input_type: multi
+      required: false
+      max_select: 3
+      group: coordination
+      subgroup: decision_interface
+      options:
+          - value: adaptation_planning
+            label: 'Adaptation planning'
+          - value: risk_management
+            label: 'Risk management'
+          - value: early_warning
+            label: 'Early warning'
+          - value: infrastructure_planning
+            label: 'Infrastructure planning'
+          - value: water_resources
+            label: 'Water resources'
+          - value: coastal_planning
+            label: 'Coastal planning'
+          - value: disaster_risk_reduction
+            label: 'Disaster risk reduction'
+          - value: biodiversity_ecosystems
+            label: 'Biodiversity and ecosystems'
+          - value: finance_insurance
+            label: 'Finance / insurance'
+          - value: education_capacity_building
+            label: 'Education / capacity building'
+          - value: international_assessments
+            label: 'International assessments'
+          - value: national_policy
+            label: 'National policy'
+          - value: local_communities
+            label: 'Local communities'
+          - value: other
+            label: 'Other'
+
+    - step: uncertainty
+      field: wg2_uncertainty_need
+      question_id: UN_WG2_UNCERTAINTY_NEED
+      prompt: 'What kind of uncertainty guidance would be most useful?'
+      context: 'Good decisions also depend on understanding their uncertainty. This helps identify where guidance is most needed.'
+      input_type: multi
+      required: false
+      max_select: 3
+      group: science
+      subgroup: uncertainty
+      options:
+          - value: confidence_language
+            label: 'Confidence language'
+          - value: scenario_comparison
+            label: 'Scenario comparison'
+          - value: probability_ranges
+            label: 'Probability ranges'
+          - value: model_spread
+            label: 'Model spread'
+          - value: process_uncertainty
+            label: 'Process uncertainty'
+          - value: regional_downscaling
+            label: 'Regional downscaling limits'
+          - value: time_horizon_limits
+            label: 'Time-horizon limits'
+          - value: tipping_thresholds
+            label: 'Thresholds and tipping risks'
+          - value: communication_templates
+            label: 'Communication templates'
+          - value: decision_under_uncertainty
+            label: 'Decision-making under uncertainty'
+          - value: other
+            label: 'Other'
+      free_text:
+          field: wg2_uncertainty_detail
+          label: 'Add one detail'
+          placeholder: 'What uncertainty issue creates friction?'
+
+    - step: timescale
+      field: wg2_timescale
+      question_id: UN_WG2_TIMESCALE
+      prompt: 'Which time horizon matters most for your WG2 contribution?'
+      context: 'Different questions unfold over different timescales. This helps align short-term coordination with long-term change.'
+      input_type: multi
+      required: false
+      max_select: 2
+      group: science
+      subgroup: time
+      options:
+          - value: immediate_next_week
+            label: 'Immediate (next week)'
+          - value: three_months
+            label: '3 months'
+          - value: seasonal_annual
+            label: 'Seasonal / annual'
+          - value: three_years
+            label: '3 years'
+          - value: sdg_deadline_2030
+            label: 'SDG deadline (2030)'
+          - value: decade_scale
+            label: 'Decade scale'
+          - value: event_based
+            label: 'Event-based'
+          - value: century
+            label: 'Century'
+          - value: beyond_century
+            label: 'Beyond century'
+          - value: not_sure
+            label: 'Not sure'
+
+    - step: stakeholder_group
+      field: wg2_stakeholder_group
+      question_id: UN_WG2_STAKEHOLDER_GROUP
+      prompt: 'Who should WG2 make projections more usable for?'
+      context: 'This helps reveal where stronger connections between science and use are needed.'
+      input_type: multi
+      required: false
+      max_select: 4
+      group: coordination
+      subgroup: stakeholders
+      options:
+          - value: scientists
+            label: 'Scientists'
+          - value: national_governments
+            label: 'National governments'
+          - value: local_regional_authorities
+            label: 'Local / regional authorities'
+          - value: indigenous_local_communities
+            label: 'Indigenous and local communities'
+          - value: water_managers
+            label: 'Water managers'
+          - value: disaster_risk_practitioners
+            label: 'Disaster-risk practitioners'
+          - value: adaptation_planners
+            label: 'Adaptation planners'
+          - value: educators
+            label: 'Educators'
+          - value: youth
+            label: 'Youth'
+          - value: funders
+            label: 'Funders'
+          - value: international_organisations
+            label: 'International organisations'
+          - value: media_public_communication
+            label: 'Media / public communication'
+          - value: other
+            label: 'Other'
+
+    - step: contribution
+      field: wg2_contribution
+      question_id: UN_WG2_CONTRIBUTION
+      prompt: 'What could you contribute to WG2 at this stage?'
+      context: 'Contributions take many forms: expertise, data, methods, questions, connections, initiatives, or coordination.'
+      input_type: text
+      required: false
+      group: coordination
+      subgroup: contribution
+      placeholder: 'One contribution, capacity, dataset, connection, method, or question'
+
+    - step: coordination_signal
+      field: wg2_coordination_signal
+      question_id: UN_WG2_COORDINATION_SIGNAL
+      prompt: 'Where would coordination create immediate value for you?'
+      context: 'Mention collaborations, missing links, shared needs, duplicated efforts, underrepresented regions, or one place where coordination could reduce friction.'
+      input_type: text
+      required: false
+      group: coordination
+      subgroup: signal
+      placeholder: 'One area where coordination would help right now'
+
+    - step: coordination_resonance
+      field: wg2_resonance_coordination
+      question_id: UN_WG2_RESONANCE_COORDINATION
+      prompt: 'How strongly does this statement resonate with your view?'
+      context: 'One of the main bottlenecks is not a lack of resources, but a lack of visibility, coordination, and effective interfaces between people, data, and decisions.'
+      input_type: scale
+      required: false
+      group: coordination
+      subgroup: resonance
+      response_structure:
+          min: 0
+          max: 5
+          default: 3
+          step: 1
+          anchors:
+              '0': 'Does not resonate'
+              '5': 'Strongly resonates'
+
+profile_fields:
+    - wg2_main_location
+    - wg2_region
+    - wg2_region_detail
+    - wg2_cryosphere_domain
+    - wg2_role_lens
+    - wg2_role_detail
+    - wg2_expertise
+    - wg2_expertise_detail
+    - wg2_support_needs
+    - wg2_support_needs_detail
+    - wg2_work_style
+
+session_fields:
+    - wg2_needs
+    - wg2_needs_detail
+    - wg2_policy_interface
+    - wg2_uncertainty_need
+    - wg2_uncertainty_detail
+    - wg2_timescale
+    - wg2_stakeholder_group
+    - wg2_contribution
+    - wg2_coordination_signal
+    - wg2_resonance_coordination
+    - question_flags
+    - identity_reveal_targets
+
+deferrable_fields:
+    - wg2_contribution
+    - wg2_coordination_signal
+    - wg2_identity
+
+fingerprint_axes:
+    - field: wg2_needs
+      label: 'Coordination needs'
+    - field: wg2_region
+      label: 'Regions'
+    - field: wg2_cryosphere_domain
+      label: 'Cryosphere domains'
+    - field: wg2_role_lens
+      label: 'Roles and lenses'
+    - field: wg2_expertise
+      label: 'Areas of expertise'
+    - field: wg2_support_needs
+      label: 'Support needs'
+    - field: wg2_work_style
+      label: 'Work styles'
+    - field: wg2_policy_interface
+      label: 'Decision interfaces'
+    - field: wg2_uncertainty_need
+      label: 'Uncertainty needs'
+    - field: wg2_timescale
+      label: 'Time horizons'
+    - field: wg2_stakeholder_group
+      label: 'Stakeholder groups'
+
+fingerprint_labels:
+    wg2_needs: 'What WG2 needs first'
+    wg2_region: 'Regional relevance'
+    wg2_cryosphere_domain: 'Cryosphere domain'
+    wg2_role_lens: 'Role / lens'
+    wg2_expertise: 'Areas of expertise'
+    wg2_support_needs: 'Support needs'
+    wg2_work_style: 'Work style'
+    wg2_policy_interface: 'Policy and decision interface'
+    wg2_uncertainty_need: 'Uncertainty guidance'
+    wg2_timescale: 'Time horizon'
+    wg2_stakeholder_group: 'Who projections should serve'
+
+follow_up_contact_values:
+    - '__always__'
+
+migration_profile_fields: []

@@ -30,6 +30,16 @@ Everything must still become scoped, explicitly, to one real gathering:
 
 Responses from UNESCO, Dalembertiennes, or any future workshop must never be mixed or double-counted unless a cross-event comparison explicitly requests it.
 
+## Participant flow practice
+
+- A participant must not advance past a normal question step accidentally.
+- Every normal question step must render the same action structure: dominant `Continue`, secondary `Flag`, and secondary `Skip`.
+- `Continue` requires a response for the current question.
+- If the participant does not want to respond, they must use `Skip` and provide a reason.
+- Skip reasons must be stored with the question feedback/flag trail and remain visible in review, overview, host, or export surfaces where appropriate.
+- Optionality means “may skip with stated reason”, not “blank continue”.
+- Built-in structural steps such as `welcome`, `identity`, `review`, and `done` may have their own controls, but they must not be used to host ordinary question prompts.
+
 ## Current status
 
 - Streamlit app is functional.
@@ -81,46 +91,65 @@ Make it impossible, or at least difficult, to write responses without explicit s
 - [ ] Audit the current session schema and usage before introducing any new event abstraction.
 - [ ] Formalise an event resolver that maps one event slug to one current `session_code`.
 - [ ] Keep current session fields first-class:
-  - `session_code`
-  - `session_name`
-  - `session_title`
-  - `session_description`
-  - `session_order`
-  - `session_visualisation`
-  - `status`
-  - `mode`
-  - `round_index`
-  - `active`
+    - `session_code`
+    - `session_name`
+    - `session_title`
+    - `session_description`
+    - `session_order`
+    - `session_visualisation`
+    - `status`
+    - `mode`
+    - `round_index`
+    - `active`
 - [ ] Add event metadata only as an additive layer:
-  - `event_slug`
-  - `event_title`
-  - `event_location`
-  - `event_visibility`
-  - `question_set_id`
-  - `questionnaire_version`
+    - `event_slug`
+    - `event_title`
+    - `event_location`
+    - `event_visibility`
+    - `question_set_id`
+    - `questionnaire_version`
 
 - [ ] Add event lifecycle states:
-  - `draft`
-  - `open`
-  - `closed`
-  - `archived`
+    - `draft`
+    - `open`
+    - `closed`
+    - `archived`
 
 - [ ] Ensure closed and archived event states translate into read-only response behavior.
 
 - [ ] Rename internal mental model:
-  - real-world gathering = `Event`
-  - persisted grouping record = `Session`
-  - participant filling flow = `Participation`
-  - browser context = `Browser session`
+    - real-world gathering = `Event`
+    - persisted grouping record = `Session`
+    - participant filling flow = `Participation`
+    - browser context = `Browser session`
 
 - [ ] Audit code for ambiguous `session_id` usage in:
-  - `infra/notion_repo.py`
-  - `conference/context.py`
-  - `conference/repo.py`
-  - `models/catalog.py`
-  - `pages/*`
+    - `infra/notion_repo.py`
+    - `conference/context.py`
+    - `conference/repo.py`
+    - `models/catalog.py`
+    - `pages/*`
 
 - [ ] Add migration notes where legacy session terms remain for valid reasons.
+
+## Next action
+
+Finish the typography verification pass before final copy polish.
+
+Tasks:
+
+- Create a central typography/style helper. Done for conference routes through `conference/ui.py`.
+- Replace route-local ad hoc heading styles with shared classes. Done for WG2 landing, question, review, and done surfaces in `conference/questionnaire.py`.
+- Apply the system to the WG2 route first. Done.
+- Check mobile readability. Landing and first question checked; review/done still need a completed test trajectory or fixture route for direct screenshots.
+- Then return to final copy edits.
+
+Acceptance criteria:
+- Landing, question, review, and done screens use the same type ramp.
+- Headings are visually strong but not oversized on mobile.
+- Body text has readable line height and limited width.
+- Helper/context text is clearly secondary.
+- Buttons are consistent across the flow.
 
 ### Definition of done
 
@@ -138,32 +167,32 @@ Create the `dalembertiennes` event or session scaffold without duplicating UNESC
 ### Tasks
 
 - [ ] Create or identify a session-backed event record:
-  - resolver slug: `dalembertiennes`
-  - title: `D’Alembertiennes Lab Questionnaire`
-  - status: `draft`
-  - visibility: internal or private
-  - question_set_id: `dalembertiennes_v0`
-  - backing `session_code`: explicit and unique
+    - resolver slug: `dalembertiennes`
+    - title: `D’Alembertiennes Lab Questionnaire`
+    - status: `draft`
+    - visibility: internal or private
+    - question_set_id: `dalembertiennes_v0`
+    - backing `session_code`: explicit and unique
 
 - [ ] Create question set record or code object:
-  - id: `dalembertiennes_v0`
-  - title: `D’Alembertiennes questionnaire v0`
-  - version: `0`
-  - language: `fr/en` if bilingual, otherwise specify one language
+    - id: `dalembertiennes_v0`
+    - title: `D’Alembertiennes questionnaire v0`
+    - version: `0`
+    - language: `fr/en` if bilingual, otherwise specify one language
 
 - [ ] Add route resolver compatible with current Streamlit navigation:
-  - either a new `url_path`
-  - or an existing page plus query params
-  - or a session selector that resolves `dalembertiennes`
+    - either a new `url_path`
+    - or an existing page plus query params
+    - or a session selector that resolves `dalembertiennes`
 
 - [ ] Check all existing route entry points in `app.py` before adding a new page:
-  - `unesco-opening`
-  - `complexity`
-  - `pisa`
-  - `young-overview`
-  - `complexity-overview`
-  - `pisa-opening`
-  - `pisa-meeting-host`
+    - `unesco-opening`
+    - `complexity`
+    - `pisa`
+    - `young-overview`
+    - `complexity-overview`
+    - `pisa-opening`
+    - `pisa-meeting-host`
 
 - [ ] Ensure welcome copy reads from resolved event or session metadata.
 
@@ -249,9 +278,9 @@ Use `pages/07_Admin.py` as the operator view for multi-event management.
 - [ ] Add button to open event overview.
 - [ ] Add button to export event responses.
 - [ ] Add lifecycle controls for admin:
-  - draft → open
-  - open → closed
-  - closed → archived
+    - draft → open
+    - open → closed
+    - closed → archived
 
 ### Guardrails
 
@@ -339,13 +368,13 @@ Prepare for multi-loop, long-running agentic operation.
 ### Tasks
 
 - [ ] Log event access:
-  - `event_page_view`
-  - `questionnaire_started`
-  - `response_submit`
-  - `questionnaire_completed`
-  - `overview_loaded`
-  - `export_created`
-  - `event_status_changed`
+    - `event_page_view`
+    - `questionnaire_started`
+    - `response_submit`
+    - `questionnaire_completed`
+    - `overview_loaded`
+    - `export_created`
+    - `event_status_changed`
 
 - [ ] Store logs through `infra/event_logger.py`.
 - [ ] Add event id to every log.
@@ -358,12 +387,12 @@ Prepare for multi-loop, long-running agentic operation.
 - [ ] Add persisted job queue in SQLite or Notion.
 - [ ] Add runner script for bounded agent tasks.
 - [ ] Add checkpoint loop:
-  - read durable state
-  - choose next action
-  - execute one step
-  - log
-  - checkpoint
-  - stop
+    - read durable state
+    - choose next action
+    - execute one step
+    - log
+    - checkpoint
+    - stop
 
 ### Definition of done
 
@@ -484,6 +513,23 @@ In particular:
 - 2026-03-XX: Decade map prototype tested, needs guided trajectory redesign.
 - 2026-03-XX: Architecture note adopted: event is the primary data boundary.
 - 2026-03-XX: Next event codename selected: `dalembertiennes`.
+- 2026-07-06: Added YAML question-set authoring support. Files changed: `conference/question_sets/yaml_loader.py`, `conference/question_sets/un_wg2_v1.py`, `tests/test_question_set_yaml_loader.py`. Result: WG2 keeps `un_wg2_v1` and now loads `conference/question_sets/specs/un_wg2_v1.yaml` when present, otherwise it falls back to the current Python scaffold. Verification: `./.venv/bin/python -m pytest tests/test_question_set_yaml_loader.py tests/test_conference_registry.py` passed. Next action: author the WG2 YAML spec and place it at `conference/question_sets/specs/un_wg2_v1.yaml`.
+- 2026-07-07: Added question-set source diagnostics and fixed WG2 YAML loading. Files changed: `conference/question_sets/__init__.py`, `conference/question_sets/yaml_loader.py`, `conference/question_sets/un_wg2_v1.py`, `conference/registry.py`, `conference/questionnaire.py`, `pages/26_UN_WG2_Overview.py`, `pages/27_UN_WG2_Host.py`, `ui.py`, `conference/question_sets/un_wg2_v1.yaml`. Result: WG2 now loads `conference/question_sets/un_wg2_v1.yaml` directly, reports source kind/path/question counts in the sidebar and host page, preserves `yes`/`no` option values as strings, and validates the YAML question set. Verification: `./.venv/bin/python -m pytest tests/test_question_set_yaml_loader.py tests/test_conference_registry.py` passed; registry reports `source_kind = yaml`, `question_count = 13`, and no validation errors.
+- 2026-07-07: Hardened WG2 participant flow. Files changed: `conference/questionnaire.py`, `conference/flow.py`, `conference/question_sets/un_wg2_v1.yaml`, `conference/question_sets/__init__.py`, `tests/test_conference_registry.py`, `tests/test_conference_flow.py`, `PLAN.md`. Result: normal question steps now block `Continue` unless answered; participants must use `Skip` with a reason for blank questions; route logging is null-safe for built-in steps; WG2 no longer asks a redundant stay-in-touch question; the built-in identity step shows optional contact for WG2; WG2 now asks where participants are mainly based through the geography context field. Verification: `./.venv/bin/python -m pytest tests/test_question_set_yaml_loader.py tests/test_conference_registry.py tests/test_conference_flow.py` passed.
+- 2026-07-07: Consolidated question action structure rule. Result: the plan now states that every normal question step must expose `Continue`, `Flag`, and `Skip`; WG2 registry tests verify each active YAML step resolves to a concrete question definition so it receives the standard action row.
+- 2026-07-07: Added explicit location-to-coordinate lookup for geography questions. Files changed: `conference/questionnaire.py`, `conference/flow.py`, `tests/test_conference_flow.py`. Result: participants can click `Look up approximate coordinates` after entering a place; the app uses OpenCage via `st.secrets["opencage"]["OPENCAGE_KEY"]`, stores coordinates plus `geocode_query`, `geocode_label`, `geocode_source`, and marks `coordinates_consent = lookup`. No IP inference is used. Verification: `./.venv/bin/python -m pytest tests/test_question_set_yaml_loader.py tests/test_conference_registry.py tests/test_conference_flow.py` passed.
+- 2026-07-07: Added shared participant typography layer for WG2. Files changed: `conference/ui.py`, `conference/questionnaire.py`, `PLAN.md`. Result: `apply_typography_theme()` now centralizes the participant type ramp and shared classes `.page-title`, `.page-kicker`, `.page-subtitle`, `.section-title`, `.question-title`, `.question-context`, `.helper-text`, `.caption`, `.primary-action`, and `.secondary-action`; WG2 landing, question, review, and done surfaces now use the shared classes without data logic, Notion schema, or question ID changes. Verification: `./.venv/bin/python -m py_compile conference/ui.py conference/questionnaire.py pages/25_UN_WG2_Icebreaker.py` passed; `./.venv/bin/python -m pytest tests/test_question_set_yaml_loader.py tests/test_conference_registry.py tests/test_conference_flow.py` passed. Screenshots checked: `/private/tmp/ice_typography_pdf/wg2-entry-desktop-final.png`, `/private/tmp/ice_typography_pdf/wg2-entry-mobile-final.png`, `/private/tmp/ice_typography_pdf/wg2-question-desktop.png`, `/private/tmp/ice_typography_pdf/wg2-question-mobile.png`. Remaining typography issues: capture review and done screens through a completed non-production test trajectory; Streamlit button markup cannot directly attach `.primary-action` and `.secondary-action`, so those classes are available for custom markup while the current button styling targets Streamlit primary/secondary button selectors.
+- 2026-07-07: Corrected WG2 landing typographic composition. Files changed: `conference/ui.py`, `conference/questionnaire.py`, `conference/public_routes.py`, `PLAN.md`. Result: the WG2 entry now reads as one editorial sequence: `Working Group 2` display, `Actionable Cryosphere Projections` headline, `Module 1 · Collective visibility` kicker, lead paragraph, quieter privacy note, then immediate action. The artificial narrow title column was removed, the type ramp was reduced toward four roles, the background was flattened, and button/card radii were tightened. Verification: `./.venv/bin/python -m py_compile conference/ui.py conference/questionnaire.py conference/public_routes.py pages/25_UN_WG2_Icebreaker.py` passed; `./.venv/bin/python -m pytest tests/test_question_set_yaml_loader.py tests/test_conference_registry.py tests/test_conference_flow.py` passed. Screenshots checked: `/private/tmp/ice_typography_pdf/wg2-entry-composition-desktop.png`, `/private/tmp/ice_typography_pdf/wg2-entry-composition-mobile.png`, `/private/tmp/ice_typography_pdf/wg2-question-composition-desktop.png`, `/private/tmp/ice_typography_pdf/wg2-question-composition-mobile.png`. Remaining typography issues: review and done still need direct screenshots through a completed non-production trajectory.
+- 2026-07-07: Reframed WG2 landing and questionnaire order around coordinates. Files changed: `conference/public_routes.py`, `conference/questionnaire.py`, `conference/question_sets/un_wg2_v1.yaml`, `conference/ui.py`, `tests/test_conference_registry.py`, `PLAN.md`. Result: landing begins with `Collective Visibility`, treats `WG2 • Actionable Cryosphere Projections` as report-style metadata, and presents explicit `Purpose`, `This pilot`, and participation blocks. The active WG2 flow now starts with `Who is speaking?`, merges participant base and relevant regions into one `Spatial context` screen, then moves into cryosphere domain, collective needs, perspective, and shared coordination/contribution questions. Existing question IDs and storage fields are preserved; `UN_WG2_REGION` remains in the catalogue but is rendered on the `main_location` step instead of as a separate page. Verification: `./.venv/bin/python -m py_compile conference/ui.py conference/questionnaire.py conference/public_routes.py pages/25_UN_WG2_Icebreaker.py` passed; `./.venv/bin/python -m pytest tests/test_question_set_yaml_loader.py tests/test_conference_registry.py tests/test_conference_flow.py` passed with 19 tests. Screenshots checked: `/private/tmp/ice_typography_pdf/wg2-landing-purpose-desktop.png`, `/private/tmp/ice_typography_pdf/wg2-spatial-context-desktop.png`.
+- 2026-07-07: Added Typewolf-style typography reference page. Files changed: `app.py`, `pages/test_typewolf_reference.py`, `PLAN.md`. Result: Lab navigation now includes `Test · Typewolf reference`, a self-contained page reproducing the attached screenshot's dusty background, large white serif masthead, uppercase nav, centered editorial title, metadata, and image/text preview card using static CSS only. Verification: `./.venv/bin/python -m py_compile app.py pages/test_typewolf_reference.py` passed. Screenshot checked: `/private/tmp/ice_typography_pdf/typewolf-reference-page.png`.
+- 2026-07-07: Added native-typography questionnaire landing reference page. Files changed: `app.py`, `pages/test_questionnaire_landing_native.py`, `PLAN.md`. Result: Lab navigation now includes `Test · Questionnaire landing`, a Streamlit-native questionnaire landing prototype based on `Test · Typography native` tokens and structure: native title, Fraunces accent voice, measured body copy, translucent rounded containers, metrics, flow preview, and native primary/secondary/tertiary buttons. Verification: `./.venv/bin/python -m py_compile app.py pages/test_questionnaire_landing_native.py` passed. Screenshot checked: `/private/tmp/ice_typography_pdf/questionnaire-landing-native.png`.
+- 2026-07-07: Moved WG2 to the native questionnaire typography system. Files changed: `conference/ui.py`, `PLAN.md`. Result: the WG2 participant route now uses the cleaner native prototype tokens: glacier background, Space Grotesk body text, Fraunces accent text, translucent panels, pill-shaped native buttons, quieter helper text, and tighter form controls. Pipeline note: spawning Streamlit and capturing screenshots is relatively token/time expensive, so routine verification is compile/tests only for now; live server and screenshots should be run only when explicitly requested for visual QA. Verification target for this pass: `py_compile` plus focused questionnaire tests; screenshots intentionally skipped.
+- 2026-07-07: Tightened WG2 landing information blocks. Files changed: `conference/questionnaire.py`, `conference/ui.py`, `PLAN.md`. Result: `Purpose` and `This pilot` now render as a responsive two-column grid when horizontal space is available and collapse to stacked blocks on mobile; the pilot bullet list uses tighter line height and item spacing to remove unnecessary whitespace. Verification target for this pass: compile/tests only; screenshots intentionally skipped under the lightweight pipeline.
+- 2026-07-07: Aligned WG2 landing actions and question page template. Files changed: `conference/questionnaire.py`, `conference/ui.py`, `PLAN.md`. Result: the public landing now uses one keyed Streamlit card containing both the hero content and entry buttons, removing the button/card misalignment. Normal question pages now render as `{progress row} · {section}`, then context paragraph, then main question, then answers/details, then a stable navigation row. Blocked `Continue` writes a reserved validation message above the navigation row while keeping `Continue`, `Flag`, and `Skip` visible. Verification: `./.venv/bin/python -m py_compile conference/ui.py conference/questionnaire.py conference/public_routes.py pages/25_UN_WG2_Icebreaker.py app.py` passed; `./.venv/bin/python -m pytest tests/test_question_set_yaml_loader.py tests/test_conference_registry.py tests/test_conference_flow.py` passed with 19 tests. Screenshots intentionally skipped under the lightweight pipeline.
+- 2026-07-07: Tuned WG2 question context hierarchy. Files changed: `conference/questionnaire.py`, `conference/ui.py`, `PLAN.md`. Result: question context now starts with a monospace `Context:` label, uses a slightly larger type size, and has tighter spacing to the main question than the progress row has to the context. Verification: `./.venv/bin/python -m py_compile conference/ui.py conference/questionnaire.py` passed; focused questionnaire tests passed with 19 tests.
+- 2026-07-07: Expanded WG2 YAML questionnaire to 15 proposed questions. Files changed: `conference/question_sets/un_wg2_v1.yaml`, `conference/questionnaire.py`, `pages/27_UN_WG2_Host.py`, `tests/test_conference_registry.py`, `tests/test_conference_flow.py`, `PLAN.md`. Result: WG2 now includes active participant-profile questions for expertise, support needs, and work style; the active flow is organized as `I. Who is speaking?`, `II. Spatial context`, `III. Needs`, and `IV. Action`; region is now a separate active question instead of being merged into location; profile fields are stored under participant profile payload; the host page shows proposed questions by the four groups and a YAML-only/disabled section for questions present in YAML but not active. Verification: registry reports YAML source with 15 questions and the requested order; `./.venv/bin/python -m py_compile conference/questionnaire.py pages/27_UN_WG2_Host.py conference/question_sets/yaml_loader.py` passed; focused questionnaire tests passed with 20 tests.
+- 2026-07-07: Updated WG2 question context copy. Files changed: `conference/question_sets/un_wg2_v1.yaml`, `PLAN.md`. Result: all 15 active WG2 question context descriptions now use the refined participant-facing copy while preserving IDs, fields, order, options, and grouping. Verification: YAML loader and registry tests passed with 13 tests; registry reports YAML source with 15 questions.
+- 2026-07-07: Updated WG2 time-horizon options and accessibility label. Files changed: `conference/question_sets/un_wg2_v1.yaml`, `conference/questionnaire.py`, `PLAN.md`. Result: time horizon options now run from immediate next week through 3 months, seasonal/annual, 3 years, SDG 2030, decade, event-based, century, beyond century, and not sure; hidden text areas now receive non-empty accessible labels to avoid Streamlit label warnings. Verification: `py_compile` passed and focused questionnaire tests passed with 20 tests.
 
 ## Immediate next step for coding agent
 

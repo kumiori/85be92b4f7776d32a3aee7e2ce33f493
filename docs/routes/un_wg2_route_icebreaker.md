@@ -10,7 +10,7 @@ It is the first coordination layer of WG2:
 
 - the questionnaire is the interface through which coordination begins;
 - the immediate goal is to make the Working Group visible to itself;
-- the first route should prove route identity, scoped persistence, and route-specific overview behavior before real content expands.
+- the first route should prove route identity, scoped persistence, and route-specific overview behaviour before real content expands.
 
 The route starts as a pilot for the core leadership of WG2, then may widen to the broader Working Group.
 
@@ -40,14 +40,14 @@ route:
   campaign_root: /un-wg2
   public_path: /un-wg2-icebreaker
   campaign_slug: un-cryosphere-decade
-  event_slug: un_wg2_first_iteration
+  event_slug: un_wg2_visibility
   session_code: un_wg2_core_2026
   text_id: un_wg2_v1
   question_set_id: un_wg2_v1
   schema_id: questionnaire_v1
   response_scope: event_session
   lifecycle: draft
-  title: Working Group 2 — First Iteration
+  title: Working Group 2 — Module 1: Visibility
   subtitle: Actionable Cryosphere Projections
   framing: WG2 Coordination Platform
   edition: First implementation (Pilot)
@@ -59,7 +59,7 @@ Identity rule:
 All writes through `/un-wg2-icebreaker` must resolve explicitly to:
 
 - `campaign_slug = un-cryosphere-decade`
-- `event_slug = un_wg2_first_iteration`
+- `event_slug = un_wg2_visibility`
 - `session_code = un_wg2_core_2026`
 - `text_id = un_wg2_v1`
 - `question_set_id = un_wg2_v1`
@@ -74,14 +74,14 @@ No fallback to another route is acceptable.
 
 ```yaml
 audiences:
-  core:
-    label: Core WG2
-    access: invited
-    purpose: initial calibration and framing
-  extended:
-    label: Extended WG2
-    access: invited_later
-    purpose: broaden views, collect priorities, identify tensions
+    core:
+        label: Core WG2
+        access: invited
+        purpose: initial calibration and framing
+    extended:
+        label: Extended WG2
+        access: invited_later
+        purpose: broaden views, collect priorities, identify tensions
 ```
 
 Phase rule:
@@ -95,19 +95,19 @@ Phase rule:
 
 ```yaml
 persistence:
-  response_scope: event_session
-  participant_model: global_participant_with_event_specific_participations
-  allow_profile_persistence: true
-  profile_persistent_fields:
-    - name
-    - email
-    - affiliation
-    - role_in_decade
-  session_local_fields:
-    - priorities
-    - concerns
-    - projections_needs
-    - collaboration_preferences
+    response_scope: event_session
+    participant_model: global_participant_with_event_specific_participations
+    allow_profile_persistence: true
+    profile_persistent_fields:
+        - name
+        - email
+        - affiliation
+        - role_in_decade
+    session_local_fields:
+        - priorities
+        - concerns
+        - projections_needs
+        - collaboration_preferences
 ```
 
 Additional persistence notes:
@@ -138,14 +138,14 @@ This is the acceptance threshold for scaffolding.
 
 ```yaml
 pathway:
-  ordered_steps:
-    - orientation
-    - participant_context
-    - projection_needs
-    - uncertainty_and_usability
-    - decision_support
-    - coordination
-    - open_reflection
+    ordered_steps:
+        - orientation
+        - participant_context
+        - projection_needs
+        - uncertainty_and_usability
+        - decision_support
+        - coordination
+        - open_reflection
 ```
 
 Interpretation:
@@ -164,12 +164,12 @@ Interpretation:
 
 ```yaml
 modes:
-  quick:
-    target_minutes: 5
-  standard:
-    target_minutes: 12
-  deep:
-    target_minutes: 20
+    quick:
+        target_minutes: 5
+    standard:
+        target_minutes: 12
+    deep:
+        target_minutes: 20
 ```
 
 Scaffold rule:
@@ -255,14 +255,14 @@ Suggested scaffold question:
 
 ```yaml
 mock_question:
-  step: coordination
-  field: wg2_coordination_signal
-  question_id: UN_WG2_COORDINATION_SIGNAL
-  title: First coordination signal
-  prompt: What should WG2 make more visible or better coordinated first?
-  context: This is a smoke-test question for the first WG2 coordination route. It is only here to prove the route resolves, writes, and reads back safely.
-  input_type: text
-  required: false
+    step: coordination
+    field: wg2_coordination_signal
+    question_id: UN_WG2_COORDINATION_SIGNAL
+    title: First coordination signal
+    prompt: What should WG2 make more visible or better coordinated first?
+    context: This is a smoke-test question for the first WG2 coordination route. It is only here to prove the route resolves, writes, and reads back safely.
+    input_type: text
+    required: false
 ```
 
 Rule:
@@ -275,18 +275,18 @@ Do not add the real WG2 question set until this mock route passes the acceptance
 
 ```yaml
 pages:
-  participant:
-    route: /un-wg2-icebreaker
-    visibility: invited_core_draft
-  overview:
-    route: /un-wg2-overview
-    visibility: host_admin_draft
-  host:
-    route: /un-wg2-host
-    visibility: host_admin_draft
-  admin_visibility:
-    conference_bundle_inspector: required
-    recent_event_logs: required
+    participant:
+        route: /un-wg2-icebreaker
+        visibility: invited_core_draft
+    overview:
+        route: /un-wg2-overview
+        visibility: host_admin_draft
+    host:
+        route: /un-wg2-host
+        visibility: host_admin_draft
+    admin_visibility:
+        conference_bundle_inspector: required
+        recent_event_logs: required
 ```
 
 Participant rule:
@@ -316,7 +316,7 @@ This route must follow the questionnaire playbook and current shared UI contract
 ### Feedback systems
 
 - question flagging must work
-- skip must open a reason dialog
+- skip must open a reason dialogue
 - skip reason must persist
 - review must show question feedback
 
@@ -327,7 +327,7 @@ Before opening the route, capture:
 1. landing page
 2. mock question
 3. flag control open
-4. skip dialog open
+4. skip dialogue open
 5. review page
 6. done page
 7. overview page
@@ -345,12 +345,12 @@ The first overview may be minimal, but it must be scoped.
 Required first-pass overview elements:
 
 - route identity block
-  - `campaign_slug`
-  - `event_slug`
-  - `session_code`
-  - `text_id`
-  - `question_set_id`
-  - `schema_id`
+    - `campaign_slug`
+    - `event_slug`
+    - `session_code`
+    - `text_id`
+    - `question_set_id`
+    - `schema_id`
 - submission count
 - answered question count
 - skipped question count
@@ -366,10 +366,10 @@ The overview must read only WG2 rows.
 
 ```yaml
 contamination_policy:
-  silent_deletion: false
-  host_visibility: required
-  admin_visibility: required
-  recovery_preference: rehydrate_after_visibility
+    silent_deletion: false
+    host_visibility: required
+    admin_visibility: required
+    recovery_preference: rehydrate_after_visibility
 ```
 
 If contaminated rows appear:
@@ -385,15 +385,15 @@ If contaminated rows appear:
 
 ```yaml
 implementation_sequence:
-  - Add route brief: docs/routes/un_wg2_route_icebreaker.md
-  - Add mock question set: conference/question_sets/un_wg2_v1.py
-  - Register route in conference/registry.py
-  - Add event/session resolver entry in conference/events.py
-  - Expose participant route /un-wg2-icebreaker
-  - Add minimal overview filtered only by un_wg2_core_2026
-  - Add host/operator page
-  - Smoke test with one mock answer
-  - Only then add real WG2 questions
+    - Add route brief: docs/routes/un_wg2_route_icebreaker.md
+    - Add mock question set: conference/question_sets/un_wg2_v1.py
+    - Register route in conference/registry.py
+    - Add event/session resolver entry in conference/events.py
+    - Expose participant route /un-wg2-icebreaker
+    - Add minimal overview filtered only by un_wg2_core_2026
+    - Add host/operator page
+    - Smoke test with one mock answer
+    - Only then add real WG2 questions
 ```
 
 ---

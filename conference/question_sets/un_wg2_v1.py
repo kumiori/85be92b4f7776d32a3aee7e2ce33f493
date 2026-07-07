@@ -1,14 +1,19 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Dict
 
 from conference.question_sets import QuestionDefinition, QuestionSet, merge_questions
 from conference.question_sets.shared import follow_up_interest_question
+from conference.question_sets.yaml_loader import load_question_set_yaml
 
 
 STEP_ORDER = (
     "welcome",
     "participant_context",
+    "participant_geography",
+    "contribution_lens",
+    "coordination_resonance",
     "coordination",
     "open_reflection",
     "follow_up_interest",
@@ -24,6 +29,9 @@ FLOW_MODES: Dict[str, Dict[str, Any]] = {
         "accent": "🧭",
         "steps": [
             "participant_context",
+            "participant_geography",
+            "contribution_lens",
+            "coordination_resonance",
             "coordination",
             "open_reflection",
             "follow_up_interest",
@@ -36,21 +44,52 @@ STEP_COPY = {
         "title": "Working Group 2 — First Iteration",
         "body": "Actionable Cryosphere Projections",
         "note": (
-            "This pilot is the first coordination layer of WG2. "
-            "The aim is to make the group visible to itself before broader coordination begins."
+            "WG2 needs a first coordination layer to make needs, roles, missing links, "
+            "and projection-use contexts visible before the wider rollout."
         ),
         "cta": "Start the WG2 icebreaker",
     },
     "participant_context": {
         "title": "Participant context",
         "body": "First we situate who is speaking in or around WG2.",
+        "context": (
+            "Different roles see different constraints, interfaces, and points of leverage."
+        ),
+        "cta": "Continue",
+    },
+    "participant_geography": {
+        "title": "Where are you mainly based?",
+        "body": (
+            "WG2 spans places, institutions, and regional situations. "
+            "A lightweight location signal helps make these contexts visible."
+        ),
+        "context": (
+            "Share only what you want to make explicit. Do not provide precise coordinates unless "
+            "you choose to add them manually."
+        ),
+        "cta": "Continue",
+    },
+    "contribution_lens": {
+        "title": "What can you bring to WG2 at this stage?",
+        "body": (
+            "This is not a formal mandate. It is a first signal about where you could be useful "
+            "in the coordination layer."
+        ),
+        "context": "You may select more than one contribution lens.",
+        "cta": "Continue",
+    },
+    "coordination_resonance": {
+        "title": "A first resonance check",
+        "body": (
+            "This asks whether the core difficulty already feels like a coordination and interface "
+            "problem, not only a resource problem."
+        ),
         "cta": "Continue",
     },
     "coordination": {
         "title": "First coordination signal",
         "body": (
-            "This is the first smoke-test question for the WG2 coordination route. "
-            "It proves that a route-specific answer can be written, read back, and kept isolated."
+            "What should become more visible, better connected, or easier to act on first?"
         ),
         "cta": "Continue",
     },
@@ -72,10 +111,10 @@ STEP_COPY = {
     "review": {
         "title": "Review before integrating",
         "body": (
-            "This pilot belongs only to the first WG2 icebreaker session. "
-            "Profile information may later be reused only if WG2 explicitly opts into it."
+            "This first coordination layer belongs only to the current WG2 session. "
+            "Profile information is reused only where WG2 has explicitly opted into it."
         ),
-        "cta": "Integrate",
+        "cta": "Submit this first WG2 coordination layer",
     },
     "done": {
         "title": "Thank you.",
@@ -87,7 +126,7 @@ STEP_COPY = {
     },
 }
 
-QUESTION_SET = QuestionSet(
+_PYTHON_FALLBACK_QUESTION_SET = QuestionSet(
     id="un_wg2_v1",
     source_module=__name__,
     step_copy=STEP_COPY,
@@ -118,6 +157,78 @@ QUESTION_SET = QuestionSet(
                 free_text_label="If other, specify",
                 free_text_placeholder="Your role in a few words",
             ),
+            QuestionDefinition(
+                step="participant_geography",
+                field="wg2_geography_context",
+                question_id="UN_WG2_GEOGRAPHY_CONTEXT",
+                prompt="Where are you mainly based?",
+                subtitle=(
+                    "You can give a country or region, an institutional location, and, only if you wish, approximate coordinates."
+                ),
+                input_type="geography_context",
+                required=False,
+                group="participant_context",
+                subgroup="geography",
+            ),
+            QuestionDefinition(
+                step="contribution_lens",
+                field="wg2_contribution_lens",
+                question_id="UN_WG2_CONTRIBUTION_LENS",
+                prompt="What can you bring to WG2 at this stage?",
+                subtitle=(
+                    "This can be scientific, practical, institutional, communicative, or coordination-oriented."
+                ),
+                input_type="multi",
+                options=(
+                    {"value": "cryosphere_observations", "label": "Cryosphere observations"},
+                    {"value": "climate_modelling", "label": "Climate modelling"},
+                    {"value": "regional_knowledge", "label": "Regional knowledge"},
+                    {"value": "risk_translation", "label": "Risk translation"},
+                    {"value": "stakeholder_engagement", "label": "Stakeholder engagement"},
+                    {"value": "data_infrastructure", "label": "Data infrastructure"},
+                    {"value": "uncertainty_communication", "label": "Uncertainty communication"},
+                    {"value": "policy_interface", "label": "Policy interface"},
+                    {"value": "visualisation_mapping", "label": "Visualisation / mapping"},
+                    {"value": "facilitation_coordination", "label": "Facilitation / coordination"},
+                    {"value": "other", "label": "Other"},
+                ),
+                required=False,
+                group="participant_context",
+                subgroup="contribution",
+                free_text_field="wg2_contribution_lens_detail",
+                free_text_label="If other, specify",
+                free_text_placeholder="Another contribution lens",
+            ),
+            QuestionDefinition(
+                step="coordination_resonance",
+                field="wg2_coordination_resonance",
+                question_id="UN_WG2_COORDINATION_RESONANCE",
+                prompt=(
+                    "The main bottleneck is not only lack of resources, but lack of visibility, "
+                    "coordination, and smooth interfaces between people, data, and decisions."
+                ),
+                subtitle="How strongly does this resonate with your view?",
+                input_type="scale",
+                options=(
+                    {"value": "-5", "label": "-5 · Dissonates"},
+                    {"value": "-4", "label": "-4"},
+                    {"value": "-3", "label": "-3"},
+                    {"value": "-2", "label": "-2"},
+                    {"value": "-1", "label": "-1"},
+                    {"value": "0", "label": "0 · Neutral"},
+                    {"value": "1", "label": "1"},
+                    {"value": "2", "label": "2"},
+                    {"value": "3", "label": "3"},
+                    {"value": "4", "label": "4"},
+                    {"value": "5", "label": "5 · Strongly resonates"},
+                ),
+                required=False,
+                group="coordination",
+                subgroup="resonance",
+                free_text_field="wg2_coordination_resonance_comment",
+                free_text_label="Optional comment",
+                free_text_placeholder="A short note if you want to qualify your score",
+            ),
         ),
         (
             QuestionDefinition(
@@ -126,8 +237,7 @@ QUESTION_SET = QuestionSet(
                 question_id="UN_WG2_COORDINATION_SIGNAL",
                 prompt="What should WG2 make more visible or better coordinated first?",
                 subtitle=(
-                    "This is the first mock coordination signal for the route. "
-                    "It is here to prove identity, write scope, and readback."
+                    "You can point to a need, an interface, a missing link, or one place where better coordination would unlock value."
                 ),
                 input_type="text",
                 required=False,
@@ -160,6 +270,11 @@ QUESTION_SET = QuestionSet(
         "role_in_decade",
     ),
     session_fields=(
+        "wg2_geography_context",
+        "wg2_contribution_lens",
+        "wg2_contribution_lens_detail",
+        "wg2_coordination_resonance",
+        "wg2_coordination_resonance_comment",
         "wg2_coordination_signal",
         "collaboration_preferences",
         "follow_up_interest",
@@ -177,4 +292,29 @@ QUESTION_SET = QuestionSet(
     migration_profile_fields=("role_in_decade",),
     default_mode="quick",
     show_mode_selection=False,
+    show_welcome_step=False,
+    source_kind="python_fallback",
+    source_path=str(Path(__file__).resolve()),
 )
+
+
+_YAML_SPEC_CANDIDATES = (
+    Path(__file__).with_suffix(".yaml"),
+    Path(__file__).with_name("specs") / "un_wg2_v1.yaml",
+)
+
+
+def _load_question_set() -> QuestionSet:
+    for candidate in _YAML_SPEC_CANDIDATES:
+        if candidate.exists():
+            return load_question_set_yaml(candidate, source_module=__name__)
+    checked = ", ".join(str(path) for path in _YAML_SPEC_CANDIDATES)
+    return QuestionSet(
+        **{
+            **_PYTHON_FALLBACK_QUESTION_SET.__dict__,
+            "source_note": f"YAML spec not found. Checked: {checked}",
+        }
+    )
+
+
+QUESTION_SET = _load_question_set()
