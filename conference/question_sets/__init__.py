@@ -75,6 +75,10 @@ class QuestionSet:
     migration_profile_fields: Sequence[str]
     default_mode: str = "quick"
     show_mode_selection: bool = True
+    show_welcome_step: bool = True
+    source_kind: str = "python"
+    source_path: str = ""
+    source_note: str = ""
 
 
 def question_ids(question_set: QuestionSet) -> list[str]:
@@ -171,6 +175,7 @@ def validate_question_set(question_set: QuestionSet) -> list[str]:
     seen_ids: set[str] = set()
     seen_steps: set[str] = set()
     step_order = {str(step) for step in question_set.step_order}
+    built_in_steps = {"welcome", "identity", "review", "done"}
     for question in question_set.questions:
         if question.question_id in seen_ids:
             errors.append(f"Duplicate question id in {question_set.id}: {question.question_id}")
@@ -182,7 +187,10 @@ def validate_question_set(question_set: QuestionSet) -> list[str]:
             errors.append(f"Question step missing from step_order in {question_set.id}: {question.step}")
     for mode, payload in question_set.flow_modes.items():
         for step in payload.get("steps", []):
-            if str(step) not in seen_steps:
+            token = str(step)
+            if token in built_in_steps:
+                continue
+            if token not in seen_steps:
                 errors.append(f"Mode {mode} references unknown step in {question_set.id}: {step}")
     return errors
 

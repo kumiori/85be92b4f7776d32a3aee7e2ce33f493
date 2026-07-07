@@ -710,6 +710,33 @@ def sidebar_debug_state(*, debug_context: Optional[dict[str, Any]] = None) -> No
             if query_snapshot:
                 st.caption("Query params")
                 st.json(query_snapshot, expanded=False)
+        question_set_keys = (
+            "question_set_id",
+            "question_set_source_kind",
+            "question_set_source_path",
+            "question_set_source_note",
+            "question_count",
+            "shared_question_count",
+            "event_specific_question_count",
+            "question_set_module",
+        )
+        question_set_activity = {
+            key: resolved_context.get(key)
+            for key in question_set_keys
+            if str(resolved_context.get(key) or "").strip()
+        }
+        if question_set_activity:
+            with st.sidebar.expander("Debug · Question set activity", expanded=True):
+                st.table(
+                    [
+                        {"field": key, "value": value}
+                        for key, value in question_set_activity.items()
+                    ]
+                )
+                question_ids = resolved_context.get("question_ids")
+                if isinstance(question_ids, list):
+                    st.caption(f"Loaded question ids ({len(question_ids)})")
+                    st.json(question_ids, expanded=False)
     conference_snapshot = _conference_debug_snapshot()
     if conference_snapshot:
         with st.sidebar.expander("Debug · Conference flow", expanded=False):

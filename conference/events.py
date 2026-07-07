@@ -7,18 +7,23 @@ from typing import Any
 YOUNG_SESSION_CODE = "pisa-conference-session"
 COMPLEXITY_SESSION_CODE = "petnica_2026"
 DALAMBERTIENNES_SESSION_CODE = "dalembertiennes_2026"
+UN_WG2_SESSION_CODE = "un_wg2_core_2026"
 UNESCO_SESSION_CODE = "global-session"
 YOUNG_TEXT_ID = "pisa_session_v2"
 COMPLEXITY_TEXT_ID = "petnica_2026"
 LEGACY_COMPLEXITY_TEXT_ID = "complexity_session_v2"
 DALAMBERTIENNES_TEXT_ID = "dalembertiennes_v1"
 LEGACY_DALAMBERTIENNES_TEXT_ID = "dalembertiennes_v0"
+UN_WG2_TEXT_ID = "un_wg2_v1"
 COMPLEXITY_EVENT_CODE = COMPLEXITY_SESSION_CODE
 COMPLEXITY_EVENT_LABEL = "COMPLEXITY"
 COMPLEXITY_EVENT_LOCATION = "Petnica"
 DALAMBERTIENNES_EVENT_CODE = DALAMBERTIENNES_SESSION_CODE
 DALAMBERTIENNES_EVENT_LABEL = "D'Alembertiennes"
 DALAMBERTIENNES_EVENT_LOCATION = "D'Alembert Lab"
+UN_WG2_EVENT_CODE = UN_WG2_SESSION_CODE
+UN_WG2_EVENT_LABEL = "Working Group 2 — First Iteration"
+UN_WG2_EVENT_LOCATION = "UN Cryosphere Decade"
 
 YOUNG_OVERVIEW_PAGE = "pages/17_Young_Overview.py"
 COMPLEXITY_ENTRY_PAGE = "pages/15_Pisa_Meeting.py"
@@ -27,6 +32,9 @@ COMPLEXITY_OVERVIEW_PAGE = "pages/20_Complexity_Overview.py"
 DALAMBERTIENNES_ENTRY_PAGE = "pages/21_Dalembertiennes.py"
 DALAMBERTIENNES_HOST_PAGE = "pages/23_Dalembertiennes_Host.py"
 DALAMBERTIENNES_OVERVIEW_PAGE = "pages/22_Dalembertiennes_Overview.py"
+UN_WG2_ENTRY_PAGE = "pages/25_UN_WG2_Icebreaker.py"
+UN_WG2_OVERVIEW_PAGE = "pages/26_UN_WG2_Overview.py"
+UN_WG2_HOST_PAGE = "pages/27_UN_WG2_Host.py"
 
 
 @dataclass(frozen=True)
@@ -42,6 +50,7 @@ class ConferenceEventConfig:
     questionnaire_page: str
     overview_page: str
     host_page: str
+    response_scope: str = "event_specific"
     aliases: tuple[str, ...] = ()
 
 
@@ -73,6 +82,26 @@ _EVENT_CONFIGS = (
         overview_page=DALAMBERTIENNES_OVERVIEW_PAGE,
         host_page=DALAMBERTIENNES_HOST_PAGE,
         aliases=("dalembertiennes", DALAMBERTIENNES_SESSION_CODE),
+    ),
+    ConferenceEventConfig(
+        slug="un_wg2_first_iteration",
+        session_code=UN_WG2_SESSION_CODE,
+        label=UN_WG2_EVENT_LABEL,
+        location=UN_WG2_EVENT_LOCATION,
+        text_ids=(UN_WG2_TEXT_ID,),
+        primary_text_id=UN_WG2_TEXT_ID,
+        question_set_id=UN_WG2_TEXT_ID,
+        schema_id="questionnaire_v1",
+        questionnaire_page=UN_WG2_ENTRY_PAGE,
+        overview_page=UN_WG2_OVERVIEW_PAGE,
+        host_page=UN_WG2_HOST_PAGE,
+        response_scope="event_session",
+        aliases=(
+            "un_wg2_first_iteration",
+            "un-wg2",
+            "un-wg2-icebreaker",
+            UN_WG2_SESSION_CODE,
+        ),
     ),
 )
 _EVENT_CONFIG_BY_CODE = {item.session_code: item for item in _EVENT_CONFIGS}
@@ -160,7 +189,7 @@ def conference_event_context(
         "question_set_id": config.question_set_id if config else resolved_code,
         "text_id": config.primary_text_id if config else resolved_code,
         "schema_id": config.schema_id if config else resolved_code,
-        "response_scope": "event_specific",
+        "response_scope": config.response_scope if config else "event_specific",
         "event_status": event_status,
         "write_enabled": _event_write_enabled(event_status),
         "questionnaire_page": (
@@ -210,6 +239,7 @@ def _is_reserved_non_complexity_code(value: Any) -> bool:
         YOUNG_SESSION_CODE.lower(),
         UNESCO_SESSION_CODE.lower(),
         "global-session",
+        UN_WG2_SESSION_CODE.lower(),
     }
 
 

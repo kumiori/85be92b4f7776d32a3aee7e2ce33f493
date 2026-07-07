@@ -22,6 +22,7 @@ QUESTION_SET_STATE_KEY = "conference_question_set"
 CURRENT_SCHEMA_VERSION = 2
 MULTI_INPUT_TYPES = {"multi"}
 TEXT_INPUT_TYPES = {"text"}
+COMPOSITE_INPUT_TYPES = {"geography_context"}
 
 
 def _resolve_question_set(question_set: QuestionSet | None = None) -> QuestionSet:
@@ -62,6 +63,16 @@ def _default_draft(question_set: QuestionSet) -> Dict[str, Any]:
             draft.setdefault("scientific_home_country", "")
             draft.setdefault("scientific_home_city", "")
             draft.setdefault("scientific_home_institution", "")
+        elif question.input_type in COMPOSITE_INPUT_TYPES:
+            draft.setdefault(
+                field,
+                {
+                    "country_region": "",
+                    "institution_location": "",
+                    "coordinates_consent": "",
+                    "coordinates": "",
+                },
+            )
         elif question.input_type == "fingerprint":
             draft.setdefault(field, {axis: 0 for axis in question_set.fingerprint_axes})
         elif question.input_type in MULTI_INPUT_TYPES:
@@ -92,7 +103,29 @@ def active_step_sequence(
     *,
     question_set: QuestionSet | None = None,
 ) -> List[str]:
-    return ["welcome", *active_question_steps(draft, question_set=question_set), "identity", "review", "done"]
+    qset = _resolve_question_set(question_set)
+    prefix = ["welcome"] if qset.show_welcome_step else []
+    return [
+        *prefix,
+        *active_question_steps(draft, question_set=qset),
+        "identity",
+        "review",
+        "done",
+    ]
+
+
+def initial_step(
+    draft: Dict[str, Any] | None = None,
+    *,
+    question_set: QuestionSet | None = None,
+) -> str:
+    qset = _resolve_question_set(question_set)
+    if qset.show_welcome_step:
+        return "welcome"
+    steps = active_question_steps(draft, question_set=qset)
+    if steps:
+        return steps[0]
+    return "identity"
 
 
 def first_active_question_step(
@@ -111,6 +144,8 @@ def should_collect_contact(
 ) -> bool:
     source = draft or get_draft(question_set=question_set)
     qset = _resolve_question_set(question_set)
+    if "__always__" in set(qset.follow_up_contact_values):
+        return True
     for field in ("follow_up_interest", "continue_conversation"):
         value = str(source.get(field) or "").strip()
         if value:
@@ -120,17 +155,18 @@ def should_collect_contact(
 
 def init_flow_state(*, question_set: QuestionSet | None = None) -> None:
     qset = set_active_question_set(_resolve_question_set(question_set))
-    st.session_state.setdefault("conference_step", "welcome")
+    st.session_state.setdefault("conference_step", initial_step(question_set=qset))
     st.session_state.setdefault("conference_draft", deepcopy(_default_draft(qset)))
 
 
 def reset_flow_state(*, question_set: QuestionSet | None = None) -> None:
     qset = set_active_question_set(_resolve_question_set(question_set))
-    st.session_state["conference_step"] = "welcome"
+    st.session_state["conference_step"] = initial_step(question_set=qset)
     st.session_state["conference_draft"] = deepcopy(_default_draft(qset))
     st.session_state.pop("conference_hydrated", None)
     st.session_state.pop("conference_submission_cache", None)
     st.session_state.pop("conference_submission_cache_key", None)
+    st.session_state.pop("conference_last_step_view", None)
     for key in list(st.session_state.keys()):
         if key.startswith("conference_widget_") or key.startswith("conference_log_"):
             del st.session_state[key]
@@ -216,6 +252,30 @@ def _normalize_text(value: Any) -> str:
     return str(value or "").strip()
 
 
+def _normalize_geography_context(value: Any) -> Dict[str, str]:
+    source = value if isinstance(value, dict) else {}
+    consent = str(source.get("coordinates_consent") or "").strip().lower()
+    coordinates = _normalize_text(source.get("coordinates"))
+    if coordinates and consent not in {"yes", "manual", "lookup"}:
+        consent = "manual"
+    return {
+        "country_region": _normalize_text(source.get("country_region")),
+        "institution_location": _normalize_text(source.get("institution_location")),
+        "coordinates_consent": consent,
+        "coordinates": coordinates,
+        "geocode_query": _normalize_text(source.get("geocode_query")),
+        "geocode_label": _normalize_text(source.get("geocode_label")),
+        "geocode_source": _normalize_text(source.get("geocode_source")),
+    }
+
+
+def _geography_context_answered(value: Dict[str, str]) -> bool:
+    return any(
+        str(value.get(field) or "").strip()
+        for field in ("country_region", "institution_location", "coordinates")
+    )
+
+
 def _normalize_fingerprint(question_set: QuestionSet, value: Any) -> Dict[str, int]:
     source = value if isinstance(value, dict) else {}
     out: Dict[str, int] = {}
@@ -269,6 +329,8 @@ def is_field_answered(field: str, draft: Dict[str, Any], *, question_set: Questi
         return bool(_coerce_values(draft.get(field, [])))
     if question and question.input_type == "fingerprint":
         return _fingerprint_answered(qset, _normalize_fingerprint(qset, draft.get(field)))
+    if question and question.input_type in COMPOSITE_INPUT_TYPES:
+        return _geography_context_answered(_normalize_geography_context(draft.get(field)))
     if field == "scientific_home":
         return any(
             _normalize_text(draft.get(key))
@@ -399,6 +461,8 @@ def build_session_payload(
         if field not in active_fields:
             if question.input_type == "fingerprint":
                 target[field] = {axis: 0 for axis in qset.fingerprint_axes}
+            elif question.input_type in COMPOSITE_INPUT_TYPES:
+                target[field] = _normalize_geography_context({})
             elif question.input_type in MULTI_INPUT_TYPES:
                 target[field] = []
             else:
@@ -408,6 +472,8 @@ def build_session_payload(
             continue
         if question.input_type == "fingerprint":
             target[field] = _normalize_fingerprint(qset, draft.get(field))
+        elif question.input_type in COMPOSITE_INPUT_TYPES:
+            target[field] = _normalize_geography_context(draft.get(field))
         elif question.input_type in MULTI_INPUT_TYPES:
             allowed = field_value_set(qset, field)
             target[field] = _normalize_values(_coerce_values(draft.get(field, [])), allowed, question.max_select)
@@ -455,6 +521,8 @@ def flatten_payload(
         value = source.get(field)
         if question.input_type == "fingerprint":
             out[field] = _normalize_fingerprint(qset, value)
+        elif question.input_type in COMPOSITE_INPUT_TYPES:
+            out[field] = _normalize_geography_context(value)
         elif question.input_type in MULTI_INPUT_TYPES:
             out[field] = list(value or [])
         else:
@@ -525,6 +593,8 @@ def step_is_complete(
         return True
     field = str(question.field)
     if question.input_type == "scientific_home":
+        return True
+    if question.input_type in COMPOSITE_INPUT_TYPES:
         return True
     if field in normalized_deferred_fields(draft, question_set=qset):
         return True

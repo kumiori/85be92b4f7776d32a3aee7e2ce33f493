@@ -18,14 +18,17 @@ LEGACY_QUESTION_BUNDLE = "PISA_MEETING_BUNDLE"
 COMPLEXITY_QUESTION_BUNDLE = "COMPLEXITY_BUNDLE"
 DALEMBERTIENNES_QUESTION_BUNDLE = "DALEMBERTIENNES_BUNDLE"
 LEGACY_DALAMBERTIENNES_QUESTION_BUNDLE = "DALAMBERTIENNES_BUNDLE"
+UN_WG2_QUESTION_BUNDLE = "UN_WG2_BUNDLE"
 QUESTION_BUNDLE_IDS = {
     LEGACY_QUESTION_BUNDLE,
     COMPLEXITY_QUESTION_BUNDLE,
     DALEMBERTIENNES_QUESTION_BUNDLE,
     LEGACY_DALAMBERTIENNES_QUESTION_BUNDLE,
+    UN_WG2_QUESTION_BUNDLE,
 }
 ANONYMOUS_COMPLEXITY_NAME = "🌀"
 ANONYMOUS_DALEMBERTIENNES_NAME = "📐"
+ANONYMOUS_UN_WG2_NAME = "🧭"
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 VARIATION_SELECTORS = {0xFE0E, 0xFE0F}
 ZWJ_CODEPOINT = 0x200D
@@ -423,6 +426,7 @@ def _bundle_id_for_text_id(text_id: str) -> str:
         "complexity_session_v2": COMPLEXITY_QUESTION_BUNDLE,
         "dalembertiennes_v0": DALEMBERTIENNES_QUESTION_BUNDLE,
         "dalembertiennes_v1": DALEMBERTIENNES_QUESTION_BUNDLE,
+        "un_wg2_v1": UN_WG2_QUESTION_BUNDLE,
     }
     bundle_id = mapping.get(token)
     if bundle_id:
@@ -440,6 +444,12 @@ def _anonymous_name_for_bundle(bundle: Dict[str, Any]) -> str:
         or text_id in {"dalembertiennes_v0", "dalembertiennes_v1"}
     ):
         return ANONYMOUS_DALEMBERTIENNES_NAME
+    if (
+        event_slug == "un_wg2_first_iteration"
+        or session_code == "un_wg2_core_2026"
+        or text_id == "un_wg2_v1"
+    ):
+        return ANONYMOUS_UN_WG2_NAME
     return ANONYMOUS_COMPLEXITY_NAME
 
 
@@ -607,6 +617,15 @@ class ConferenceRepo:
                 "dalembertiennes_lab_questionnaire_v0",
             }:
                 failure_reasons.append("dalembertiennes_wrong_question_set_id")
+        if canonical_text_id == "un_wg2_v1":
+            if event_slug != "un_wg2_first_iteration":
+                failure_reasons.append("un_wg2_wrong_event_slug")
+            if session_code != "un_wg2_core_2026":
+                failure_reasons.append("un_wg2_wrong_session_code")
+            if question_set_id != "un_wg2_v1":
+                failure_reasons.append("un_wg2_wrong_question_set_id")
+            if response_scope != "event_session":
+                failure_reasons.append("un_wg2_wrong_response_scope")
 
         if failure_reasons:
             metadata = {
