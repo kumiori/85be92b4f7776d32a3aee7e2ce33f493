@@ -1258,6 +1258,8 @@ def cracks_globe_block(
     camera_lat: float = 0.0,
     camera_lng: float = 0.0,
     camera_altitude: float = 1.2,
+    point_color: str = "orange",
+    point_value_label: str = "Energy",
 ) -> None:
     safe_key = "".join(ch if ch.isalnum() else "-" for ch in key).strip("-") or "cracks"
     globe_id = f"globe-{safe_key}"
@@ -1301,6 +1303,8 @@ def cracks_globe_block(
 <div id="{tooltip_id}"></div>
 <script>
   const cryosphereCracksData = {points_json};
+  const pointColor = {json.dumps(point_color)};
+  const pointValueLabel = {json.dumps(point_value_label)};
   const globeContainer = document.getElementById("{globe_id}");
   const tooltip = document.getElementById("{tooltip_id}");
 
@@ -1316,14 +1320,15 @@ def cracks_globe_block(
     .pointsData(cryosphereCracksData)
     .pointLat(d => d.lat)
     .pointLng(d => d.lng)
-    .pointAltitude(d => d.energy * 0.001)
-    .pointColor(() => "orange")
+    .pointAltitude(d => (d.energy || d.count || 1) * 0.001)
+    .pointColor(() => pointColor)
     .pointRadius(0.5)
     .onPointHover(d => {{
       if (!tooltip) return;
       if (d) {{
+        const pointValue = d.count ?? d.energy ?? "";
         tooltip.style.display = "block";
-        tooltip.innerHTML = `<b>${{d.name}}</b><br>Energy: ${{d.energy}}`;
+        tooltip.innerHTML = `<b>${{d.name}}</b><br>${{pointValueLabel}}: ${{pointValue}}`;
       }} else {{
         tooltip.style.display = "none";
       }}
