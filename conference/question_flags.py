@@ -4,6 +4,8 @@ from typing import Any, Dict, Iterable, List
 
 
 QUESTION_FLAG_OPTIONS: List[Dict[str, str]] = [
+    {"value": "interesting_question", "label": "Interesting question"},
+    {"value": "useful_for_coordination", "label": "Useful for coordination"},
     {"value": "incomplete", "label": "Incomplete"},
     {"value": "misleading", "label": "Misleading"},
     {"value": "too_narrow", "label": "Too narrow"},
