@@ -38,7 +38,13 @@ def test_build_session_payload_emits_schema_v2_and_filters_values():
             "boiler_room_contribution": "  Poster draft: https://example.org/poster  ",
             "question_flags": {
                 "COMPLEXITY_ROLE": {
-                    "flags": ["misleading", "bad", "misleading"],
+                    "flags": [
+                        "interesting_question",
+                        "useful_for_coordination",
+                        "misleading",
+                        "bad",
+                        "misleading",
+                    ],
                     "note": "  Missing hybrid options  ",
                 },
                 "": {"flags": ["unclear"]},
@@ -68,7 +74,11 @@ def test_build_session_payload_emits_schema_v2_and_filters_values():
     )
     assert payload["session"]["question_flags"] == {
         "COMPLEXITY_ROLE": {
-            "flags": ["misleading"],
+            "flags": [
+                "interesting_question",
+                "useful_for_coordination",
+                "misleading",
+            ],
             "note": "Missing hybrid options",
         }
     }
