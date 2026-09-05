@@ -167,8 +167,15 @@ def reset_flow_state(*, question_set: QuestionSet | None = None) -> None:
     st.session_state.pop("conference_submission_cache", None)
     st.session_state.pop("conference_submission_cache_key", None)
     st.session_state.pop("conference_last_step_view", None)
+    st.session_state.pop("conference_edit_context", None)
+    st.session_state.pop("conference_edit_draft", None)
+    st.session_state.pop("conference_edit_validation", None)
     for key in list(st.session_state.keys()):
-        if key.startswith("conference_widget_") or key.startswith("conference_log_"):
+        if (
+            key.startswith("conference_widget_")
+            or key.startswith("conference_log_")
+            or key.startswith("conference_location_lookup_")
+        ):
             del st.session_state[key]
 
 
@@ -252,15 +259,32 @@ def _normalize_text(value: Any) -> str:
     return str(value or "").strip()
 
 
-def _normalize_geography_context(value: Any) -> Dict[str, str]:
+def _normalize_geography_context(value: Any) -> Dict[str, Any]:
     source = value if isinstance(value, dict) else {}
     consent = str(source.get("coordinates_consent") or "").strip().lower()
     coordinates = _normalize_text(source.get("coordinates"))
     if coordinates and consent not in {"yes", "manual", "lookup"}:
         consent = "manual"
+    latitude = source.get("approximate_latitude")
+    longitude = source.get("approximate_longitude")
     return {
         "country_region": _normalize_text(source.get("country_region")),
         "institution_location": _normalize_text(source.get("institution_location")),
+        "raw_input": _normalize_text(source.get("raw_input")),
+        "resolved_label": _normalize_text(
+            source.get("resolved_label") or source.get("geocode_label")
+        ),
+        "country": _normalize_text(source.get("country")),
+        "region": _normalize_text(source.get("region")),
+        "city": _normalize_text(source.get("city")),
+        "approximate_latitude": latitude if latitude not in {"", None} else None,
+        "approximate_longitude": longitude if longitude not in {"", None} else None,
+        "source": _normalize_text(
+            source.get("source") or source.get("geocode_source")
+        ),
+        "confirmation_state": _normalize_text(source.get("confirmation_state")),
+        "lookup_status": _normalize_text(source.get("lookup_status")),
+        "lookup_error": _normalize_text(source.get("lookup_error")),
         "coordinates_consent": consent,
         "coordinates": coordinates,
         "geocode_query": _normalize_text(source.get("geocode_query")),

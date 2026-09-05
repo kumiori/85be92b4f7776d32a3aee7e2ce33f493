@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from copy import deepcopy
 import html
 import hashlib
+import time
 import uuid
 from collections.abc import Mapping
 from typing import Any, Callable, Dict, List
@@ -67,6 +69,17 @@ from conference.question_flags import (
 from conference.repo import emoji_suffix, resolve_access_key_input
 from conference.topology import count_field, room_snapshot
 from conference.ui import apply_conference_styles, conference_header, summary_card
+from conference.wg2_ux import (
+    LOCATION_DEBOUNCE_SECONDS,
+    confirm_location,
+    correct_location,
+    edit_context,
+    location_lookup_due,
+    location_lookup_failure,
+    merge_answer_fields,
+    parse_opencage_result,
+    revision_payload,
+)
 from infra.event_logger import log_event
 from infra.key_codec import generate_hex_key, hex_to_emoji, split_emoji_symbols
 from ui import set_page, sidebar_debug_state
@@ -76,6 +89,8 @@ IDENTITY_STEP = "identity"
 ENTRY_KEY = "conference_entry_mode"
 LOGIN_ERROR_KEY = "conference_login_error"
 QUESTION_VALIDATION_KEY = "conference_question_validation"
+EDIT_CONTEXT_KEY = "conference_edit_context"
+EDIT_DRAFT_KEY = "conference_edit_draft"
 OPENCAGE_ENDPOINT = "https://api.opencagedata.com/geocode/v1/json"
 
 
@@ -1390,7 +1405,7 @@ def _location_lookup_query(country_region: str, institution_location: str) -> st
     )
 
 
-def _lookup_location_coordinates(query: str) -> dict[str, str]:
+def _lookup_location_coordinates(query: str) -> dict[str, Any]:
     token = str(query or "").strip()
     if not token:
         raise ValueError("Enter a country, region, city, or institution first.")
@@ -1409,25 +1424,12 @@ def _lookup_location_coordinates(query: str) -> dict[str, str]:
         timeout=8,
     )
     response.raise_for_status()
-    payload = response.json()
-    results = payload.get("results") if isinstance(payload, dict) else []
-    if not results:
-        raise LookupError("No location match found.")
-    first = results[0]
-    geometry = first.get("geometry") if isinstance(first, dict) else {}
-    lat = geometry.get("lat") if isinstance(geometry, dict) else None
-    lng = geometry.get("lng") if isinstance(geometry, dict) else None
-    if lat is None or lng is None:
-        raise LookupError("The location match did not include coordinates.")
-    return {
-        "coordinates": f"{float(lat):.6f}, {float(lng):.6f}",
-        "geocode_label": str(first.get("formatted") or token).strip(),
-        "geocode_query": token,
-        "geocode_source": "opencage",
-    }
+    return parse_opencage_result(response.json(), token)
 
 
-def _render_geography_context(question: QuestionDefinition) -> None:
+def _render_geography_context_body(
+    question: QuestionDefinition, session: Dict[str, Any]
+) -> None:
     draft = get_draft(question_set=current_question_set())
     existing = draft.get(str(question.field), {})
     current = existing if isinstance(existing, dict) else {}
@@ -1444,78 +1446,256 @@ def _render_geography_context(question: QuestionDefinition) -> None:
         placeholder="Institution, city, or local context",
     )
     lookup_query = _location_lookup_query(country_region, institution_location)
-    lookup_disabled = not bool(lookup_query)
-    if st.button(
-        "Look up approximate coordinates",
-        key=f"conference_widget_{question.field}_lookup",
-        use_container_width=True,
-        disabled=lookup_disabled,
-        help=(
-            "Uses the entered place through OpenCage geocoding. "
-            "No IP location inference is used."
-        ),
+    state_key = f"conference_location_lookup_{question.field}"
+    now = time.monotonic()
+    state = st.session_state.get(state_key)
+    if not isinstance(state, dict):
+        existing_query = str(
+            current.get("raw_input") or current.get("geocode_query") or ""
+        ).strip()
+        has_existing_match = bool(
+            current.get("resolved_label") or current.get("geocode_label")
+        )
+        state = {
+            "scheduled_query": lookup_query,
+            "scheduled_at": now,
+            "attempted_query": lookup_query if has_existing_match and existing_query == lookup_query else "",
+            "status": str(current.get("lookup_status") or "")
+            or ("success" if has_existing_match else "pending"),
+            "editing": False,
+        }
+    if lookup_query != str(state.get("scheduled_query") or ""):
+        state.update(
+            {
+                "scheduled_query": lookup_query,
+                "scheduled_at": now,
+                "status": "pending" if lookup_query else "",
+                "editing": False,
+            }
+        )
+        current = {
+            **current,
+            "raw_input": lookup_query,
+            "resolved_label": "",
+            "country": "",
+            "region": "",
+            "city": "",
+            "approximate_latitude": None,
+            "approximate_longitude": None,
+            "source": "",
+            "confirmation_state": "pending" if lookup_query else "",
+            "lookup_status": "pending" if lookup_query else "",
+            "lookup_error": "",
+            "coordinates": "",
+            "coordinates_consent": "",
+            "geocode_query": lookup_query,
+            "geocode_label": "",
+            "geocode_source": "",
+        }
+    if location_lookup_due(
+        query=lookup_query,
+        scheduled_query=str(state.get("scheduled_query") or ""),
+        scheduled_at=float(state.get("scheduled_at") or 0.0),
+        attempted_query=str(state.get("attempted_query") or ""),
+        now=now,
+        debounce_seconds=LOCATION_DEBOUNCE_SECONDS,
     ):
+        state["attempted_query"] = lookup_query
+        state["status"] = "looking_up"
+        _log_route_event(
+            session,
+            event_type="location_lookup_started",
+            step=str(question.step or ""),
+            question=question,
+            value_label=lookup_query,
+        )
         try:
             with st.spinner("Looking up approximate coordinates..."):
                 looked_up = _lookup_location_coordinates(lookup_query)
             current = {
                 **current,
                 **looked_up,
-                "coordinates_consent": "lookup",
             }
-            st.success(
-                f"Found approximate coordinates for {looked_up['geocode_label']}."
+            state["status"] = "success"
+            _log_route_event(
+                session,
+                event_type="location_lookup_succeeded",
+                step=str(question.step or ""),
+                question=question,
+                value_label=str(looked_up.get("resolved_label") or ""),
+                extra={
+                    "query": lookup_query,
+                    "source": str(looked_up.get("source") or ""),
+                },
             )
         except Exception as exc:
-            st.warning(f"Could not look up that location: {exc}")
-    consent = st.checkbox(
-        "I want to add or edit approximate coordinates manually",
-        value=str(current.get("coordinates_consent") or "").strip().lower()
-        in {"yes", "manual"},
-        key=f"conference_widget_{question.field}_coordinates_consent",
-    )
-    coordinates = str(current.get("coordinates") or "").strip()
-    current_coordinates = str(current.get("coordinates") or "").strip()
-    if consent or current_coordinates:
-        coordinates = st.text_input(
-            "Approximate coordinates",
-            value=current_coordinates,
-            key=f"conference_widget_{question.field}_coordinates",
-            placeholder="Latitude, longitude or another approximate cue",
-        )
+            current = location_lookup_failure(current, lookup_query, str(exc))
+            state["status"] = "failure"
+            _log_route_event(
+                session,
+                event_type="location_lookup_failed",
+                step=str(question.step or ""),
+                question=question,
+                status="error",
+                value_label=lookup_query,
+                level="WARNING",
+                extra={"error": str(exc)},
+            )
+
+    resolved_label = str(
+        current.get("resolved_label") or current.get("geocode_label") or ""
+    ).strip()
+    lookup_status = str(current.get("lookup_status") or state.get("status") or "")
+    if lookup_status in {"pending", "looking_up"} and lookup_query:
         st.markdown(
-            '<div class="caption">Coordinates come from your explicit lookup or manual entry. We do not infer location from IP.</div>',
+            '<div class="caption">Finding an approximate location…</div>',
             unsafe_allow_html=True,
         )
-    geocode_label = str(current.get("geocode_label") or "").strip()
-    if geocode_label:
+    if resolved_label and lookup_status == "success" and not bool(state.get("editing")):
         st.markdown(
-            f'<div class="caption">Lookup match: {html.escape(geocode_label)}</div>',
+            (
+                '<div class="helper-text"><strong>Approximate location found:</strong><br>'
+                f"{html.escape(resolved_label)}</div>"
+            ),
             unsafe_allow_html=True,
         )
-    coordinates_consent = ""
-    if consent:
-        coordinates_consent = "manual"
-    elif str(current.get("coordinates_consent") or "").strip().lower() == "lookup":
-        coordinates_consent = "lookup"
+        confirm_col, edit_col = st.columns(2)
+        with confirm_col:
+            if st.button(
+                "Looks right",
+                type="primary",
+                use_container_width=True,
+                key=f"conference_widget_{question.field}_confirm_location",
+            ):
+                current = confirm_location(current)
+                _log_route_event(
+                    session,
+                    event_type="location_lookup_confirmed",
+                    step=str(question.step or ""),
+                    question=question,
+                    value_label=resolved_label,
+                )
+        with edit_col:
+            if st.button(
+                "Edit location",
+                use_container_width=True,
+                key=f"conference_widget_{question.field}_edit_location",
+            ):
+                state["editing"] = True
+                _log_route_event(
+                    session,
+                    event_type="location_correction_started",
+                    step=str(question.step or ""),
+                    question=question,
+                    value_label=resolved_label,
+                )
+
+    if lookup_status == "failure":
+        st.warning(
+            "We could not locate this automatically. You can continue with the text "
+            "you entered or add an approximate place manually."
+        )
+        if st.button(
+            "Add an approximate place manually",
+            use_container_width=True,
+            key=f"conference_widget_{question.field}_manual_location",
+        ):
+            state["editing"] = True
+
+    if bool(state.get("editing")):
+        manual_label = st.text_input(
+            "Resolved place",
+            value=resolved_label or lookup_query,
+            key=f"conference_widget_{question.field}_resolved_label",
+        )
+        manual_city = st.text_input(
+            "City",
+            value=str(current.get("city") or ""),
+            key=f"conference_widget_{question.field}_resolved_city",
+        )
+        manual_region = st.text_input(
+            "Region",
+            value=str(current.get("region") or ""),
+            key=f"conference_widget_{question.field}_resolved_region",
+        )
+        manual_country = st.text_input(
+            "Country",
+            value=str(current.get("country") or ""),
+            key=f"conference_widget_{question.field}_resolved_country",
+        )
+        lat_col, lng_col = st.columns(2)
+        with lat_col:
+            manual_latitude = st.text_input(
+                "Approximate latitude (optional)",
+                value=str(current.get("approximate_latitude") or ""),
+                key=f"conference_widget_{question.field}_resolved_latitude",
+            )
+        with lng_col:
+            manual_longitude = st.text_input(
+                "Approximate longitude (optional)",
+                value=str(current.get("approximate_longitude") or ""),
+                key=f"conference_widget_{question.field}_resolved_longitude",
+            )
+        if st.button(
+            "Save location correction",
+            type="primary",
+            use_container_width=True,
+            key=f"conference_widget_{question.field}_save_location_correction",
+        ):
+            try:
+                current = correct_location(
+                    current,
+                    resolved_label=manual_label,
+                    country=manual_country,
+                    region=manual_region,
+                    city=manual_city,
+                    latitude=manual_latitude,
+                    longitude=manual_longitude,
+                )
+            except ValueError:
+                st.warning("Use decimal numbers for latitude and longitude, or leave them blank.")
+            else:
+                state["editing"] = False
+                state["status"] = "success"
+                _log_route_event(
+                    session,
+                    event_type="location_corrected",
+                    step=str(question.step or ""),
+                    question=question,
+                    value_label=str(current.get("resolved_label") or ""),
+                    extra={"source": "manual_correction"},
+                )
+
+    current = {
+        **current,
+        "country_region": str(country_region or "").strip(),
+        "institution_location": str(institution_location or "").strip(),
+        "raw_input": lookup_query,
+    }
+    st.session_state[state_key] = state
     update_draft(
         question_set=current_question_set(),
-        **{
-            str(question.field): {
-                "country_region": str(country_region or "").strip(),
-                "institution_location": str(institution_location or "").strip(),
-                "coordinates_consent": coordinates_consent,
-                "coordinates": str(coordinates or "").strip(),
-                "geocode_query": str(current.get("geocode_query") or "").strip(),
-                "geocode_label": geocode_label,
-                "geocode_source": str(current.get("geocode_source") or "").strip(),
-            }
-        },
+        **{str(question.field): current},
     )
 
 
-def _render_wg2_spatial_context(question: QuestionDefinition) -> None:
-    _render_geography_context(question)
+@st.fragment(run_every=0.2)
+def _render_geography_context(
+    question: QuestionDefinition, session: Dict[str, Any]
+) -> None:
+    _render_geography_context_body(question, session)
+
+
+def _render_wg2_spatial_context(
+    question: QuestionDefinition,
+    session: Dict[str, Any],
+    *,
+    use_location_fragment: bool = True,
+) -> None:
+    if use_location_fragment:
+        _render_geography_context(question, session)
+    else:
+        _render_geography_context_body(question, session)
     if "region" in active_question_steps(question_set=current_question_set()):
         return
     region_question = question_by_step(current_question_set(), "region")
@@ -1596,7 +1776,12 @@ def _render_fingerprint() -> None:
         )
 
 
-def _render_question_step(step: str) -> None:
+def _render_question_step(
+    step: str,
+    session: Dict[str, Any],
+    *,
+    use_location_fragment: bool = True,
+) -> None:
     question = question_by_step(current_question_set(), step)
     if not question:
         return
@@ -1615,9 +1800,15 @@ def _render_question_step(step: str) -> None:
 
     if input_type == "geography_context":
         if str(question.field) == "wg2_main_location":
-            _render_wg2_spatial_context(question)
+            _render_wg2_spatial_context(
+                question,
+                session,
+                use_location_fragment=use_location_fragment,
+            )
+        elif use_location_fragment:
+            _render_geography_context(question, session)
         else:
-            _render_geography_context(question)
+            _render_geography_context_body(question, session)
         return
 
     if input_type == "fingerprint":
@@ -1682,7 +1873,254 @@ def _render_identity() -> None:
     )
 
 
-def _render_review(session: Dict[str, Any]) -> None:
+def _question_edit_fields(question: QuestionDefinition) -> list[str]:
+    field = str(question.field or "").strip()
+    if field == "scientific_home":
+        fields = [
+            "scientific_home_country",
+            "scientific_home_city",
+            "scientific_home_institution",
+        ]
+    else:
+        fields = [field] if field else []
+    detail_field = str(getattr(question, "free_text_field", "") or "").strip()
+    if detail_field:
+        fields.append(detail_field)
+    return fields
+
+
+def _review_questions(
+    payload: Dict[str, Any],
+    *,
+    section: str,
+    active_steps: set[str],
+) -> list[QuestionDefinition]:
+    profile_fields = set(current_question_set().profile_fields)
+    questions: list[QuestionDefinition] = []
+    for question in current_question_set().questions:
+        field = str(question.field)
+        is_profile = field in profile_fields or field == "scientific_home"
+        if section == "profile" and not is_profile:
+            continue
+        if section == "session" and is_profile:
+            continue
+        if str(question.step) not in active_steps:
+            continue
+        if _question_answered(question, payload):
+            questions.append(question)
+    return questions
+
+
+def _begin_answer_edit(question: QuestionDefinition, original_step: int) -> None:
+    draft = get_draft(question_set=current_question_set())
+    st.session_state[EDIT_CONTEXT_KEY] = {
+        **edit_context(
+            question_id=str(question.question_id or ""),
+            step=str(question.step or ""),
+            original_step=original_step,
+            submitted=bool(draft.get("submitted")),
+        ),
+        "previous_value": deepcopy(_question_value(question, draft)),
+    }
+    st.session_state[EDIT_DRAFT_KEY] = deepcopy(draft)
+    st.session_state["conference_edit_validation"] = ""
+
+
+def _save_answer_revision(
+    repo: Any,
+    session: Dict[str, Any],
+    question: QuestionDefinition,
+    *,
+    previous_value: Any,
+) -> bool:
+    draft = get_draft(question_set=current_question_set())
+    payload = revision_payload(
+        _payload_for_session(draft, session),
+        question_id=str(question.question_id or ""),
+        field=str(question.field or ""),
+        previous_value=previous_value,
+    )
+    identity_metadata = build_identity_metadata(
+        draft, question_set=current_question_set()
+    )
+    access_key = _ensure_access_key()
+    access_key_hash = repo.access_key_hash(access_key)
+    access_key_last4 = emoji_suffix(access_key)
+    try:
+        player = repo.upsert_conference_player(
+            session_id=session["id"],
+            access_key=access_key,
+            payload=payload,
+            identity_metadata=identity_metadata,
+        )
+        repo.save_session_response_set(
+            session["id"],
+            str((player or {}).get("id") or ""),
+            _event_context(session)["text_id"],
+            str(st.session_state.get("conference_device_id", "")),
+            access_key_hash,
+            access_key_last4,
+            payload,
+            identity_metadata,
+        )
+    except Exception as exc:
+        _log_route_event(
+            session,
+            event_type="answer_revision_failed",
+            step=str(question.step or ""),
+            question=question,
+            status="error",
+            value_label=str(exc),
+            level="ERROR",
+            extra={"error": str(exc)},
+        )
+        st.error(f"Could not save this revision: {exc}")
+        return False
+    st.session_state["conference_submission_cache"] = build_payload_view(
+        draft, question_set=current_question_set()
+    ) | {
+        "access_key_hash": access_key_hash,
+        "access_key_last4": access_key_last4,
+        "actor_key": f"player:{str((player or {}).get('id') or '')}"
+        if (player or {}).get("id")
+        else f"response:{access_key_hash}",
+    }
+    _log_route_event(
+        session,
+        event_type="answer_revision_appended",
+        step=str(question.step or ""),
+        question=question,
+        player_id=str((player or {}).get("id") or ""),
+        value_label=_labels_for(
+            str(question.field), _question_value(question, draft)
+        )[:240],
+        extra={"append_only": True},
+    )
+    return True
+
+
+def _open_edit_answer_dialog(
+    repo: Any, session: Dict[str, Any], question: QuestionDefinition
+) -> None:
+    @st.dialog("Edit this answer")
+    def _edit_dialog() -> None:
+        context = st.session_state.get(EDIT_CONTEXT_KEY, {})
+        live_draft = deepcopy(get_draft(question_set=current_question_set()))
+        edit_draft = st.session_state.get(EDIT_DRAFT_KEY)
+        if not isinstance(edit_draft, dict):
+            edit_draft = deepcopy(live_draft)
+        st.markdown(f"### {html.escape(str(question.prompt or 'Answer'))}")
+        st.session_state["conference_draft"] = deepcopy(edit_draft)
+        try:
+            _render_question_step(
+                str(question.step or ""),
+                session,
+                use_location_fragment=False,
+            )
+            edited_now = deepcopy(get_draft(question_set=current_question_set()))
+        finally:
+            st.session_state["conference_draft"] = live_draft
+        st.session_state[EDIT_DRAFT_KEY] = edited_now
+
+        validation = str(st.session_state.get("conference_edit_validation") or "")
+        if validation:
+            st.warning(validation)
+        save_col, cancel_col = st.columns(2)
+        with save_col:
+            if st.button(
+                "Save revision",
+                type="primary",
+                use_container_width=True,
+                key=f"conference_edit_save_{question.question_id}",
+            ):
+                edited_payload = build_payload_view(
+                    edited_now, question_set=current_question_set()
+                )
+                if not _question_answered(question, edited_payload):
+                    st.session_state["conference_edit_validation"] = (
+                        "Add an answer before saving this revision."
+                    )
+                    st.rerun()
+                merged = merge_answer_fields(
+                    live_draft,
+                    edited_now,
+                    _question_edit_fields(question),
+                )
+                st.session_state["conference_draft"] = merged
+                if bool(context.get("submitted")):
+                    saved = _save_answer_revision(
+                        repo,
+                        session,
+                        question,
+                        previous_value=context.get("previous_value"),
+                    )
+                    if not saved:
+                        return
+                else:
+                    _log_route_event(
+                        session,
+                        event_type="answer_draft_updated",
+                        step=str(question.step or ""),
+                        question=question,
+                        value_label=_labels_for(
+                            str(question.field), _question_value(question, merged)
+                        )[:240],
+                    )
+                set_step("review", question_set=current_question_set())
+                st.session_state.pop(EDIT_CONTEXT_KEY, None)
+                st.session_state.pop(EDIT_DRAFT_KEY, None)
+                st.session_state["conference_edit_validation"] = ""
+                st.rerun()
+        with cancel_col:
+            if st.button(
+                "Cancel",
+                use_container_width=True,
+                key=f"conference_edit_cancel_{question.question_id}",
+            ):
+                st.session_state.pop(EDIT_CONTEXT_KEY, None)
+                st.session_state.pop(EDIT_DRAFT_KEY, None)
+                st.session_state["conference_edit_validation"] = ""
+                set_step("review", question_set=current_question_set())
+                st.rerun()
+
+    _edit_dialog()
+
+
+def _render_review_answer_card(
+    question: QuestionDefinition,
+    payload: Dict[str, Any],
+    *,
+    original_step: int,
+) -> None:
+    card_key = f"conference_review_card_{str(question.question_id).lower()}"
+    with st.container(border=True, key=card_key):
+        answer_col, edit_col = st.columns(
+            [8, 2],
+            gap="small",
+            vertical_alignment="center",
+        )
+        with answer_col:
+            st.markdown(
+                f'<div class="review-answer-title">{html.escape(str(question.prompt or _question_title(question)))}</div>',
+                unsafe_allow_html=True,
+            )
+            st.markdown(
+                f'<div class="review-answer-body">{_question_summary_body(question, payload)}</div>',
+                unsafe_allow_html=True,
+            )
+        with edit_col:
+            if st.button(
+                "Edit",
+                type="tertiary",
+                icon=":material/edit:",
+                width="content",
+                key=f"conference_review_edit_{question.question_id}",
+            ):
+                _begin_answer_edit(question, original_step)
+                st.rerun()
+
+
+def _render_review(repo: Any, session: Dict[str, Any]) -> None:
     _render_boiler_room_expander()
     payload = build_payload_view(
         get_draft(question_set=current_question_set()),
@@ -1696,20 +2134,36 @@ def _render_review(session: Dict[str, Any]) -> None:
     )
     summary_card("Mode", _labels_for("mode", str(payload.get("mode") or "quick")))
     summary_card("Profile", "Persistent across events unless you change it.")
-    for title, body in _question_summary_entries(
+    active_sequence = active_question_steps(
+        get_draft(question_set=current_question_set()),
+        question_set=current_question_set(),
+    )
+    for question in _review_questions(
         payload, section="profile", active_steps=active_steps
     ):
-        summary_card(title, body)
+        _render_review_answer_card(
+            question,
+            payload,
+            original_step=active_sequence.index(str(question.step))
+            if str(question.step) in active_sequence
+            else 0,
+        )
 
     summary_card(
         "Session",
         f"These answers belong to {_event_scope_text(session)} and can change next time.",
     )
     summary_card("Event context", _event_scope_text(session))
-    for title, body in _question_summary_entries(
+    for question in _review_questions(
         payload, section="session", active_steps=active_steps
     ):
-        summary_card(title, body)
+        _render_review_answer_card(
+            question,
+            payload,
+            original_step=active_sequence.index(str(question.step))
+            if str(question.step) in active_sequence
+            else 0,
+        )
     if payload.get("boiler_room_contribution"):
         summary_card(
             "Boiler room contribution",
@@ -1736,6 +2190,18 @@ def _render_review(session: Dict[str, Any]) -> None:
         " · ".join(part for part in identity_parts if part) or "Remain anonymous"
     )
     summary_card("Alias or identity", identity_text)
+    context = st.session_state.get(EDIT_CONTEXT_KEY)
+    if isinstance(context, dict) and str(context.get("question_id") or ""):
+        question = next(
+            (
+                item
+                for item in current_question_set().questions
+                if str(item.question_id) == str(context.get("question_id"))
+            ),
+            None,
+        )
+        if question:
+            _open_edit_answer_dialog(repo, session, question)
 
 
 def _question_teasers(submissions: List[Dict[str, Any]], self_actor: str) -> List[str]:
@@ -1943,9 +2409,19 @@ def _render_personal_dashboard(repo: Any, session: Dict[str, Any]) -> None:
             title, _, text = item.partition("|||")
             summary_card(title or "Question", html.escape(text))
 
+    if st.button(
+        "Review and edit individual answers",
+        type="primary",
+        use_container_width=True,
+        key="conference-dashboard-review-edit",
+    ):
+        set_step("review", question_set=current_question_set())
+        _set_entry_mode("new")
+        st.rerun()
+
     mode = str(payload.get("mode") or "quick")
     if mode == "quick":
-        if st.button("Continue in Standard", type="primary", use_container_width=True):
+        if st.button("Continue in Standard", use_container_width=True):
             _resume_in_mode("standard")
         if st.button("Continue in Deep dive", use_container_width=True):
             _resume_in_mode("deep")
@@ -2040,29 +2516,34 @@ def _render_navigation(repo: Any, session: Dict[str, Any]) -> None:
     if step in {"welcome", "done"}:
         return
     if step == "review":
-        left, right, side = st.columns([1, 1, 0.55])
-        with left:
-            if st.button("Edit", use_container_width=True):
-                set_step(
-                    first_active_question_step(question_set=current_question_set()),
-                    question_set=current_question_set(),
-                )
-                st.rerun()
-        with right:
-            review_help = None
-            if _event_is_read_only(session):
-                review_help = f"This event is {str(_event_context(session).get('event_status') or 'closed')}."
+        submitted = bool(
+            get_draft(question_set=current_question_set()).get("submitted")
+        )
+        if submitted:
             if st.button(
-                current_question_set().step_copy["review"]["cta"],
+                "Return to my dashboard",
                 type="primary",
                 use_container_width=True,
-                disabled=_event_is_read_only(session),
-                help=review_help,
+                key="conference-review-return-dashboard",
             ):
-                _open_confirm_send_dialog(repo, session)
-        with side:
-            if question:
-                _render_question_flag_control(question, session)
+                _set_entry_mode("dashboard")
+                st.rerun()
+            return
+        review_help = None
+        if _event_is_read_only(session):
+            review_help = (
+                f"This event is "
+                f"{str(_event_context(session).get('event_status') or 'closed')}."
+            )
+        if st.button(
+            current_question_set().step_copy["review"]["cta"],
+            type="primary",
+            use_container_width=True,
+            disabled=_event_is_read_only(session),
+            help=review_help,
+            key="conference-review-submit",
+        ):
+            _open_confirm_send_dialog(repo, session)
         return
 
     if question:
@@ -2180,11 +2661,11 @@ def _render_questionnaire(repo: Any, session: Dict[str, Any]) -> None:
     elif step == IDENTITY_STEP:
         _render_identity()
     elif step == "review":
-        _render_review(session)
+        _render_review(repo, session)
     elif step == "done":
         _render_done(session)
     else:
-        _render_question_step(step)
+        _render_question_step(step, session)
 
     _render_navigation(repo, session)
 
