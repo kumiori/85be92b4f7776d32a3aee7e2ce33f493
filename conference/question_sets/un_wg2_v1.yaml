@@ -1,5 +1,7 @@
 question_set:
     id: un_wg2_v1
+    version: '2'
+    schema_id: questionnaire_v2
     default_mode: quick
     show_mode_selection: false
     show_welcome_step: false
@@ -258,7 +260,7 @@ questions:
 
     - step: role_lens
       field: wg2_role_lens
-      question_id: UN_WG2_ROLE_LENS
+      question_id: UN_WG2_ROLE_LENS_V2
       prompt: 'What is your main role or lens in WG2?'
       context: 'Different roles see different parts of the same system. Coordination begins by making those perspectives visible.'
       input_type: multi
@@ -266,9 +268,17 @@ questions:
       max_select: 3
       group: profile
       subgroup: role
+      revision:
+          supersedes: UN_WG2_ROLE_LENS
+          change_type: split
+          reason: 'Core group and leadership were previously conflated.'
+          reask_if_answered: true
+          preserve_previous_response: true
       options:
-          - value: core_wg2_leadership
-            label: 'Core WG2 leadership'
+          - value: core_group
+            label: 'Core WG2 group'
+          - value: leadership
+            label: 'WG2 leadership'
           - value: contributing_scientist
             label: 'Contributing scientist'
           - value: modeller
@@ -601,6 +611,45 @@ questions:
           anchors:
               '0': 'Does not resonate'
               '5': 'Strongly resonates'
+
+legacy_questions:
+    - step: role_lens
+      field: wg2_role_lens
+      question_id: UN_WG2_ROLE_LENS
+      prompt: 'What is your main role or lens in WG2?'
+      context: 'Different roles see different parts of the same system. Coordination begins by making those perspectives visible.'
+      input_type: multi
+      required: false
+      max_select: 3
+      group: profile
+      subgroup: role
+      options:
+          - value: core_wg2_leadership
+            label: 'Core WG2 leadership'
+          - value: contributing_scientist
+            label: 'Contributing scientist'
+          - value: modeller
+            label: 'Modeller'
+          - value: observer_data_provider
+            label: 'Observation or data provider'
+          - value: regional_expert
+            label: 'Regional expert'
+          - value: decision_support
+            label: 'Decision-support interface'
+          - value: policy_interface
+            label: 'Policy interface'
+          - value: partner_institution
+            label: 'Partner institution'
+          - value: coordination_support
+            label: 'Coordination support'
+          - value: observer_invited_participant
+            label: 'Observer / invited participant'
+          - value: other
+            label: 'Other'
+      free_text:
+          field: wg2_role_detail
+          label: 'If other or useful, specify'
+          placeholder: 'Your role in a few words'
 
 profile_fields:
     - wg2_main_location

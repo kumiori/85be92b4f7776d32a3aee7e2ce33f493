@@ -27,6 +27,7 @@ numpy==2.4.2
 packaging==26.0
 pandas==2.3.3
 pillow==12.1.1
+philoui @ git+https://github.com/kumiori/philoui.git@eed2e5e5a32f64c59fd5026d72b82aec62a0ffed
 protobuf==6.33.5
 pyarrow==23.0.1
 pycparser==3.0
@@ -40,7 +41,7 @@ requests==2.32.5
 rpds-py==0.30.0
 six==1.17.0
 smmap==5.0.2
-streamlit==1.55.0
+streamlit==1.62.0
 streamlit-authenticator==0.4.2
 tenacity==9.1.4
 toml==0.10.2

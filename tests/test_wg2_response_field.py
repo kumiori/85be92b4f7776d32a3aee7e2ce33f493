@@ -158,7 +158,7 @@ def test_response_field_uses_question_order_from_yaml():
     assert ordered_ids == [
         question.question_id for question in OVERVIEW._active_questions(bundle)
     ]
-    assert ordered_ids[0] == "UN_WG2_ROLE_LENS"
+    assert ordered_ids[0] == "UN_WG2_ROLE_LENS_V2"
 
 
 def test_response_field_partial_route_marks_later_questions_not_reached():

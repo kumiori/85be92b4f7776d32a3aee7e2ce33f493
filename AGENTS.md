@@ -335,6 +335,24 @@ Event creation flow:
 - Never allow a response write without session context, question identity, and text bundle identity.
 - Check `app.py` and `st.switch_page(...)` calls before proposing new routes.
 
+## Test-mode isolation primitive
+
+Every participant-facing event flow should support deliberate testing without mixing test records into production participation.
+
+Implementation rule:
+
+- a test run must resolve to a dedicated persisted session with its own `session_code` and `session_id`;
+- never reuse the production session id and never rely on browser state alone to mark a run as test data;
+- reuse the production question set when the purpose is route QA, but record `test_mode = true`, a debug event slug, and an explicit debug response scope in every response bundle and event;
+- display a persistent, unmistakable `TEST MODE` notice throughout the participant flow;
+- production overviews, member lists, exports, reports, recovery tools, and aggregates must remain scoped to the production session and therefore exclude the debug session by construction;
+- creating or opening a debug session must be an explicit host/operator action, never an automatic side effect of loading a public route;
+- test sessions should be reusable and inactive by default so repeated QA does not mint a new event scope each time;
+- a test participant remains a real database record associated with the debug session. Do not delete only its player row: any later cleanup must resolve and handle its debug-scoped responses and events as one guarded operation;
+- if a test session is reset or archived, keep a minimal operator audit record and never touch production-scoped records.
+
+This is a general event-system primitive, not a WG2-specific exception. New event implementations should define their production/test session pair and test entry path as part of the user flow, data-written contract, logging, analytics scope, and Definition of Done.
+
 ## Loop contract for long-running agents
 
 Each agentic loop must:
@@ -364,11 +382,11 @@ No unbounded background work inside Streamlit request cycles.
 - Do not rename existing fields without migration notes.
 - Add logging with `iceicebaby.<module>`.
 - Every new feature should define:
-  - user flow
-  - data written
-  - event logged
-  - visualization impact
-  - event scope
+    - user flow
+    - data written
+    - event logged
+    - visualization impact
+    - event scope
 
 ## UX rules
 
@@ -378,6 +396,36 @@ No unbounded background work inside Streamlit request cycles.
 - Complexity should be sequenced, not exposed all at once.
 - During question flows, show only the current question, answer inputs, and navigation buttons.
 - No expanders, debug panels, dashboards, or side explanations inside question pages.
+
+## Typography and visual hierarchy rules
+
+- Typography is part of the interaction design, not decoration.
+- Every route must use a consistent type ramp, spacing scale, and layout width.
+- Avoid raw Streamlit default typography when building participant-facing flows.
+- Define page-level CSS tokens for:
+    - font family
+    - heading sizes
+    - body size
+    - line height
+    - paragraph spacing
+    - max text width
+    - button text size
+    - caption/note size
+- Prioritise readability:
+    - generous line height
+    - limited line length
+    - strong hierarchy between title, question, context, and controls
+    - clear contrast between primary and secondary text
+- One screen = one typographic hierarchy.
+- Question pages must show only:
+    - progress
+    - title
+    - question
+    - context/helper text
+    - input
+    - navigation controls
+- No visual clutter, no nested expanders, no dense debug text in participant flows.
+- Mobile typography must be tested explicitly.
 
 ## Aggregation rules
 

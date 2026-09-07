@@ -95,6 +95,30 @@ def _visible_pages() -> dict[str, list[st.Page]]:
         ],
         "**Collective**": [
             st.Page(
+                "pages/29_WG2_Funding_Mixer.py",
+                title="WG2 Funding Mixer",
+                icon=":material/tune:",
+                url_path="wg2-funding-mixer",
+            ),
+            st.Page(
+                "pages/31_WG2_Funding_Mixer_Results.py",
+                title="WG2 Funding Mixer Results",
+                icon=":material/monitoring:",
+                url_path="wg2-funding-mixer-results",
+            ),
+            st.Page(
+                "pages/28_UN_WG2_Info.py",
+                title="About UN WG2",
+                icon=":material/info:",
+                url_path="un-wg2",
+            ),
+            st.Page(
+                "pages/32_UN_WG2_Member.py",
+                title="WG2 Member",
+                icon=":material/person_search:",
+                url_path="un-wg2-member",
+            ),
+            st.Page(
                 "pages/13_UNESCO_Opening.py",
                 title="UNESCO-opening",
                 icon=":material/location_on:",

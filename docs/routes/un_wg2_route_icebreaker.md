@@ -44,7 +44,7 @@ route:
   session_code: un_wg2_core_2026
   text_id: un_wg2_v1
   question_set_id: un_wg2_v1
-  schema_id: questionnaire_v1
+  schema_id: questionnaire_v2
   response_scope: event_session
   lifecycle: draft
   title: Working Group 2 — Module 1: Visibility
@@ -63,7 +63,12 @@ All writes through `/un-wg2-icebreaker` must resolve explicitly to:
 - `session_code = un_wg2_core_2026`
 - `text_id = un_wg2_v1`
 - `question_set_id = un_wg2_v1`
-- `schema_id = questionnaire_v1`
+- `schema_id = questionnaire_v2`
+
+The route keeps `text_id = un_wg2_v1` and `question_set_id = un_wg2_v1` as the
+stable event/catalogue family. Individual questionnaire incarnations are tracked by
+`schema_id` and the YAML `question_set.version`; historical response rows retain the
+schema identity they were originally submitted under.
 - `response_scope = event_session`
 
 No fallback to another route is acceptable.
@@ -278,6 +283,10 @@ pages:
     participant:
         route: /un-wg2-icebreaker
         visibility: invited_core_draft
+    member_recovery:
+        route: /un-wg2-member
+        visibility: protected_core_pilot
+        population: wg2_scoped_responses_outward
     overview:
         route: /un-wg2-overview
         visibility: host_admin_draft
@@ -292,6 +301,26 @@ pages:
 Participant rule:
 
 The participant page must remain thin and must call the generic conference renderer.
+
+Member recovery rule:
+
+- a participant may return with their existing access key or request a signed one-time link;
+- the candidate list is built from WG2-scoped responses, then resolved to existing ICE Players;
+- a missing-email claim remains pending until a host approves it;
+- recovery never mints a new player and never reveals a raw access key;
+- schema alignment offers only semantic refinements and preserves every historical response.
+
+Pilot configuration:
+
+```toml
+[wg2_recovery]
+access_code = "<leadership/core pilot code>"
+base_url = "https://<deployed-app-host>" # optional locally; required for emailed links
+```
+
+Recovery links use the existing `[cookie].key` as their signing secret and expire
+after one hour. The current repository has no transactional email transport, so the
+host panel prepares the message for deliberate sending through the host's email app.
 
 ---
 

@@ -5,7 +5,7 @@ from typing import Any, Mapping
 
 import yaml
 
-from conference.question_sets import QuestionDefinition, QuestionSet
+from conference.question_sets import QuestionDefinition, QuestionRevision, QuestionSet
 
 
 class _QuestionSetYamlLoader(yaml.SafeLoader):
@@ -79,6 +79,22 @@ def _question_from_yaml(raw: Any, *, index: int) -> QuestionDefinition:
     free_text = question.get("free_text") or {}
     if free_text and not isinstance(free_text, Mapping):
         raise ValueError(f"Question `{question_id}` field `free_text` must be a mapping.")
+    revision_raw = question.get("revision") or {}
+    if revision_raw and not isinstance(revision_raw, Mapping):
+        raise ValueError(f"Question `{question_id}` field `revision` must be a mapping.")
+    revision = None
+    if revision_raw:
+        revision = QuestionRevision(
+            supersedes=str(revision_raw.get("supersedes") or "").strip(),
+            change_type=str(revision_raw.get("change_type") or "").strip(),
+            reason=str(revision_raw.get("reason") or "").strip(),
+            reask_if_answered=_as_bool(
+                revision_raw.get("reask_if_answered"), default=False
+            ),
+            preserve_previous_response=_as_bool(
+                revision_raw.get("preserve_previous_response"), default=True
+            ),
+        )
     return QuestionDefinition(
         step=str(question.get("step") or "").strip(),
         field=str(question.get("field") or "").strip(),
@@ -105,6 +121,7 @@ def _question_from_yaml(raw: Any, *, index: int) -> QuestionDefinition:
         free_text_label=str(free_text.get("label") or "").strip(),
         free_text_placeholder=str(free_text.get("placeholder") or "").strip(),
         free_text_required=_as_bool(free_text.get("required"), default=False),
+        revision=revision,
     )
 
 
@@ -168,6 +185,14 @@ def question_set_from_yaml(
         source_kind="yaml",
         source_path=str(meta.get("source_path") or "").strip(),
         source_note=str(meta.get("source_note") or "").strip(),
+        version=str(meta.get("version") or "1").strip(),
+        schema_id=str(meta.get("schema_id") or "").strip(),
+        legacy_questions=tuple(
+            _question_from_yaml(raw, index=index)
+            for index, raw in enumerate(
+                _as_sequence(payload.get("legacy_questions"), field="legacy_questions")
+            )
+        ),
     )
 
 

@@ -466,6 +466,45 @@ def apply_conference_styles() -> None:
             line-height: 1.5;
             color: var(--conference-ink);
         }
+        [class*="st-key-conference_review_card_"] {
+            padding: 0.8rem 0.9rem;
+            background: rgba(255, 255, 255, 0.58);
+        }
+        [class*="st-key-conference_review_card_"] [data-testid="stVerticalBlock"] {
+            gap: 0.2rem;
+        }
+        .review-answer-title {
+            margin: 0 0 0.22rem 0;
+            font-family: var(--type-font-serif);
+            font-size: 0.88rem;
+            line-height: 1.3;
+            font-weight: 600;
+            color: var(--conference-muted);
+        }
+        .review-answer-body {
+            font-family: var(--type-font-sans);
+            font-size: 1rem;
+            line-height: 1.42;
+            color: var(--conference-ink);
+        }
+        [class*="st-key-conference_review_card_"] .stButton > button[kind="tertiary"] {
+            min-height: 2rem;
+            padding: 0.28rem 0.48rem;
+            border: 0;
+            border-radius: 0.35rem;
+            background: transparent;
+            box-shadow: none;
+            color: var(--conference-muted);
+            font-size: 0.82rem;
+            font-weight: 600;
+        }
+        [class*="st-key-conference_review_card_"] .stButton > button[kind="tertiary"]:hover {
+            transform: none;
+            border: 0;
+            background: rgba(44, 111, 163, 0.08);
+            box-shadow: none;
+            color: var(--conference-ink);
+        }
         .stButton > button,
         .stDownloadButton > button {
             min-height: 3.3rem;

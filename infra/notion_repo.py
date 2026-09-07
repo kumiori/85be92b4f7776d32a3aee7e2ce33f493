@@ -1059,8 +1059,23 @@ class NotionRepo:
     def get_player_by_id(
         self, player_id: str, players_db_id: Optional[str] = None
     ) -> Optional[Dict[str, Any]]:
-        """Public accessor for a player lookup by UUID/access key."""
-        player = self._find_player_by_id(player_id, players_db_id=players_db_id)
+        """Resolve a player by Notion page id, with legacy access-key fallback."""
+        player = None
+        compact_id = str(player_id or "").replace("-", "")
+        if len(compact_id) == 32 and all(
+            char in "0123456789abcdefABCDEF" for char in compact_id
+        ):
+            try:
+                page = _execute_with_retry(
+                    self.client.pages.retrieve,
+                    page_id=str(player_id),
+                )
+                if isinstance(page, dict):
+                    player = self._normalize_player(page, players_db_id=players_db_id)
+            except Exception:
+                player = None
+        if not player:
+            player = self._find_player_by_id(player_id, players_db_id=players_db_id)
         if player:
             # For single-player fetches (auth/profile), we can afford a direct retrieve
             # to resolve role accurately when query payload is partial.
@@ -1089,7 +1104,13 @@ class NotionRepo:
                         player["role"] = str(direct_role)
                 except Exception:
                     pass
-            return player
+        return player
+
+    def get_player_by_access_key(
+        self, access_key: str, players_db_id: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
+        """Resolve a participant explicitly by the stored access credential."""
+        return self._find_player_by_id(access_key, players_db_id=players_db_id)
         # Fallback: allow direct player page id lookups for session rehydration/debug.
         if "-" in str(player_id):
             db_id = self._players_db_id(players_db_id)
