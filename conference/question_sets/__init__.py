@@ -4,6 +4,45 @@ from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List, Mapping, Sequence
 
 
+REVISION_CHANGE_TYPES = {
+    "copy_only",
+    "options_changed",
+    "split",
+    "merged",
+    "semantic_change",
+}
+
+
+@dataclass(frozen=True)
+class QuestionRevision:
+    supersedes: str
+    change_type: str
+    reason: str
+    reask_if_answered: bool = False
+    preserve_previous_response: bool = True
+
+    @property
+    def requires_reanswer(self) -> bool:
+        return bool(
+            self.reask_if_answered
+            and self.change_type in {
+                "options_changed",
+                "split",
+                "merged",
+                "semantic_change",
+            }
+        )
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "supersedes": self.supersedes,
+            "change_type": self.change_type,
+            "reason": self.reason,
+            "reask_if_answered": self.reask_if_answered,
+            "preserve_previous_response": self.preserve_previous_response,
+        }
+
+
 @dataclass(frozen=True)
 class QuestionDefinition:
     step: str
@@ -23,6 +62,7 @@ class QuestionDefinition:
     free_text_label: str = ""
     free_text_placeholder: str = ""
     free_text_required: bool = False
+    revision: QuestionRevision | None = None
 
     @property
     def context(self) -> str:
@@ -55,6 +95,8 @@ class QuestionDefinition:
                 "placeholder": self.free_text_placeholder,
                 "required": self.free_text_required,
             }
+        if self.revision:
+            out["revision"] = self.revision.as_dict()
         return out
 
 
@@ -79,6 +121,9 @@ class QuestionSet:
     source_kind: str = "python"
     source_path: str = ""
     source_note: str = ""
+    version: str = "1"
+    schema_id: str = ""
+    legacy_questions: Sequence[QuestionDefinition] = ()
 
 
 def question_ids(question_set: QuestionSet) -> list[str]:
@@ -103,6 +148,22 @@ def question_by_field(
     token = str(field or "").strip()
     for question in question_set.questions:
         if question.field == token:
+            return question
+    return None
+
+
+def question_by_id(
+    question_set: QuestionSet,
+    question_id: str,
+    *,
+    include_legacy: bool = False,
+) -> QuestionDefinition | None:
+    token = str(question_id or "").strip()
+    questions = list(question_set.questions)
+    if include_legacy:
+        questions.extend(question_set.legacy_questions)
+    for question in questions:
+        if question.question_id == token:
             return question
     return None
 
@@ -185,6 +246,31 @@ def validate_question_set(question_set: QuestionSet) -> list[str]:
         seen_steps.add(question.step)
         if question.step not in step_order:
             errors.append(f"Question step missing from step_order in {question_set.id}: {question.step}")
+        revision = question.revision
+        if revision:
+            if revision.change_type not in REVISION_CHANGE_TYPES:
+                errors.append(
+                    f"Unknown revision change type in {question_set.id}: "
+                    f"{revision.change_type}"
+                )
+            if not revision.supersedes:
+                errors.append(
+                    f"Revision missing supersedes in {question_set.id}: "
+                    f"{question.question_id}"
+                )
+            if revision.supersedes == question.question_id:
+                errors.append(
+                    f"Question cannot supersede itself in {question_set.id}: "
+                    f"{question.question_id}"
+                )
+    legacy_ids = {question.question_id for question in question_set.legacy_questions}
+    for question in question_set.questions:
+        revision = question.revision
+        if revision and revision.supersedes not in legacy_ids:
+            errors.append(
+                f"Revision target missing from legacy questions in {question_set.id}: "
+                f"{revision.supersedes}"
+            )
     for mode, payload in question_set.flow_modes.items():
         for step in payload.get("steps", []):
             token = str(step)

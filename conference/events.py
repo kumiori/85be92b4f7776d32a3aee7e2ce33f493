@@ -8,6 +8,7 @@ YOUNG_SESSION_CODE = "pisa-conference-session"
 COMPLEXITY_SESSION_CODE = "petnica_2026"
 DALAMBERTIENNES_SESSION_CODE = "dalembertiennes_2026"
 UN_WG2_SESSION_CODE = "un_wg2_core_2026"
+UN_WG2_DEBUG_SESSION_CODE = "un_wg2_debug_2026"
 UNESCO_SESSION_CODE = "global-session"
 YOUNG_TEXT_ID = "pisa_session_v2"
 COMPLEXITY_TEXT_ID = "petnica_2026"
@@ -22,8 +23,9 @@ DALAMBERTIENNES_EVENT_CODE = DALAMBERTIENNES_SESSION_CODE
 DALAMBERTIENNES_EVENT_LABEL = "D'Alembertiennes"
 DALAMBERTIENNES_EVENT_LOCATION = "D'Alembert Lab"
 UN_WG2_EVENT_CODE = UN_WG2_SESSION_CODE
-UN_WG2_EVENT_LABEL = "Working Group 2 — First Iteration"
+UN_WG2_EVENT_LABEL = "Working Group 2 — Module 1: Visibility"
 UN_WG2_EVENT_LOCATION = "UN Cryosphere Decade"
+UN_WG2_DEBUG_EVENT_SLUG = "un_wg2_visibility_debug"
 
 YOUNG_OVERVIEW_PAGE = "pages/17_Young_Overview.py"
 COMPLEXITY_ENTRY_PAGE = "pages/15_Pisa_Meeting.py"
@@ -52,6 +54,7 @@ class ConferenceEventConfig:
     host_page: str
     response_scope: str = "event_specific"
     aliases: tuple[str, ...] = ()
+    test_mode: bool = False
 
 
 _EVENT_CONFIGS = (
@@ -84,24 +87,44 @@ _EVENT_CONFIGS = (
         aliases=("dalembertiennes", DALAMBERTIENNES_SESSION_CODE),
     ),
     ConferenceEventConfig(
-        slug="un_wg2_first_iteration",
+        slug="un_wg2_visibility",
         session_code=UN_WG2_SESSION_CODE,
         label=UN_WG2_EVENT_LABEL,
         location=UN_WG2_EVENT_LOCATION,
         text_ids=(UN_WG2_TEXT_ID,),
         primary_text_id=UN_WG2_TEXT_ID,
         question_set_id=UN_WG2_TEXT_ID,
-        schema_id="questionnaire_v1",
+        schema_id="questionnaire_v2",
         questionnaire_page=UN_WG2_ENTRY_PAGE,
         overview_page=UN_WG2_OVERVIEW_PAGE,
         host_page=UN_WG2_HOST_PAGE,
         response_scope="event_session",
         aliases=(
-            "un_wg2_first_iteration",
+            "un_wg2_visibility",
             "un-wg2",
             "un-wg2-icebreaker",
             UN_WG2_SESSION_CODE,
         ),
+    ),
+    ConferenceEventConfig(
+        slug=UN_WG2_DEBUG_EVENT_SLUG,
+        session_code=UN_WG2_DEBUG_SESSION_CODE,
+        label=f"TEST · {UN_WG2_EVENT_LABEL}",
+        location=UN_WG2_EVENT_LOCATION,
+        text_ids=(UN_WG2_TEXT_ID,),
+        primary_text_id=UN_WG2_TEXT_ID,
+        question_set_id=UN_WG2_TEXT_ID,
+        schema_id="questionnaire_v2",
+        questionnaire_page=UN_WG2_ENTRY_PAGE,
+        overview_page=UN_WG2_OVERVIEW_PAGE,
+        host_page=UN_WG2_HOST_PAGE,
+        response_scope="debug_session",
+        aliases=(
+            UN_WG2_DEBUG_EVENT_SLUG,
+            "un-wg2-debug",
+            UN_WG2_DEBUG_SESSION_CODE,
+        ),
+        test_mode=True,
     ),
 )
 _EVENT_CONFIG_BY_CODE = {item.session_code: item for item in _EVENT_CONFIGS}
@@ -153,7 +176,11 @@ def _normalized_event_status(session: Any | None = None) -> str:
         return "open"
     if raw_status in {"draft", "lobby", "setup", "planned"}:
         return "draft"
-    is_active = bool(session.get("session_active") or session.get("active")) if isinstance(session, dict) else False
+    is_active = (
+        bool(session.get("session_active") or session.get("active"))
+        if isinstance(session, dict)
+        else False
+    )
     return "open" if is_active else "draft"
 
 
@@ -172,12 +199,18 @@ def conference_event_context(
     resolved_code = _canonical_session_code(raw_code)
     config = event_config_for_session_code(resolved_code)
     session_name = (
-        str(session.get("session_name") or "").strip() if isinstance(session, dict) else ""
+        str(session.get("session_name") or "").strip()
+        if isinstance(session, dict)
+        else ""
     )
     session_title = (
-        str(session.get("session_title") or "").strip() if isinstance(session, dict) else ""
+        str(session.get("session_title") or "").strip()
+        if isinstance(session, dict)
+        else ""
     )
-    event_label = session_title or session_name or (config.label if config else resolved_code)
+    event_label = (
+        session_title or session_name or (config.label if config else resolved_code)
+    )
     event_location = config.location if config else ""
     event_status = _normalized_event_status(session)
     return {
@@ -192,6 +225,7 @@ def conference_event_context(
         "response_scope": config.response_scope if config else "event_specific",
         "event_status": event_status,
         "write_enabled": _event_write_enabled(event_status),
+        "test_mode": bool(config.test_mode) if config else False,
         "questionnaire_page": (
             config.questionnaire_page if config else COMPLEXITY_ENTRY_PAGE
         ),
@@ -200,10 +234,14 @@ def conference_event_context(
     }
 
 
-def conference_event_options(repo: Any | None = None) -> list[dict[str, Any]]:
+def conference_event_options(
+    repo: Any | None = None, *, include_test: bool = False
+) -> list[dict[str, Any]]:
     options: list[dict[str, Any]] = []
     seen: set[str] = set()
     for config in _EVENT_CONFIGS:
+        if config.test_mode and not include_test:
+            continue
         session = None
         if repo and hasattr(repo, "resolve_session"):
             try:
@@ -227,6 +265,7 @@ def conference_event_options(repo: Any | None = None) -> list[dict[str, Any]]:
                 "overview_page": context["overview_page"],
                 "host_page": context["host_page"],
                 "available": bool(session),
+                "test_mode": bool(context["test_mode"]),
             }
         )
     return options
@@ -240,6 +279,7 @@ def _is_reserved_non_complexity_code(value: Any) -> bool:
         UNESCO_SESSION_CODE.lower(),
         "global-session",
         UN_WG2_SESSION_CODE.lower(),
+        UN_WG2_DEBUG_SESSION_CODE.lower(),
     }
 
 
@@ -283,7 +323,8 @@ def _discover_complexity_session_code(repo: Any | None = None) -> str:
                 (
                     item
                     for item in items
-                    if _canonical_session_code(item.get("session_code")) == preferred_code
+                    if _canonical_session_code(item.get("session_code"))
+                    == preferred_code
                 ),
                 None,
             )

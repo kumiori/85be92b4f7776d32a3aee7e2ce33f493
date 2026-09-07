@@ -54,6 +54,22 @@ def test_registry_resolves_un_wg2_yaml_bundle():
     assert resolved.question_set_source_path.endswith("conference/question_sets/un_wg2_v1.yaml")
 
 
+def test_registry_reuses_wg2_question_set_in_isolated_debug_session():
+    resolved = resolve_question_set_bundle(
+        session={
+            "id": "wg2-debug-session",
+            "session_code": "un_wg2_debug_2026",
+            "session_title": "TEST · WG2",
+            "status": "Lobby",
+        }
+    )
+
+    assert resolved.session_code == "un_wg2_debug_2026"
+    assert resolved.event_slug == "un_wg2_visibility_debug"
+    assert resolved.text_id == "un_wg2_v1"
+    assert resolved.question_set is UN_WG2_V1_QUESTION_SET
+
+
 def test_un_wg2_removes_follow_up_and_collects_main_location():
     steps = list(UN_WG2_V1_QUESTION_SET.flow_modes["quick"]["steps"])
     question_fields = {question.field for question in UN_WG2_V1_QUESTION_SET.questions}

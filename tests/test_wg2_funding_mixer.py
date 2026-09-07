@@ -82,6 +82,20 @@ def test_payload_is_explicitly_scoped_and_revisioned() -> None:
     assert payload["phase"] == "after_discussion"
 
 
+def test_debug_payload_is_explicitly_classified_and_isolated() -> None:
+    payload = allocation_payload(
+        _full_allocation(),
+        session_code="un_wg2_debug_2026",
+        revision=1,
+        participant_hash="debug-participant",
+        test_mode=True,
+    )
+
+    assert payload["response_scope"] == "debug_session"
+    assert payload["test_mode"] is True
+    assert payload["data_classification"] == "debug"
+
+
 def test_invalid_total_is_rejected() -> None:
     allocation = _full_allocation() | {"people": 21}
     with pytest.raises(ValueError, match="exactly 100"):

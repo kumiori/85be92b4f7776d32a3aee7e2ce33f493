@@ -71,7 +71,9 @@ def _resolved_question_set(bundle: Dict[str, Any]) -> Any | None:
     session_code = _as_text(session.get("session_code", bundle.get("session_code", "")))
     text_id = _as_text(session.get("text_id", bundle.get("text_id", "")))
     try:
-        return resolve_question_set_bundle(session_code=session_code, text_id=text_id).question_set
+        return resolve_question_set_bundle(
+            session_code=session_code, text_id=text_id
+        ).question_set
     except Exception:
         return None
 
@@ -137,7 +139,11 @@ def _split_lookup_symbols(raw: str) -> list[str]:
         cluster = current
         idx += 1
 
-        if _is_regional_indicator(current) and idx < len(token) and _is_regional_indicator(token[idx]):
+        if (
+            _is_regional_indicator(current)
+            and idx < len(token)
+            and _is_regional_indicator(token[idx])
+        ):
             cluster += token[idx]
             idx += 1
             symbols.append(cluster)
@@ -225,7 +231,11 @@ def _normalize_bundle(bundle: Dict[str, Any]) -> Dict[str, Any]:
     role_question = None
     if question_set:
         role_question = next(
-            (question for question in question_set.questions if str(question.field) == "role"),
+            (
+                question
+                for question in question_set.questions
+                if str(question.field) == "role"
+            ),
             None,
         )
     role_extra_field = (
@@ -236,16 +246,23 @@ def _normalize_bundle(bundle: Dict[str, Any]) -> Dict[str, Any]:
     role_custom = _as_text(
         profile.get(
             "role_custom",
-            profile.get(role_extra_field, bundle.get("role_custom", bundle.get(role_extra_field, ""))),
+            profile.get(
+                role_extra_field,
+                bundle.get("role_custom", bundle.get(role_extra_field, "")),
+            ),
         )
     )
     if role_custom and role_custom not in role:
         role.append(role_custom)
     career_stage = _as_text(profile.get("career_stage", bundle.get("career_stage", "")))
-    country = _as_text(scientific_home.get("country", bundle.get("scientific_home_country", "")))
+    country = _as_text(
+        scientific_home.get("country", bundle.get("scientific_home_country", ""))
+    )
     city = _as_text(scientific_home.get("city", bundle.get("scientific_home_city", "")))
     institution = _as_text(
-        scientific_home.get("institution", bundle.get("scientific_home_institution", ""))
+        scientific_home.get(
+            "institution", bundle.get("scientific_home_institution", "")
+        )
     )
     scale = _as_text(profile.get("computational_scale", bundle.get("scale", "")))
     collaboration_style = _as_text(
@@ -264,7 +281,11 @@ def _normalize_bundle(bundle: Dict[str, Any]) -> Dict[str, Any]:
             bundle.get("follow_up_interest", bundle.get("continue_conversation", "")),
         )
     )
-    open_question = _as_text(session.get("open_question", bundle.get("open_question", bundle.get("open_text", ""))))
+    open_question = _as_text(
+        session.get(
+            "open_question", bundle.get("open_question", bundle.get("open_text", ""))
+        )
+    )
     boiler_room_contribution = _as_text(
         session.get(
             "boiler_room_contribution",
@@ -274,9 +295,13 @@ def _normalize_bundle(bundle: Dict[str, Any]) -> Dict[str, Any]:
     question_flags = normalize_question_flags(
         session.get("question_flags", bundle.get("question_flags", {}))
     )
-    deferred_fields = _as_list(session.get("deferred_fields", bundle.get("deferred_fields", [])))
+    deferred_fields = _as_list(
+        session.get("deferred_fields", bundle.get("deferred_fields", []))
+    )
     identity_reveal_targets = _as_list(
-        session.get("identity_reveal_targets", bundle.get("identity_reveal_targets", []))
+        session.get(
+            "identity_reveal_targets", bundle.get("identity_reveal_targets", [])
+        )
     )
     event_slug = _as_text(session.get("event_slug", bundle.get("event_slug", "")))
     event_code = _as_text(session.get("event_code", bundle.get("event_code", "")))
@@ -295,6 +320,26 @@ def _normalize_bundle(bundle: Dict[str, Any]) -> Dict[str, Any]:
     response_scope = _as_text(
         session.get("response_scope", bundle.get("response_scope", ""))
     )
+    test_mode = bool(session.get("test_mode", bundle.get("test_mode", False)))
+    data_classification = _as_text(
+        session.get(
+            "data_classification",
+            bundle.get("data_classification", ""),
+        )
+    )
+    questionnaire_version = _as_text(
+        session.get(
+            "questionnaire_version",
+            bundle.get("questionnaire_version", ""),
+        )
+    )
+    raw_refinements = session.get(
+        "response_refinements",
+        bundle.get("response_refinements", []),
+    )
+    response_refinements = [
+        dict(item) for item in raw_refinements if isinstance(item, dict)
+    ] if isinstance(raw_refinements, list) else []
     persistence_scope = _as_text(
         profile.get("persistence_scope", bundle.get("persistence_scope", ""))
     )
@@ -333,6 +378,10 @@ def _normalize_bundle(bundle: Dict[str, Any]) -> Dict[str, Any]:
         "schema_id": schema_id,
         "question_set_id": question_set_id,
         "response_scope": response_scope,
+        "test_mode": test_mode,
+        "data_classification": data_classification,
+        "questionnaire_version": questionnaire_version,
+        "response_refinements": response_refinements,
     }
     generic_values: Dict[str, Any] = {}
     if question_set:
@@ -349,9 +398,13 @@ def _normalize_bundle(bundle: Dict[str, Any]) -> Dict[str, Any]:
             generic_values[field] = normalized_value
             target = profile_block if field in profile_fields else session_block
             target[field] = normalized_value
-            free_text_field = str(getattr(question, "free_text_field", "") or "").strip()
+            free_text_field = str(
+                getattr(question, "free_text_field", "") or ""
+            ).strip()
             if free_text_field:
-                free_text_value = _as_text(source.get(free_text_field, bundle.get(free_text_field, "")))
+                free_text_value = _as_text(
+                    source.get(free_text_field, bundle.get(free_text_field, ""))
+                )
                 generic_values[free_text_field] = free_text_value
                 target[free_text_field] = free_text_value
                 if field == "role":
@@ -396,13 +449,19 @@ def _normalize_bundle(bundle: Dict[str, Any]) -> Dict[str, Any]:
         "schema_id": schema_id,
         "question_set_id": question_set_id,
         "response_scope": response_scope,
+        "test_mode": test_mode,
+        "data_classification": data_classification,
+        "questionnaire_version": questionnaire_version,
+        "response_refinements": response_refinements,
         "persistence_scope": persistence_scope,
         **generic_values,
     }
 
 
 def _compact_bundle(payload: Dict[str, Any]) -> Dict[str, Any]:
-    if not isinstance(payload.get("profile"), dict) and not isinstance(payload.get("session"), dict):
+    if not isinstance(payload.get("profile"), dict) and not isinstance(
+        payload.get("session"), dict
+    ):
         return payload
     profile = payload.get("profile") if isinstance(payload.get("profile"), dict) else {}
     session = payload.get("session") if isinstance(payload.get("session"), dict) else {}
@@ -445,7 +504,7 @@ def _anonymous_name_for_bundle(bundle: Dict[str, Any]) -> str:
     ):
         return ANONYMOUS_DALEMBERTIENNES_NAME
     if (
-        event_slug == "un_wg2_first_iteration"
+        event_slug == "un_wg2_visibility"
         or session_code == "un_wg2_core_2026"
         or text_id == "un_wg2_v1"
     ):
@@ -465,7 +524,9 @@ class ConferenceRepo:
         self.notion_repo = notion_repo
         self.client = getattr(notion_repo, "client", None)
         self.settings = settings
-        self.session_responses_db_id = str(settings.session_responses_db_id or "").strip()
+        self.session_responses_db_id = str(
+            settings.session_responses_db_id or ""
+        ).strip()
         self.unavailable_reason = ""
         self._interaction_repo: Optional[NotionInteractionRepository] = None
         if not self.client:
@@ -490,7 +551,9 @@ class ConferenceRepo:
             )
         return self._interaction_repo
 
-    def resolve_session(self, session_code: str = "", prefer_active: bool = False) -> Optional[Dict[str, Any]]:
+    def resolve_session(
+        self, session_code: str = "", prefer_active: bool = False
+    ) -> Optional[Dict[str, Any]]:
         if not self.notion_repo:
             return None
         if session_code:
@@ -502,7 +565,9 @@ class ConferenceRepo:
                 session = active()
                 if session:
                     return session
-        default_session = self.notion_repo.get_session_by_code(self.settings.default_session_code)
+        default_session = self.notion_repo.get_session_by_code(
+            self.settings.default_session_code
+        )
         if default_session:
             return default_session
         active = getattr(self.notion_repo, "get_active_session", None)
@@ -585,6 +650,8 @@ class ConferenceRepo:
         canonical_text_id = payload_text_id or outer_text_id
         question_set_id = _session_bundle_value(normalized, "question_set_id")
         response_scope = _session_bundle_value(normalized, "response_scope")
+        test_mode = bool(normalized.get("test_mode"))
+        data_classification = _session_bundle_value(normalized, "data_classification")
         event_status = _session_bundle_value(normalized, "event_status")
 
         failure_reasons: list[str] = []
@@ -618,14 +685,30 @@ class ConferenceRepo:
             }:
                 failure_reasons.append("dalembertiennes_wrong_question_set_id")
         if canonical_text_id == "un_wg2_v1":
-            if event_slug != "un_wg2_first_iteration":
-                failure_reasons.append("un_wg2_wrong_event_slug")
-            if session_code != "un_wg2_core_2026":
+            wg2_scope_by_session = {
+                "un_wg2_core_2026": "un_wg2_visibility",
+                "un_wg2_debug_2026": "un_wg2_visibility_debug",
+            }
+            if session_code not in wg2_scope_by_session:
                 failure_reasons.append("un_wg2_wrong_session_code")
+            elif event_slug != wg2_scope_by_session[session_code]:
+                failure_reasons.append("un_wg2_wrong_event_slug")
             if question_set_id != "un_wg2_v1":
                 failure_reasons.append("un_wg2_wrong_question_set_id")
-            if response_scope != "event_session":
+            expected_response_scope = (
+                "debug_session"
+                if session_code == "un_wg2_debug_2026"
+                else "event_session"
+            )
+            if response_scope != expected_response_scope:
                 failure_reasons.append("un_wg2_wrong_response_scope")
+            if session_code == "un_wg2_debug_2026":
+                if not test_mode:
+                    failure_reasons.append("un_wg2_debug_missing_test_mode")
+                if data_classification != "debug":
+                    failure_reasons.append("un_wg2_debug_wrong_data_classification")
+            elif test_mode or data_classification == "debug":
+                failure_reasons.append("un_wg2_production_marked_debug")
 
         if failure_reasons:
             metadata = {
@@ -637,6 +720,8 @@ class ConferenceRepo:
                 "payload_text_id": payload_text_id,
                 "question_set_id": question_set_id,
                 "response_scope": response_scope,
+                "test_mode": test_mode,
+                "data_classification": data_classification,
             }
             CONFERENCE_LOGGER.error("conference response write rejected %s", metadata)
             log_event(
@@ -745,6 +830,8 @@ class ConferenceRepo:
                 "event_slug": event_slug,
                 "question_set_id": question_set_id,
                 "response_scope": response_scope,
+                "test_mode": test_mode,
+                "data_classification": data_classification,
             },
         )
 
@@ -758,8 +845,12 @@ class ConferenceRepo:
         question_ids.add(QUESTION_IDENTITY)
         question_ids.update(QUESTION_BUNDLE_IDS)
         rows = self.interaction_repo().get_responses(session_id)
-        filtered = [row for row in rows if str(row.get("item_id") or "") in question_ids]
-        allowed_text_ids = {str(item).strip() for item in text_ids or [] if str(item).strip()}
+        filtered = [
+            row for row in rows if str(row.get("item_id") or "") in question_ids
+        ]
+        allowed_text_ids = {
+            str(item).strip() for item in text_ids or [] if str(item).strip()
+        }
         if not allowed_text_ids:
             return filtered
         return [
@@ -797,9 +888,16 @@ class ConferenceRepo:
     def resolve_access_key(self, raw_key: str) -> tuple[str | None, str | None]:
         return resolve_access_key_input(self.notion_repo, raw_key)
 
-    def group_rows_by_submission(self, rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def group_rows_by_submission(
+        self, rows: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
         by_actor: Dict[str, Dict[str, Any]] = {}
-        for row in sorted(rows, key=lambda item: str(item.get("submitted_at") or item.get("timestamp") or "")):
+        for row in sorted(
+            rows,
+            key=lambda item: str(
+                item.get("submitted_at") or item.get("timestamp") or ""
+            ),
+        ):
             payload = row.get("value_json")
             if not isinstance(payload, dict):
                 payload = {}
@@ -810,8 +908,16 @@ class ConferenceRepo:
                 or row.get("id")
                 or ""
             )
-            actor_key = bundle_key if field == "session_bundle" and bundle_key else str(
-                row.get("player_id") or row.get("device_id") or row.get("response_id") or row.get("id") or ""
+            actor_key = (
+                bundle_key
+                if field == "session_bundle" and bundle_key
+                else str(
+                    row.get("player_id")
+                    or row.get("device_id")
+                    or row.get("response_id")
+                    or row.get("id")
+                    or ""
+                )
             )
             if not actor_key:
                 continue
@@ -826,8 +932,17 @@ class ConferenceRepo:
             )
             answer = payload.get("answer", row.get("response_value"))
             submission["submitted_at"] = str(
-                row.get("timestamp") or row.get("created_at") or submission.get("submitted_at") or ""
+                row.get("timestamp")
+                or row.get("created_at")
+                or submission.get("submitted_at")
+                or ""
             )
+            submission["response_id"] = str(
+                row.get("response_id") or row.get("id") or ""
+            )
+            submission["player_id"] = str(row.get("player_id") or "")
+            submission["session_id"] = str(row.get("session_id") or "")
+            submission["text_id"] = str(row.get("text_id") or "")
             if payload.get("access_key_hash"):
                 submission["access_key_hash"] = str(payload.get("access_key_hash"))
             if payload.get("access_key_last4"):
@@ -839,11 +954,21 @@ class ConferenceRepo:
                 normalized_bundle = _normalize_bundle(bundle)
                 for key, value in normalized_bundle.items():
                     submission[str(key)] = value
-                submission["alias"] = str(payload.get("alias") or bundle.get("alias") or "")
-                submission["identity"] = str(payload.get("identity") or bundle.get("identity") or "")
-                submission["contact"] = str(payload.get("contact") or bundle.get("contact") or "")
-                submission["notes"] = str(payload.get("optional_text") or bundle.get("notes") or "")
-                submission["mode"] = str(payload.get("mode") or bundle.get("mode") or "")
+                submission["alias"] = str(
+                    payload.get("alias") or bundle.get("alias") or ""
+                )
+                submission["identity"] = str(
+                    payload.get("identity") or bundle.get("identity") or ""
+                )
+                submission["contact"] = str(
+                    payload.get("contact") or bundle.get("contact") or ""
+                )
+                submission["notes"] = str(
+                    payload.get("optional_text") or bundle.get("notes") or ""
+                )
+                submission["mode"] = str(
+                    payload.get("mode") or bundle.get("mode") or ""
+                )
                 continue
             if field == "identity_block":
                 submission["alias"] = str(payload.get("alias") or "")

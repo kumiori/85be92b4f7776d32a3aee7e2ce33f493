@@ -442,6 +442,9 @@ def build_session_payload(
     profile: Dict[str, Any] = {}
     session: Dict[str, Any] = {
         "depth": str(draft.get("mode") or "").strip(),
+        "question_set_id": str(qset.id or "").strip(),
+        "schema_id": str(qset.schema_id or "").strip(),
+        "questionnaire_version": str(qset.version or "1").strip(),
         "boiler_room_contribution": _normalize_text(draft.get("boiler_room_contribution")),
         "question_flags": normalize_question_flags(draft.get("question_flags")),
         "deferred_fields": deferred_fields,

@@ -113,6 +113,12 @@ def _visible_pages() -> dict[str, list[st.Page]]:
                 url_path="un-wg2",
             ),
             st.Page(
+                "pages/32_UN_WG2_Member.py",
+                title="WG2 Member",
+                icon=":material/person_search:",
+                url_path="un-wg2-member",
+            ),
+            st.Page(
                 "pages/13_UNESCO_Opening.py",
                 title="UNESCO-opening",
                 icon=":material/location_on:",

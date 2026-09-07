@@ -158,6 +158,7 @@ def allocation_payload(
     other_text: str = "",
     phase: str = "before_discussion",
     submitted_at: str = "",
+    test_mode: bool = False,
 ) -> dict[str, Any]:
     normalized = validate_allocation(allocation)
     if not str(session_code or "").strip():
@@ -171,7 +172,9 @@ def allocation_payload(
         "interaction": INTERACTION_ID,
         "session_code": str(session_code).strip(),
         "text_id": TEXT_ID,
-        "response_scope": "event_session",
+        "response_scope": "debug_session" if test_mode else "event_session",
+        "test_mode": bool(test_mode),
+        "data_classification": "debug" if test_mode else "production",
         "participant_hash": str(participant_hash or "").strip(),
         "phase": str(phase or "before_discussion").strip(),
         "revision": int(revision),

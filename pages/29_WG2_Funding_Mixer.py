@@ -9,6 +9,8 @@ import streamlit as st
 from philoui.survey import CustomStreamlitSurvey
 
 from conference.context import get_conference_repo
+from conference.events import UN_WG2_DEBUG_SESSION_CODE, UN_WG2_SESSION_CODE
+from conference.test_sessions import debug_session_access_enabled
 from conference.wg2_funding_mixer import (
     CHANNELS,
     DEFAULT_SESSION_CODE,
@@ -21,11 +23,44 @@ from conference.wg2_funding_mixer import (
     default_allocation,
     latest_participant_rows,
 )
-from infra.event_logger import log_event
+from infra.event_logger import list_logged_events, log_event
+
+
+RECOVERY_LOG_PAGE = "un_wg2_recovery"
+
+
+def _test_requested() -> bool:
+    value = str(st.query_params.get("test", "") or "").strip().lower()
+    return value in {"1", "true", "yes", "on"}
 
 
 def _session_code() -> str:
+    if _test_requested():
+        return UN_WG2_DEBUG_SESSION_CODE
     return str(st.query_params.get("session", DEFAULT_SESSION_CODE) or "").strip()
+
+
+def _test_entry_allowed(repo: Any) -> bool:
+    production = repo.resolve_session(session_code=UN_WG2_SESSION_CODE)
+    production_id = str((production or {}).get("id") or "")
+    if not production_id:
+        return False
+    events = list_logged_events(
+        page=RECOVERY_LOG_PAGE,
+        session_id=production_id,
+        limit=500,
+    )
+    return debug_session_access_enabled(events)
+
+
+def _event_metadata(session_code: str) -> dict[str, Any]:
+    test_mode = session_code == UN_WG2_DEBUG_SESSION_CODE
+    return {
+        "session_code": session_code,
+        "test_mode": test_mode,
+        "response_scope": "debug_session" if test_mode else "event_session",
+        "data_classification": "debug" if test_mode else "production",
+    }
 
 
 def _results_requested() -> bool:
@@ -120,7 +155,7 @@ def _authenticate(repo: Any, session: dict[str, Any]) -> tuple[str, str] | None:
     if not access_key:
         st.error(error or "This access key could not be resolved.")
         return None
-    player = repo.notion_repo.get_player_by_id(access_key)
+    player = repo.notion_repo.get_player_by_access_key(access_key)
     if not player:
         st.error("No participant was found for this access key.")
         return None
@@ -254,7 +289,7 @@ def _log_backup_download(
         session_id=session_id,
         item_id=INTERACTION_ID,
         device_id=device_id,
-        metadata={"session_code": _session_code(), "revision": revision},
+        metadata={**_event_metadata(_session_code()), "revision": revision},
     )
 
 
@@ -398,6 +433,7 @@ def _render_mixer(
             participant_hash=participant_hash,
             phase=_phase(),
             other_text=other_text,
+            test_mode=_session_code() == UN_WG2_DEBUG_SESSION_CODE,
         )
         device_id = str(
             st.session_state.setdefault("wg2_mixer_device_id", uuid.uuid4().hex)
@@ -420,7 +456,7 @@ def _render_mixer(
                 item_id=INTERACTION_ID,
                 device_id=device_id,
                 metadata={
-                    "session_code": _session_code(),
+                    **_event_metadata(_session_code()),
                     "revision": revision,
                     "phase": _phase(),
                 },
@@ -434,7 +470,10 @@ def _render_mixer(
                 session_id=session_id,
                 item_id=INTERACTION_ID,
                 status="error",
-                metadata={"session_code": _session_code(), "error": str(exc)},
+                metadata={
+                    **_event_metadata(_session_code()),
+                    "error": str(exc),
+                },
                 level="ERROR",
             )
             st.error(f"The allocation could not be saved: {exc}")
@@ -450,11 +489,24 @@ def _render_mixer(
 def main() -> None:
     _apply_page_style()
     repo = get_conference_repo()
+    if _test_requested() and (
+        not repo or not repo.is_ready() or not _test_entry_allowed(repo)
+    ):
+        st.error(
+            "WG2 test entry is closed. Ask a host to enable it from WG2 Host → "
+            "Member recovery."
+        )
+        return
     session, error = _resolve_context(repo, _session_code())
     if error:
         st.error(error)
         return
     assert session is not None
+    if _session_code() == UN_WG2_DEBUG_SESSION_CODE:
+        st.warning(
+            "TEST MODE · This allocation is stored in the separate WG2 debug session "
+            "and is excluded from production results."
+        )
     log_event(
         module="iceicebaby.wg2_funding_mixer",
         event_type="page_view",
@@ -463,7 +515,7 @@ def main() -> None:
         else "wg2_funding_mixer",
         session_id=str(session["id"]),
         metadata={
-            "session_code": _session_code(),
+            **_event_metadata(_session_code()),
             "mode": "results" if _results_requested() else "participant",
         },
     )

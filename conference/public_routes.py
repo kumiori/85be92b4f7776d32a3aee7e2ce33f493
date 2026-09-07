@@ -72,30 +72,33 @@ def public_route_config(path: str = "") -> PublicRouteConfig | None:
 
 def public_query_params() -> dict[str, str]:
     out: dict[str, str] = {}
-    for key in ("key", "public_route", "campaign"):
+    for key in ("key", "public_route", "campaign", "test"):
         value = str(st.query_params.get(key, "") or "").strip()
         if value:
             out[key] = value
     return out
 
 
-def ensure_public_route_query(path: str) -> PublicRouteConfig | None:
+def ensure_public_route_query(
+    path: str, *, event_slug_override: str = ""
+) -> PublicRouteConfig | None:
     config = public_route_config(path)
     if not config:
         return None
     current_route = str(st.query_params.get("public_route", "") or "").strip()
     current_campaign = str(st.query_params.get("campaign", "") or "").strip()
     current_event = str(st.query_params.get("event", "") or "").strip()
+    desired_event = str(event_slug_override or config.default_event_slug).strip()
     if (
         current_route == config.path
         and current_campaign == config.campaign_slug
-        and current_event == config.default_event_slug
+        and current_event == desired_event
     ):
         return config
     next_params = public_query_params()
     next_params["public_route"] = config.path
     next_params["campaign"] = config.campaign_slug
-    next_params["event"] = config.default_event_slug
+    next_params["event"] = desired_event
     st.query_params.clear()
     st.query_params.update(next_params)
     return config

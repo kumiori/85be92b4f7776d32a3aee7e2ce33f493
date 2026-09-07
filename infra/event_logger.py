@@ -10,6 +10,7 @@ from typing import Any, Dict, Optional
 import streamlit as st
 
 from infra.app_context import get_notion_repo
+from infra.notion_repo import _resolve_data_source_id
 
 
 def get_module_logger(name: str) -> logging.Logger:
@@ -79,6 +80,25 @@ def _extract_select_or_text(value: Any) -> str:
     return _extract_rich_text(value)
 
 
+def _extract_relation_id(value: Any) -> str:
+    if not isinstance(value, dict):
+        return ""
+    relation = value.get("relation")
+    if not isinstance(relation, list) or not relation:
+        return ""
+    first = relation[0]
+    return str(first.get("id") or "") if isinstance(first, dict) else ""
+
+
+def _extract_date_start(value: Any) -> str:
+    if not isinstance(value, dict):
+        return ""
+    date = value.get("date")
+    if not isinstance(date, dict):
+        return ""
+    return str(date.get("start") or "")
+
+
 def _find_prop(props: Dict[str, Any], expected: str, ptype: Optional[str] = None) -> str:
     meta = props.get(expected)
     if isinstance(meta, dict) and (ptype is None or meta.get("type") == ptype):
@@ -99,21 +119,32 @@ def _event_repo_info() -> Dict[str, Any]:
     if not db_id or not repo:
         return {"enabled": False}
     try:
+        data_source_id = _resolve_data_source_id(repo.client, db_id)
+    except Exception:
+        data_source_id = db_id
+    try:
         data_sources = getattr(repo.client, "data_sources", None)
         ds_retrieve = (
             getattr(data_sources, "retrieve", None) if data_sources is not None else None
         )
         if callable(ds_retrieve):
-            meta = ds_retrieve(db_id)
+            meta = ds_retrieve(data_source_id)
             return {
                 "enabled": True,
                 "repo": repo,
                 "db_id": db_id,
+                "data_source_id": data_source_id,
                 "props": meta.get("properties", {}) if isinstance(meta, dict) else {},
             }
     except Exception:
         pass
-    return {"enabled": True, "repo": repo, "db_id": db_id, "props": {}}
+    return {
+        "enabled": True,
+        "repo": repo,
+        "db_id": db_id,
+        "data_source_id": data_source_id,
+        "props": {},
+    }
 
 
 def log_event(
@@ -129,7 +160,7 @@ def log_event(
     status: str = "ok",
     metadata: Optional[Dict[str, Any]] = None,
     level: str = "INFO",
-) -> None:
+) -> bool:
     logger = get_module_logger(module)
     payload = {
         "event_type": event_type,
@@ -152,11 +183,11 @@ def log_event(
 
     info = _event_repo_info()
     if not info.get("enabled"):
-        return
+        return False
     repo = info.get("repo")
     db_id = str(info.get("db_id") or "")
     if not repo or not db_id:
-        return
+        return False
 
     props = info.get("props", {}) if isinstance(info.get("props"), dict) else {}
     timestamp_prop = _find_prop(props, "timestamp", "date") or _find_prop(
@@ -243,6 +274,8 @@ def log_event(
         repo.client.pages.create(parent={"database_id": db_id}, properties=properties)
     except Exception as exc:
         logger.error("Notion write failure for event stream: %s", exc)
+        return False
+    return True
 
 
 def list_logged_events(
@@ -255,7 +288,7 @@ def list_logged_events(
     if not info.get("enabled"):
         return []
     repo = info.get("repo")
-    db_id = str(info.get("db_id") or "")
+    db_id = str(info.get("data_source_id") or info.get("db_id") or "")
     props = info.get("props", {}) if isinstance(info.get("props"), dict) else {}
     if not repo or not db_id:
         return []
@@ -284,7 +317,6 @@ def list_logged_events(
         filters.append({"property": session_prop, "relation": {"contains": session_id}})
 
     query_kwargs: Dict[str, Any] = {
-        "page_size": limit,
         "sorts": [{"property": timestamp_prop, "direction": "descending"}]
         if timestamp_prop
         else [{"timestamp": "created_time", "direction": "descending"}],
@@ -292,13 +324,35 @@ def list_logged_events(
     if filters:
         query_kwargs["filter"] = {"and": filters} if len(filters) > 1 else filters[0]
 
-    try:
-        payload = repo.client.data_sources.query(data_source_id=db_id, **query_kwargs)
-    except Exception:
-        return []
+    page_rows: list[Dict[str, Any]] = []
+    remaining = max(1, int(limit))
+    next_cursor = ""
+    while remaining > 0:
+        page_kwargs = {
+            **query_kwargs,
+            "page_size": min(100, remaining),
+        }
+        if next_cursor:
+            page_kwargs["start_cursor"] = next_cursor
+        try:
+            payload = repo.client.data_sources.query(
+                data_source_id=db_id, **page_kwargs
+            )
+        except Exception:
+            return []
+        batch = payload.get("results", [])
+        if not isinstance(batch, list):
+            return []
+        page_rows.extend(item for item in batch if isinstance(item, dict))
+        remaining -= len(batch)
+        if not payload.get("has_more") or not batch:
+            break
+        next_cursor = str(payload.get("next_cursor") or "")
+        if not next_cursor:
+            break
 
     rows: list[Dict[str, Any]] = []
-    for page_row in payload.get("results", []):
+    for page_row in page_rows:
         row_props = page_row.get("properties", {})
         metadata_raw = _extract_rich_text(row_props.get(metadata_prop)) if metadata_prop else ""
         try:
@@ -318,13 +372,13 @@ def list_logged_events(
                 if value_label_prop
                 else "",
                 "device_id": _extract_rich_text(row_props.get(device_prop)) if device_prop else "",
-                "session_id": row_props.get(session_prop, {}).get("relation", [])[0].get("id", "")
-                if session_prop and row_props.get(session_prop, {}).get("relation")
+                "session_id": _extract_relation_id(row_props.get(session_prop))
+                if session_prop
                 else "",
-                "player_id": row_props.get(player_prop, {}).get("relation", [])[0].get("id", "")
-                if player_prop and row_props.get(player_prop, {}).get("relation")
+                "player_id": _extract_relation_id(row_props.get(player_prop))
+                if player_prop
                 else "",
-                "timestamp": row_props.get(timestamp_prop, {}).get("date", {}).get("start", "")
+                "timestamp": _extract_date_start(row_props.get(timestamp_prop))
                 if timestamp_prop
                 else "",
                 "metadata": metadata,

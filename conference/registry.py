@@ -91,7 +91,7 @@ _REGISTRY: tuple[QuestionSetRegistryEntry, ...] = (
         session_code=UN_WG2_SESSION_CODE,
         text_ids=(UN_WG2_TEXT_ID,),
         question_set_id="un_wg2_v1",
-        schema_id="questionnaire_v1",
+        schema_id=UN_WG2_V1_QUESTION_SET.schema_id or "questionnaire_v2",
         question_set=UN_WG2_V1_QUESTION_SET,
     ),
 )
@@ -146,8 +146,11 @@ def resolve_question_set_bundle(
             f"No registered conference question set for session_code={resolved_session_code!r} text_id={resolved_text_id!r}"
         )
 
-    context = conference_event_context(session=session, session_code=entry.session_code)
-    config = event_config_for_session_code(entry.session_code)
+    context_session_code = resolved_session_code or entry.session_code
+    context = conference_event_context(
+        session=session, session_code=context_session_code
+    )
+    config = event_config_for_session_code(context_session_code)
     canonical_text_id = (
         resolved_text_id
         or (_canonical_session_code(context.get("text_id")) if config else "")

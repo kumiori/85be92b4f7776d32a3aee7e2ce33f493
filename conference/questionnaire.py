@@ -91,6 +91,7 @@ LOGIN_ERROR_KEY = "conference_login_error"
 QUESTION_VALIDATION_KEY = "conference_question_validation"
 EDIT_CONTEXT_KEY = "conference_edit_context"
 EDIT_DRAFT_KEY = "conference_edit_draft"
+SESSION_SCOPE_KEY = "conference_runtime_session_scope"
 OPENCAGE_ENDPOINT = "https://api.opencagedata.com/geocode/v1/json"
 
 
@@ -103,6 +104,29 @@ def _ensure_local_state(question_set: QuestionSet) -> None:
     st.session_state.setdefault(ENTRY_KEY, "")
     st.session_state.setdefault(LOGIN_ERROR_KEY, "")
     st.session_state.setdefault("conference_hide_migration_prompt", False)
+
+
+def _ensure_session_scope_state(
+    session: Dict[str, Any], question_set: QuestionSet
+) -> None:
+    """Prevent browser draft/cache state crossing production and test sessions."""
+    scope = f"{session.get('id') or ''}:{session.get('session_code') or ''}"
+    if st.session_state.get(SESSION_SCOPE_KEY) == scope:
+        return
+    reset_flow_state(question_set=question_set)
+    for key in (
+        "conference_hydrated",
+        "conference_submission_cache",
+        "conference_submission_cache_key",
+        ENTRY_KEY,
+        LOGIN_ERROR_KEY,
+        QUESTION_VALIDATION_KEY,
+        EDIT_CONTEXT_KEY,
+        EDIT_DRAFT_KEY,
+    ):
+        st.session_state.pop(key, None)
+    st.session_state["conference_device_id"] = uuid.uuid4().hex[:16]
+    st.session_state[SESSION_SCOPE_KEY] = scope
 
 
 def _set_entry_mode(mode: str) -> None:
@@ -165,6 +189,11 @@ def _route_event_metadata(
         "text_id": str(context.get("text_id") or ""),
         "question_set_id": str(context.get("question_set_id") or ""),
         "schema_id": str(context.get("schema_id") or ""),
+        "test_mode": bool(context.get("test_mode")),
+        "response_scope": str(context.get("response_scope") or ""),
+        "data_classification": (
+            "debug" if context.get("test_mode") else "production"
+        ),
     }
     if step:
         metadata["step"] = step
@@ -785,6 +814,9 @@ def _load_submission_for_key(
 def _hydrate_existing_submission(repo: Any, session: Dict[str, Any]) -> None:
     if st.session_state.get("conference_hydrated"):
         return
+    if _event_context(session).get("test_mode"):
+        st.session_state["conference_hydrated"] = True
+        return
     draft = get_draft(question_set=current_question_set())
     raw_key = str(
         draft.get("access_key") or st.query_params.get("key", "") or ""
@@ -883,9 +915,17 @@ def _payload_for_session(
     session_payload["session_code"] = str(session.get("session_code") or "")
     session_payload["session_id"] = str(session.get("id") or "")
     session_payload["text_id"] = context["text_id"]
-    session_payload["schema_id"] = context["schema_id"]
+    session_payload["schema_id"] = str(
+        current_question_set().schema_id or context["schema_id"]
+    )
+    session_payload["questionnaire_version"] = str(
+        current_question_set().version or "1"
+    )
     session_payload["question_set_id"] = context["question_set_id"]
     session_payload["response_scope"] = context["response_scope"]
+    session_payload["test_mode"] = bool(context.get("test_mode"))
+    if context.get("test_mode"):
+        session_payload["data_classification"] = "debug"
     payload["profile"] = profile
     payload["session"] = session_payload
     return payload
@@ -914,6 +954,16 @@ def _render_event_scope_notice(session: Dict[str, Any]) -> None:
     st.markdown(
         f'<div class="caption">{html.escape(body)}</div>',
         unsafe_allow_html=True,
+    )
+
+
+def _render_test_mode_notice(session: Dict[str, Any]) -> None:
+    context = _event_context(session)
+    if not context.get("test_mode"):
+        return
+    st.warning(
+        "TEST MODE · This run is stored in the separate debug session and is excluded "
+        "from the production WG2 participant list and results."
     )
 
 
@@ -1113,6 +1163,12 @@ def _open_existing_login() -> None:
 
 
 def _login_with_key(repo: Any, session: Dict[str, Any], raw_key: str) -> None:
+    if _event_context(session).get("test_mode"):
+        _set_login_error(
+            "Existing production credentials are disabled in test mode. "
+            "Start as a new test participant."
+        )
+        return
     access_key, submission, error = _load_submission_for_key(repo, session, raw_key)
     if not access_key:
         _set_login_error(error or "This access key could not be decoded.")
@@ -1160,6 +1216,7 @@ def _resume_in_mode(mode: str) -> None:
 
 def _render_entry(session: Dict[str, Any], repo: Any) -> None:
     route = _public_route()
+    existing_credentials_allowed = not bool(_event_context(session).get("test_mode"))
     if route:
         with st.container(key="conference_entry_card"):
             _render_public_entry_hero(route)
@@ -1175,9 +1232,16 @@ def _render_entry(session: Dict[str, Any], repo: Any) -> None:
                 ),
             ):
                 _start_new_participant()
-            if st.button("🔑 I already have an access key", use_container_width=True):
+            if existing_credentials_allowed and st.button(
+                "🔑 I already have an access key", use_container_width=True
+            ):
                 _open_existing_login()
                 st.rerun()
+            if existing_credentials_allowed and str(route.path or "") == "un-wg2-icebreaker" and st.button(
+                "↩ I contributed before",
+                use_container_width=True,
+            ):
+                st.switch_page("pages/32_UN_WG2_Member.py")
     else:
         conference_header(_public_entry_title(session), "", step="")
         st.markdown(
@@ -1201,28 +1265,37 @@ def _render_entry(session: Dict[str, Any], repo: Any) -> None:
             ),
         ):
             _start_new_participant()
-        if st.button("🔑 I already have an access key", use_container_width=True):
+        if existing_credentials_allowed and st.button(
+            "🔑 I already have an access key", use_container_width=True
+        ):
             _open_existing_login()
             st.rerun()
-    if _entry_mode() == "existing":
+    if not existing_credentials_allowed:
+        st.caption(
+            "Test mode always creates a separate debug participant. Production access "
+            "keys cannot be attached to this session."
+        )
+    if _entry_mode() == "existing" and existing_credentials_allowed:
         st.markdown("### Enter your emoji access key.")
-        raw_key = st.text_area(
-            "Access key",
-            value=str(
-                get_draft(question_set=current_question_set()).get("access_key") or ""
-            ),
-            key="conference_existing_key",
-            placeholder="Paste your 4-emoji or full access key here",
-            label_visibility="collapsed",
-            height=110,
-        )
-        st.button(
-            "Open my dashboard",
-            type="primary",
-            use_container_width=True,
-            disabled=True,
-            help="Disabled for now while the overview page takes over this material.",
-        )
+        with st.form("conference_existing_key_form"):
+            raw_key = st.text_area(
+                "Access key",
+                value=str(
+                    get_draft(question_set=current_question_set()).get("access_key")
+                    or ""
+                ),
+                key="conference_existing_key",
+                placeholder="Paste your 4-emoji or full access key here",
+                label_visibility="collapsed",
+                height=110,
+            )
+            open_dashboard = st.form_submit_button(
+                "Open my dashboard",
+                type="primary",
+                use_container_width=True,
+            )
+        if open_dashboard:
+            _login_with_key(repo, session, raw_key)
         if st.button(
             f"Open the {_event_context(session)['event_label']} overview",
             use_container_width=True,
@@ -2700,7 +2773,9 @@ def run_conference_questionnaire_page(
     question_set = _question_set_for_public_route(
         bundle_spec.question_set, public_route_path
     )
+    _ensure_session_scope_state(session, question_set)
     _ensure_local_state(question_set)
+    _render_test_mode_notice(session)
     route = public_route_config(public_route_path)
     sidebar_debug_state(
         debug_context={
