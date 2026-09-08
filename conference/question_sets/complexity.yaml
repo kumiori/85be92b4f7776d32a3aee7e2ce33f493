@@ -1,0 +1,174 @@
+questionnaire:
+  id: complexity
+  revision: 2
+  status: active
+  legacy_ids: [complexity_v2]
+  default_mode: quick
+  show_mode_selection: true
+  show_welcome_step: true
+  identity_position: last
+  review:
+    change_note: Migrated without content changes from complexity_v2.py.
+
+step_order: [welcome, role, career_stage, scientific_home, scale, collaboration_style, assets, motivations, obstacle, challenge, follow_up_interest, complexity_fingerprint, open_question, identity, review, done]
+
+flow_modes:
+  quick:
+    title: Quick impulse
+    detail: "~ 3 minutes • just a sketch"
+    accent: 🧊
+    steps: [role, assets, motivations, obstacle, challenge, follow_up_interest]
+  standard:
+    title: Standard
+    detail: "~ 5 minutes · profile + session"
+    accent: 🔵
+    steps: [role, scientific_home, scale, collaboration_style, assets, motivations, obstacle, challenge, follow_up_interest, complexity_fingerprint, open_question]
+  deep:
+    title: Deep dive
+    detail: "~ 7 minutes · fuller profile"
+    accent: 🟠
+    steps: [role, career_stage, scientific_home, scale, collaboration_style, assets, motivations, obstacle, challenge, follow_up_interest, complexity_fingerprint, open_question]
+
+step_copy:
+  welcome: {title: Complexity, body: "An anonymous instrument for tracing thoughts, perceptions, and positions.", note: "Anonymous first. Profiles persist gently. Session questions will evolve from time to time."}
+  role: {title: "What is your perspective?", body: "People are mixtures. Choose the perspectives you genuinely inhabit.", cta: Continue}
+  career_stage: {title: Career stage, body: "Scientific trajectories start from different distances and tempos.", cta: Continue}
+  scientific_home: {title: "What is your scientific home?", body: "Topology matters. Scientific communities emerge from places, institutions, and networks.", cta: Continue}
+  scale: {title: "What computational scale feels natural?", body: "Some questions fit on a laptop. Others need clusters, patient runs, or longer numerical horizons.", cta: Continue}
+  collaboration_style: {title: "How do you collaborate most naturally?", body: "Progress has a social geometry too.", cta: Continue}
+  assets: {title: "What can you contribute?", body: "Choose up to three assets you would realistically bring into a collective effort.", cta: Continue}
+  motivations: {title: "What drives you right now?", body: "Choose up to three active motivations for this moment.", cta: Continue}
+  obstacle: {title: "What slows progress most right now?", body: "Choose up to two obstacles. This is the session layer, not your permanent identity.", cta: Continue}
+  challenge: {title: "What challenge would you join here?", body: "If enough people converged, where would you put your attention?", cta: Continue}
+  follow_up_interest: {title: "Would you like to continue discussions?", body: "Only about whether you would like to continue discussions after the event.", cta: Continue}
+  complexity_fingerprint: {title: "What gives you confidence?", body: "A compact complexity fingerprint. Set the resonance of each source from 0 to 5.", cta: Continue}
+  open_question: {title: "What question keeps you awake?", body: "A challenge, paradox, obstacle, or curiosity you return to repeatedly.", cta: Continue}
+  identity: {title: Alias or identity, body: "Optional. Leave a name, affiliation, email, website, or remain anonymous.", cta: Continue}
+  review: {title: Review before integrating, body: "Profile persists. Session signals describe this event. You can defer reflective questions and return later.", cta: Integrate}
+  done: {title: Signal stored, body: "Keep your key. It lets Complexity remember your profile and your pending reflections.", cta: Start again}
+
+questions:
+  - use: shared.role
+    id: role
+    legacy_ids: [COMPLEXITY_ROLE]
+    prompt: "What is your perspective?"
+    context: "People are mixtures. Choose the perspectives you genuinely inhabit."
+  - use: shared.career_stage
+    id: career_stage
+    legacy_ids: [COMPLEXITY_CAREER_STAGE]
+    prompt: Career stage
+    context: "Scientific trajectories start from different distances and tempos."
+  - use: shared.scientific_home
+    id: scientific_home
+    legacy_ids: [COMPLEXITY_SCIENTIFIC_HOME]
+    prompt: "What is your scientific home?"
+    context: "Topology matters. Scientific communities emerge from places, institutions, and networks."
+  - use: shared.scale
+    id: scale
+    legacy_ids: [COMPLEXITY_SCALE]
+    prompt: "What computational scale feels natural?"
+    context: "Some questions fit on a laptop. Others need clusters, patient runs, or longer numerical horizons."
+  - use: shared.collaboration_style
+    id: collaboration_style
+    legacy_ids: [COMPLEXITY_COLLABORATION_STYLE]
+    prompt: "How do you collaborate most naturally?"
+    context: "Progress has a social geometry too."
+  - use: shared.assets
+    id: assets
+    legacy_ids: [COMPLEXITY_ASSETS]
+    prompt: "What can you contribute?"
+    context: "Choose up to three assets you would realistically bring into a collective effort."
+  - id: motivations
+    revision: 1
+    legacy_ids: [COMPLEXITY_MOTIVATIONS]
+    step: motivations
+    field: motivations
+    prompt: "What drives you right now?"
+    context: "Choose up to three active motivations for this moment."
+    input_type: multi
+    max_select: 3
+    required: true
+    options:
+      - {value: understanding, label: Understanding}
+      - {value: methods, label: Methods}
+      - {value: application, label: Applications}
+      - {value: comparison, label: Benchmarking / comparison}
+      - {value: collaboration, label: Finding collaborators}
+      - {value: teaching, label: Teaching / mentoring}
+  - id: obstacle
+    revision: 1
+    legacy_ids: [COMPLEXITY_OBSTACLE]
+    step: obstacle
+    field: obstacle
+    prompt: "What slows progress most right now?"
+    context: "Choose up to two obstacles. This is the session layer, not your permanent identity."
+    input_type: multi
+    max_select: 2
+    required: true
+    options:
+      - {value: theory, label: Theory}
+      - {value: models, label: Models}
+      - {value: computation, label: Computation}
+      - {value: data, label: Data}
+      - {value: experiments, label: Experiments}
+      - {value: validation, label: Validation}
+      - {value: funding, label: Funding}
+      - {value: coordination, label: Coordination}
+  - id: challenge
+    revision: 1
+    legacy_ids: [COMPLEXITY_CHALLENGE]
+    step: challenge
+    field: challenge
+    prompt: "What challenge would you join here?"
+    context: "If enough people converged, where would you put your attention?"
+    input_type: single
+    required: true
+    options:
+      - {value: benchmark, label: Benchmark problems}
+      - {value: datasets, label: Shared datasets}
+      - {value: code, label: Shared code comparison}
+      - {value: campaign, label: Experimental campaign}
+      - {value: working_group, label: Theory / methods working group}
+      - {value: learning, label: Learning / reading circle}
+      - {value: none, label: None}
+  - id: follow_up_interest
+    revision: 1
+    legacy_ids: [COMPLEXITY_FOLLOW_UP]
+    step: follow_up_interest
+    field: follow_up_interest
+    prompt: "Would you like to continue discussions?"
+    context: "Only about whether you would like to continue discussions after the event."
+    input_type: single
+    required: true
+    options:
+      - {value: yes, label: Yes}
+      - {value: maybe, label: Maybe}
+      - {value: no, label: No}
+  - id: complexity_fingerprint
+    revision: 1
+    legacy_ids: [COMPLEXITY_FINGERPRINT]
+    step: complexity_fingerprint
+    field: complexity_fingerprint
+    prompt: "What gives you confidence?"
+    context: "A compact complexity fingerprint. Set the resonance of each source from 0 to 5."
+    input_type: fingerprint
+    required: false
+    shared_dimension: evidence_source
+  - id: open_question
+    revision: 1
+    legacy_ids: [COMPLEXITY_OPEN_QUESTION]
+    step: open_question
+    field: open_question
+    prompt: "What question keeps you awake?"
+    context: "A challenge, paradox, obstacle, or curiosity you return to repeatedly."
+    input_type: text
+    placeholder: One sentence. One recurring question.
+    required: false
+
+profile_fields: [role, career_stage, scientific_home_country, scientific_home_city, scientific_home_institution, scale, collaboration_style, assets, complexity_fingerprint]
+session_fields: [motivations, obstacle, challenge, follow_up_interest, open_question, boiler_room_contribution, question_flags, identity_reveal_targets]
+deferrable_fields: [complexity_fingerprint, open_question]
+fingerprint_axes: [theory, data, experiments, mechanisms]
+fingerprint_labels: {theory: Theory, data: Data, experiments: Experiments, mechanisms: Mechanisms}
+follow_up_contact_values: [yes, maybe]
+migration_profile_fields: [scientific_home_country, assets, collaboration_style, complexity_fingerprint]

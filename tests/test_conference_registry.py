@@ -25,7 +25,10 @@ def test_registry_resolves_complexity_bundle():
 
     assert resolved.question_set_id == "complexity_v2"
     assert resolved.text_id == "petnica_2026"
-    assert resolved.question_set is COMPLEXITY_V2_QUESTION_SET
+    assert resolved.question_set.id == "complexity"
+    assert resolved.question_set.source_kind == "yaml"
+    assert resolved.questionnaire_revision == 2
+    assert "complexity_v2" in resolved.question_set.legacy_questionnaire_ids
 
 
 def test_registry_resolves_pisa_bundle():

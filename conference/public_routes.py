@@ -4,7 +4,11 @@ from dataclasses import dataclass
 
 import streamlit as st
 
-from conference.events import DALAMBERTIENNES_SESSION_CODE, UN_WG2_SESSION_CODE
+from conference.events import (
+    DALAMBERTIENNES_SESSION_CODE,
+    PREDICTION_SESSION_CODE,
+    UN_WG2_SESSION_CODE,
+)
 
 
 @dataclass(frozen=True)
@@ -21,6 +25,17 @@ class PublicRouteConfig:
 
 
 _PUBLIC_ROUTES = (
+    PublicRouteConfig(
+        path="event",
+        campaign_slug="scientific-events",
+        default_event_slug="prediction",
+        default_session_code=PREDICTION_SESSION_CODE,
+        default_question_set_id="prediction_v0",
+        welcome_title="Prediction",
+        welcome_body="CISM-EUROMECH Advanced Course · Udine · 7–11 September 2026",
+        welcome_context="Damage and Fracture Mechanics of Fluid-Infiltrated Geomaterials",
+        welcome_note="You can save your progress and return with your access key.",
+    ),
     PublicRouteConfig(
         path="climate",
         campaign_slug="climate_research_labs",
@@ -72,7 +87,7 @@ def public_route_config(path: str = "") -> PublicRouteConfig | None:
 
 def public_query_params() -> dict[str, str]:
     out: dict[str, str] = {}
-    for key in ("key", "public_route", "campaign", "test"):
+    for key in ("key", "event", "test", "recovery", "fixture"):
         value = str(st.query_params.get(key, "") or "").strip()
         if value:
             out[key] = value
@@ -85,19 +100,14 @@ def ensure_public_route_query(
     config = public_route_config(path)
     if not config:
         return None
-    current_route = str(st.query_params.get("public_route", "") or "").strip()
-    current_campaign = str(st.query_params.get("campaign", "") or "").strip()
     current_event = str(st.query_params.get("event", "") or "").strip()
     desired_event = str(event_slug_override or config.default_event_slug).strip()
-    if (
-        current_route == config.path
-        and current_campaign == config.campaign_slug
-        and current_event == desired_event
-    ):
+    legacy_present = bool(
+        st.query_params.get("public_route") or st.query_params.get("campaign")
+    )
+    if current_event == desired_event and not legacy_present:
         return config
     next_params = public_query_params()
-    next_params["public_route"] = config.path
-    next_params["campaign"] = config.campaign_slug
     next_params["event"] = desired_event
     st.query_params.clear()
     st.query_params.update(next_params)

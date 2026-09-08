@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Dict, Iterable, List, Sequence
 
 from conference.events import (
@@ -12,6 +13,7 @@ from conference.events import (
     UN_WG2_TEXT_ID,
     YOUNG_SESSION_CODE,
     YOUNG_TEXT_ID,
+    PREDICTION_SESSION_CODE,
     conference_event_context,
     event_config_for_session_code,
 )
@@ -22,9 +24,6 @@ from conference.question_sets import (
     shared_question_ids,
     validate_question_set,
 )
-from conference.question_sets.complexity_v2 import (
-    QUESTION_SET as COMPLEXITY_V2_QUESTION_SET,
-)
 from conference.question_sets.dalembertiennes_v1 import (
     QUESTION_SET as DALEMBERTIENNES_V1_QUESTION_SET,
 )
@@ -32,6 +31,18 @@ from conference.question_sets.pisa_session_v2 import (
     QUESTION_SET as PISA_SESSION_V2_QUESTION_SET,
 )
 from conference.question_sets.un_wg2_v1 import QUESTION_SET as UN_WG2_V1_QUESTION_SET
+from conference.question_sets.yaml_loader import load_question_set_yaml
+
+
+_QUESTION_SET_DIR = Path(__file__).with_name("question_sets")
+COMPLEXITY_QUESTION_SET = load_question_set_yaml(
+    _QUESTION_SET_DIR / "complexity.yaml",
+    source_module="conference.question_sets.complexity",
+)
+PREDICTION_QUESTION_SET = load_question_set_yaml(
+    _QUESTION_SET_DIR / "prediction.yaml",
+    source_module="conference.question_sets.prediction",
+)
 
 
 @dataclass(frozen=True)
@@ -59,16 +70,28 @@ class ResolvedQuestionSetBundle:
     shared_question_ids: tuple[str, ...]
     event_specific_question_ids: tuple[str, ...]
     question_set: QuestionSet
+    questionnaire_id: str
+    questionnaire_revision: int
+    questionnaire_format: int
+    questionnaire_status: str
 
 
 _REGISTRY: tuple[QuestionSetRegistryEntry, ...] = (
+    QuestionSetRegistryEntry(
+        event_slug="prediction",
+        session_code=PREDICTION_SESSION_CODE,
+        text_ids=("prediction_v0",),
+        question_set_id="prediction_v0",
+        schema_id="questionnaire_v2",
+        question_set=PREDICTION_QUESTION_SET,
+    ),
     QuestionSetRegistryEntry(
         event_slug="complexity",
         session_code=COMPLEXITY_SESSION_CODE,
         text_ids=(COMPLEXITY_TEXT_ID, "complexity_session_v2"),
         question_set_id="complexity_v2",
         schema_id="complexity_v2",
-        question_set=COMPLEXITY_V2_QUESTION_SET,
+        question_set=COMPLEXITY_QUESTION_SET,
     ),
     QuestionSetRegistryEntry(
         event_slug="dalembertiennes",
@@ -125,6 +148,10 @@ def resolve_question_set_bundle(
     if not resolved_text_id and session:
         context = conference_event_context(session=session)
         resolved_text_id = _canonical_session_code(context.get("text_id"))
+    if not resolved_text_id and resolved_session_code:
+        config = event_config_for_session_code(resolved_session_code)
+        if config:
+            resolved_text_id = _canonical_session_code(config.primary_text_id)
 
     entry = None
     if resolved_session_code:
@@ -182,6 +209,10 @@ def resolve_question_set_bundle(
             event_specific_question_ids(entry.question_set)
         ),
         question_set=entry.question_set,
+        questionnaire_id=entry.question_set.id,
+        questionnaire_revision=entry.question_set.revision,
+        questionnaire_format=entry.question_set.format,
+        questionnaire_status=entry.question_set.status,
     )
 
 

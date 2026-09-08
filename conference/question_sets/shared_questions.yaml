@@ -1,0 +1,85 @@
+questions:
+  shared.role:
+    id: role
+    revision: 1
+    step: role
+    field: role
+    input_type: multi
+    max_select: 3
+    required: true
+    shared_dimension: scientific_role
+    options:
+      - {value: theory, label: Theory}
+      - {value: models, label: Models}
+      - {value: computation, label: Computation}
+      - {value: experiments, label: Experiments}
+      - {value: data, label: Data / AI}
+      - {value: community, label: Community / convening}
+  shared.career_stage:
+    id: career_stage
+    revision: 1
+    step: career_stage
+    field: career_stage
+    input_type: single
+    required: true
+    shared_dimension: career_stage
+    options:
+      - {value: msc, label: MSc}
+      - {value: phd, label: PhD}
+      - {value: postdoc, label: Postdoc}
+      - {value: faculty, label: Faculty / PI}
+      - {value: industry, label: Industry}
+      - {value: independent, label: Independent / other}
+  shared.scientific_home:
+    id: scientific_home
+    revision: 1
+    step: scientific_home
+    field: scientific_home
+    input_type: scientific_home
+    required: false
+    shared_dimension: scientific_home
+  shared.scale:
+    id: scale
+    revision: 1
+    step: scale
+    field: scale
+    input_type: single
+    required: true
+    shared_dimension: computational_scale
+    options:
+      - {value: analytical, label: Mostly analytical}
+      - {value: laptop, label: Laptop scale}
+      - {value: small_parallel, label: Small parallel runs}
+      - {value: hpc, label: HPC / sustained compute}
+  shared.collaboration_style:
+    id: collaboration_style
+    revision: 1
+    step: collaboration_style
+    field: collaboration_style
+    input_type: single
+    required: true
+    shared_dimension: collaboration_style
+    options:
+      - {value: mostly_alone, label: Mostly alone}
+      - {value: small_team, label: Small team}
+      - {value: distributed_network, label: Distributed network}
+      - {value: large_collaboration, label: Large collaboration}
+      - {value: bridge_builder, label: Bridge builder across groups}
+  shared.assets:
+    id: assets
+    revision: 1
+    step: assets
+    field: assets
+    input_type: multi
+    max_select: 3
+    required: true
+    shared_dimension: scientific_assets
+    options:
+      - {value: theory, label: Theory}
+      - {value: models, label: Models}
+      - {value: computation, label: Computation}
+      - {value: data, label: Data}
+      - {value: experiments, label: Experiments}
+      - {value: software, label: Software}
+      - {value: teaching, label: Teaching}
+      - {value: community, label: Community building}

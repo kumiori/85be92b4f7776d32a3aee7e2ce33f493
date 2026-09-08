@@ -772,6 +772,18 @@ class NotionRepo:
             players_db_id=db_id,
         )
 
+        # A player is a global participant. Joining another event must extend,
+        # never replace, their persisted session membership.
+        if player and self._prop_exists(db_id, "session"):
+            session_prop = self._prop_name(db_id, "session", "relation")
+            existing_session_ids = [
+                str(item) for item in player.get("session_ids", []) if str(item)
+            ]
+            merged_session_ids = list(dict.fromkeys([*existing_session_ids, session_id]))
+            props[session_prop] = {
+                "relation": [{"id": item} for item in merged_session_ids]
+            }
+
         if player:
             if not is_new:
                 last_joined_prop = (
@@ -949,6 +961,30 @@ class NotionRepo:
             db_id,
             filter={"property": prop_name, "rich_text": {"equals": suffix}},
             page_size=10,
+        )
+        return [
+            self._normalize_player(page, players_db_id=db_id)
+            for page in response.get("results", [])
+        ]
+
+    def find_players_by_email(
+        self, email: str, players_db_id: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        token = str(email or "").strip().lower()
+        if not token:
+            return []
+        db_id = self._players_db_id(players_db_id)
+        if not self._prop_exists(db_id, "email"):
+            return []
+        meta = self._db_props(db_id).get("email") or {}
+        email_type = str(meta.get("type") or "")
+        email_prop = self._prop_name(db_id, "email", email_type or "rich_text")
+        if email_type == "email":
+            filter_payload = {"property": email_prop, "email": {"equals": token}}
+        else:
+            filter_payload = {"property": email_prop, "rich_text": {"equals": token}}
+        response = _cached_query(
+            self.client, db_id, filter=filter_payload, page_size=10
         )
         return [
             self._normalize_player(page, players_db_id=db_id)
@@ -1141,6 +1177,8 @@ class NotionRepo:
         email: Optional[str] = None,
         consent_play: Optional[bool] = None,
         consent_research: Optional[bool] = None,
+        institution: Optional[str] = None,
+        base_location: Optional[str] = None,
         players_db_id: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
         player = self.get_player_by_id(player_id, players_db_id=players_db_id)
@@ -1171,6 +1209,10 @@ class NotionRepo:
                 props.update(self._build_checkbox("consented", consent_play))
         if consent_research is not None and self._prop_exists(db_id, "consent_research"):
             props.update(self._build_checkbox("consent_research", consent_research))
+        if institution is not None and self._prop_exists(db_id, "institution"):
+            props.update(self._build_rich_text("institution", institution))
+        if base_location is not None and self._prop_exists(db_id, "base_location"):
+            props.update(self._build_rich_text("base_location", base_location))
         if not props:
             return player
         page = _execute_with_retry(

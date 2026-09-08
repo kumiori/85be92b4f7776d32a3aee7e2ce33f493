@@ -10,7 +10,7 @@ Support long-running participatory events where users create access keys, respon
 
 The system must now support multiple real-world events without mixing responses, questions, participants, or aggregated results.
 
-The next implementation target is the D’Alembert laboratory questionnaire, codename `dalembertiennes`.
+The current multi-event implementation target is the CISM-EUROMECH course in Udine, codename `prediction`. Its production/debug infrastructure is implemented; scientific questionnaire content is the next bounded pass.
 
 ## Main subsystems
 
@@ -53,6 +53,8 @@ In the current implementation, this should usually resolve to one existing sessi
 Examples:
 
 - `unesco-opening`
+- `prediction`
+- `prediction_debug`
 - `dalembertiennes`
 - `cop31-side-event`
 - `wg2-workshop`
@@ -202,7 +204,10 @@ If `Participant` is introduced as a richer domain term, map it onto these fields
 
 A participation is one participant’s trajectory through one persisted `session` or product-level `event`.
 
-This should be modeled as an additive concept, not as a replacement for current session links.
+This is an additive concept, not a replacement for current session links. The
+current implementation checkpoints participation through the shared
+interaction-response store so it works without a destructive historical-data
+migration.
 
 Suggested fields:
 
@@ -214,6 +219,16 @@ Suggested fields:
 - `last_seen_at`
 - `status`
 - `device_id`
+- `current_position`
+- `progress`
+- `completion_state`
+- `created_at`
+- `updated_at`
+
+For identified events, profile fields such as name, normalised email,
+institution, and base location belong to the participant profile and must not
+be encoded as scientific answers. Email is a recovery lookup handle, not an
+authentication factor; the access key remains the participant credential.
 
 ### Response
 
@@ -285,10 +300,15 @@ Current top-level routes/pages:
 - `pages/18_Pisa_Opening.py` with `url_path="pisa-opening"`
 - `pages/19_Pisa_Experiment.py` with `url_path="pisa"`
 - `pages/20_Complexity_Overview.py` via `COMPLEXITY_OVERVIEW_PAGE` with `url_path="complexity-overview"`
+- `pages/33_Event.py` with `url_path="event"` and `?event=<slug>`
+- `pages/34_Event_Overview.py` with `url_path="event-overview"` and `?event=<slug>`
+- `pages/35_Event_Host.py` with `url_path="event-host"` and `?event=<slug>`
 - `pages/14_Decade_Map.py`
 - `pages/07_Admin.py`
 
-So agents should not assume a dynamic router like `/event/dalembertiennes`.
+The generic event entry point is query-param based (`/event?event=<slug>`), not
+a dynamic path such as `/event/dalembertiennes`. Event resolution must not
+create persisted sessions while rendering a page.
 
 Preferred implementation choices:
 
@@ -333,7 +353,104 @@ Event creation flow:
 - Never trust `st.session_state` for durable work.
 - Never aggregate without explicit session or event scope.
 - Never allow a response write without session context, question identity, and text bundle identity.
+- Persist completed steps incrementally; never treat browser state as a checkpoint.
+- Keep participant identity separate from session-scoped participation.
+- Make retries idempotent and intentional revisions append-only with explicit supersession metadata.
+- Never use email alone to grant participant access; recovery remains host-assisted and access-key based.
 - Check `app.py` and `st.switch_page(...)` calls before proposing new routes.
+
+## YAML-first questionnaire contract
+
+- Canonical questionnaire files use stable semantic filenames and IDs without
+  revision suffixes. Content evolution uses integer `revision`; YAML grammar
+  compatibility uses `format`; publication uses `status`.
+- New questions use stable semantic IDs plus integer revisions and optional
+  `supersedes_revision`/`change` lineage. Historical IDs remain aliases and
+  historical response rows are never rewritten.
+- Shared definitions live in `shared_questions.yaml` and are referenced with
+  `use: shared.<name>`. Presentation overrides are controlled; shared option
+  overrides require an explicit reason.
+- Retired questions remain historically resolvable but are excluded from active
+  participant flow.
+- New response bundles store `questionnaire_id`, questionnaire revision, and
+  per-question revision provenance. Keep `text_id`, `question_set_id`,
+  `questionnaire_version`, and `schema_id` as internal compatibility fields
+  while current Notion records and readers depend on them.
+- A production route serves only an `active` questionnaire. Review definitions
+  may be exercised through an explicitly isolated test session.
+
+## Platform interaction invariants
+
+- Every rendered questionnaire step exposes `can_flag`, `can_skip`, and
+  optional disabled-reason copy through the shared step-interaction contract.
+- Flag and Skip are always rendered in a stable action row. Availability may
+  change, visibility may not: unsupported actions are disabled native buttons
+  with concise keyboard-accessible help and visible explanatory copy.
+- Required identity enables Flag and disables Skip. Optional profile and normal
+  scientific steps enable both. Review displays both as inactive and directs
+  the participant back to an editable step.
+- Every scientific `QuestionDefinition` exposes Flag and Skip by default.
+- Skip means intentionally unanswered. It is distinct from unanswered/not yet
+  visited, lost browser state, and validation failure.
+- Flag may coexist with answered or skipped. Both skip and flag state must be
+  included in durable checkpoints and restored on resume/recovery.
+- A question may disable Skip only through explicit structural configuration
+  (`skippable=False`). This is for genuinely non-skippable structural steps,
+  not ordinary scientific questions.
+- Review surfaces show the actual question, answer or `Skipped` state, and flag
+  indicator in participant language.
+- A controls fixture may exist for debug-only platform QA, but it must require
+  an explicit test-session selector, remain unreachable from production, and
+  never be presented as scientific event content.
+
+## Public URL and completion invariants
+
+- Generic event links emit the smallest sufficient query contract: `event`,
+  plus `test=1` for deliberate debug use. Recovery credentials and explicit
+  debug fixtures are additive only when that flow requires them.
+- `public_route` may be read as a legacy compatibility alias but is not emitted
+  by the generic event flow. `campaign` is metadata, not a routing requirement.
+- Identified-event copy must describe the access key as the return credential
+  and email only as a host-assisted recovery handle.
+- Production completion surfaces show participant-facing confirmation and the
+  full access key. Internal hashes, ASCII encodings, response identifiers, and
+  similar diagnostics must not be shown in production; test diagnostics may be
+  available in a collapsed, explicitly labelled debug surface.
+
+## Semantic field invariants
+
+- Every field with semantic type `location` uses the shared lookup component;
+  arbitrary raw text is not a valid stored location value.
+- Store the lookup display label, locality/city, region, country, country code,
+  stable provider/place identifier, and coordinates only when naturally
+  returned by the lookup.
+- Do not request precise coordinates from a participant.
+- This applies to base locations, institution locations, field sites,
+  participant-entered event locations, and future geographic answers.
+
+## Identity and profile boundary
+
+- PREDICTION requires name and email; institution and base location are optional.
+- Email supports access-key issuance and host-assisted recovery. Email is not
+  authentication and does not imply mailing-list or other communication consent.
+- Required email validation distinguishes a missing value (explain recovery
+  purpose) from a malformed supplied address (ask the participant to check it).
+- Durable profile information remains separate from event/session scientific
+  responses.
+
+## Session-family navigation
+
+Participant-facing sessions are grouped by current conceptual family:
+
+- Complexity (formerly B-Complex);
+- Young (formerly Pisa);
+- Prediction (CISM / Udine);
+- D'Alembertiennes (Climate).
+
+Use declarative `navigation_families()` metadata for these groups. Preserve old
+URL paths where compatibility requires them, but do not expose historical
+implementation labels such as `Scientific Event` in navigation. This metadata
+is the precursor to a future Sessions index; do not build that dashboard yet.
 
 ## Test-mode isolation primitive
 
@@ -341,6 +458,9 @@ Every participant-facing event flow should support deliberate testing without mi
 
 Implementation rule:
 
+- `?event=<production-slug>&test=1` resolves to the configured debug event and
+  persisted debug session before any participant lookup, checkpoint, response,
+  revision, aggregate, analytics, or recovery operation;
 - a test run must resolve to a dedicated persisted session with its own `session_code` and `session_id`;
 - never reuse the production session id and never rely on browser state alone to mark a run as test data;
 - reuse the production question set when the purpose is route QA, but record `test_mode = true`, a debug event slug, and an explicit debug response scope in every response bundle and event;
@@ -352,6 +472,13 @@ Implementation rule:
 - if a test session is reset or archived, keep a minimal operator audit record and never touch production-scoped records.
 
 This is a general event-system primitive, not a WG2-specific exception. New event implementations should define their production/test session pair and test entry path as part of the user flow, data-written contract, logging, analytics scope, and Definition of Done.
+
+Current CISM pair:
+
+- production: event slug `prediction`, session code `prediction_2026`;
+- test/debug: event slug `prediction_debug`, session code `prediction_debug_2026`;
+- both are created only by `scripts/bootstrap_prediction_sessions.py` or an
+  equivalent explicit operator action.
 
 ## Loop contract for long-running agents
 
@@ -465,5 +592,8 @@ A task is done when:
 - All durable writes include event scope where required.
 - Event logging exists.
 - Aggregations filter by event id.
+- Partial participation survives total browser-state loss and resumes in the correct persisted session.
+- Accidental submission retries are idempotent; intentional revisions remain append-only and auditable.
+- Identified-participant recovery requires the access-key recovery flow, never email alone.
 - Failure mode is visible in admin/operator view.
 - `PLAN.md` is updated with result and next step.

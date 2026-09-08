@@ -264,7 +264,7 @@ class NotionInteractionRepository(InteractionRepository):
         value: Any,
         text_id: str,
         device_id: str,
-    ) -> None:
+    ) -> Dict[str, Any]:
         session_prop = self._find_prop("session", "relation")
         player_prop = self._find_prop("player", "relation")
         question_prop = self._find_prop("question", "relation")
@@ -343,10 +343,14 @@ class NotionInteractionRepository(InteractionRepository):
         if title_prop:
             properties[title_prop] = {"title": [{"type": "text", "text": {"content": f"{question_id} · {text_id}"}}]}
 
-        self.client.pages.create(
+        page = self.client.pages.create(
             parent={"database_id": self.database_id},
             properties=properties,
         )
+        return {
+            "response_id": str(page.get("id") or "") if isinstance(page, dict) else "",
+            "created_at": now_iso,
+        }
 
     def get_responses(self, session_id: str) -> List[Dict[str, Any]]:
         session_prop = self._find_prop("session", "relation")

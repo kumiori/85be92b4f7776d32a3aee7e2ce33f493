@@ -1,0 +1,39 @@
+questionnaire:
+  id: prediction
+  revision: 1
+  status: review
+  legacy_ids: [prediction_v0]
+  default_mode: standard
+  show_mode_selection: false
+  show_welcome_step: false
+  identity_position: first
+  review:
+    change_note: Infrastructure skeleton; scientific questions intentionally absent.
+
+step_order: []
+flow_modes:
+  standard:
+    title: Prediction
+    detail: ""
+    accent: ""
+    steps: []
+step_copy:
+  identity:
+    title: About you
+    body: A few details so you can return to your answers later.
+  review:
+    title: Review your answers
+    body: Scientific questions will appear here when they are available.
+    cta: Submit responses
+  done:
+    title: Responses recorded
+    body: Save your key so you can return later.
+    cta: Finish
+questions: []
+profile_fields: []
+session_fields: []
+deferrable_fields: []
+fingerprint_axes: []
+fingerprint_labels: {}
+follow_up_contact_values: []
+migration_profile_fields: []
