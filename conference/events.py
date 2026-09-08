@@ -9,6 +9,8 @@ COMPLEXITY_SESSION_CODE = "petnica_2026"
 DALAMBERTIENNES_SESSION_CODE = "dalembertiennes_2026"
 UN_WG2_SESSION_CODE = "un_wg2_core_2026"
 UN_WG2_DEBUG_SESSION_CODE = "un_wg2_debug_2026"
+PREDICTION_SESSION_CODE = "prediction_2026"
+PREDICTION_DEBUG_SESSION_CODE = "prediction_debug_2026"
 UNESCO_SESSION_CODE = "global-session"
 YOUNG_TEXT_ID = "pisa_session_v2"
 COMPLEXITY_TEXT_ID = "petnica_2026"
@@ -40,6 +42,32 @@ UN_WG2_HOST_PAGE = "pages/27_UN_WG2_Host.py"
 
 
 @dataclass(frozen=True)
+class EventIdentityPolicy:
+    identified: bool = False
+    required_fields: tuple[str, ...] = ()
+    optional_fields: tuple[str, ...] = ()
+    recovery_mode: str = "access_key"
+    semantic_fields: tuple[tuple[str, str], ...] = ()
+
+    def semantic_type_for(self, field: str) -> str:
+        return dict(self.semantic_fields).get(str(field or "").strip(), "text")
+
+
+@dataclass(frozen=True)
+class EventResultConfig:
+    kind: str = "generic"
+    visible_when: str = "submitted"
+
+
+@dataclass(frozen=True)
+class NavigationItem:
+    title: str
+    page: str
+    url_path: str
+    icon: str
+
+
+@dataclass(frozen=True)
 class ConferenceEventConfig:
     slug: str
     session_code: str
@@ -55,9 +83,87 @@ class ConferenceEventConfig:
     response_scope: str = "event_specific"
     aliases: tuple[str, ...] = ()
     test_mode: bool = False
+    test_session_code: str = ""
+    title: str = ""
+    subtitle: str = ""
+    description: str = ""
+    place: str = ""
+    dates: str = ""
+    intro_title: str = ""
+    intro_body: str = ""
+    closing_title: str = ""
+    closing_body: str = ""
+    identity_policy: EventIdentityPolicy = EventIdentityPolicy()
+    result_config: EventResultConfig = EventResultConfig()
 
 
 _EVENT_CONFIGS = (
+    ConferenceEventConfig(
+        slug="prediction",
+        session_code=PREDICTION_SESSION_CODE,
+        label="PREDICTION",
+        location="Udine",
+        text_ids=("prediction_v0",),
+        primary_text_id="prediction_v0",
+        question_set_id="prediction_v0",
+        schema_id="questionnaire_v2",
+        questionnaire_page="pages/33_Event.py",
+        overview_page="pages/34_Event_Overview.py",
+        host_page="pages/35_Event_Host.py",
+        response_scope="event_session",
+        aliases=("prediction", PREDICTION_SESSION_CODE),
+        test_session_code=PREDICTION_DEBUG_SESSION_CODE,
+        title="CISM-EUROMECH Advanced Course",
+        subtitle="Damage and Fracture Mechanics of Fluid-Infiltrated Geomaterials",
+        description="A shared scientific reflection on prediction in damage and fracture.",
+        place="Udine",
+        dates="7–11 September 2026",
+        intro_title="Prediction",
+        intro_body="Share your perspective as the course develops.",
+        closing_title="Responses recorded",
+        closing_body="Keep your access key so you can return to your answers.",
+        identity_policy=EventIdentityPolicy(
+            identified=True,
+            required_fields=("name", "email"),
+            optional_fields=("institution", "base_location"),
+            recovery_mode="host_assisted",
+            semantic_fields=(("base_location", "location"),),
+        ),
+        result_config=EventResultConfig(kind="generic", visible_when="submitted"),
+    ),
+    ConferenceEventConfig(
+        slug="prediction_debug",
+        session_code=PREDICTION_DEBUG_SESSION_CODE,
+        label="TEST · PREDICTION",
+        location="Udine",
+        text_ids=("prediction_v0",),
+        primary_text_id="prediction_v0",
+        question_set_id="prediction_v0",
+        schema_id="questionnaire_v2",
+        questionnaire_page="pages/33_Event.py",
+        overview_page="pages/34_Event_Overview.py",
+        host_page="pages/35_Event_Host.py",
+        response_scope="debug_session",
+        aliases=("prediction_debug", PREDICTION_DEBUG_SESSION_CODE),
+        test_mode=True,
+        title="TEST · CISM-EUROMECH Advanced Course",
+        subtitle="Damage and Fracture Mechanics of Fluid-Infiltrated Geomaterials",
+        description="Test copy of the course questionnaire.",
+        place="Udine",
+        dates="7–11 September 2026",
+        intro_title="Prediction",
+        intro_body="Share your perspective as the course develops.",
+        closing_title="Test responses recorded",
+        closing_body="This test remains separate from course responses.",
+        identity_policy=EventIdentityPolicy(
+            identified=True,
+            required_fields=("name", "email"),
+            optional_fields=("institution", "base_location"),
+            recovery_mode="host_assisted",
+            semantic_fields=(("base_location", "location"),),
+        ),
+        result_config=EventResultConfig(kind="generic", visible_when="submitted"),
+    ),
     ConferenceEventConfig(
         slug="complexity",
         session_code=COMPLEXITY_SESSION_CODE,
@@ -160,6 +266,50 @@ def _canonical_session_code(value: Any) -> str:
 
 def event_config_for_session_code(session_code: str) -> ConferenceEventConfig | None:
     return _EVENT_CONFIG_BY_CODE.get(_canonical_session_code(session_code))
+
+
+def event_config_for_slug(slug: str) -> ConferenceEventConfig | None:
+    token = _normalized_code(slug).lower()
+    return next((item for item in _EVENT_CONFIGS if item.slug.lower() == token), None)
+
+
+def event_config_for_request(
+    event_slug: str, *, test: bool | str = False
+) -> ConferenceEventConfig | None:
+    """Resolve the persisted boundary before a participant flow reads or writes."""
+    config = event_config_for_slug(event_slug)
+    wants_test = test is True or str(test or "").strip().lower() in {"1", "true", "yes"}
+    if not config or not wants_test or config.test_mode:
+        return config
+    if not config.test_session_code:
+        return None
+    return event_config_for_session_code(config.test_session_code)
+
+
+def navigation_families() -> dict[str, tuple[NavigationItem, ...]]:
+    """Current participant-facing session families, ready for a future index."""
+    return {
+        "Complexity": (
+            NavigationItem("B-Complex 2026", COMPLEXITY_ENTRY_PAGE, "complexity", ":material/groups:"),
+            NavigationItem("Overview", COMPLEXITY_OVERVIEW_PAGE, "complexity-overview", ":material/insights:"),
+            NavigationItem("Host", COMPLEXITY_HOST_PAGE, "pisa-meeting-host", ":material/admin_panel_settings:"),
+        ),
+        "Young": (
+            NavigationItem("Pisa 2026", "pages/19_Pisa_Experiment.py", "pisa", ":material/history:"),
+            NavigationItem("Overview", YOUNG_OVERVIEW_PAGE, "young-overview", ":material/insights:"),
+            NavigationItem("Opening", "pages/18_Pisa_Opening.py", "pisa-opening", ":material/auto_stories:"),
+        ),
+        "Prediction": (
+            NavigationItem("CISM Udine 2026", "pages/33_Event.py", "event", ":material/science:"),
+            NavigationItem("Prediction Overview", "pages/34_Event_Overview.py", "event-overview", ":material/insights:"),
+            NavigationItem("Prediction Host", "pages/35_Event_Host.py", "event-host", ":material/admin_panel_settings:"),
+        ),
+        "D'Alembertiennes": (
+            NavigationItem("Climate", DALAMBERTIENNES_ENTRY_PAGE, "dalembertiennes", ":material/science:"),
+            NavigationItem("Overview", DALAMBERTIENNES_OVERVIEW_PAGE, "dalembertiennes-overview", ":material/insights:"),
+            NavigationItem("Host", DALAMBERTIENNES_HOST_PAGE, "dalembertiennes-host", ":material/admin_panel_settings:"),
+        ),
+    }
 
 
 def _normalized_event_status(session: Any | None = None) -> str:

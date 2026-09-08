@@ -63,6 +63,13 @@ class QuestionDefinition:
     free_text_placeholder: str = ""
     free_text_required: bool = False
     revision: QuestionRevision | None = None
+    skippable: bool = True
+    flaggable: bool = True
+    revision_number: int = 1
+    supersedes_revision: int | None = None
+    status: str = "active"
+    shared_dimension: str = ""
+    legacy_ids: tuple[str, ...] = ()
 
     @property
     def context(self) -> str:
@@ -79,6 +86,7 @@ class QuestionDefinition:
             "input_type": self.input_type,
             "options": [dict(item) for item in self.options],
             "required": self.required,
+            "status": self.status,
         }
         if self.max_select is not None:
             out["max_select"] = self.max_select
@@ -95,9 +103,88 @@ class QuestionDefinition:
                 "placeholder": self.free_text_placeholder,
                 "required": self.free_text_required,
             }
-        if self.revision:
+        if (
+            self.revision
+            and self.revision.supersedes
+            and self.supersedes_revision is None
+            and self.revision_number == 1
+        ):
             out["revision"] = self.revision.as_dict()
+        else:
+            out["revision"] = self.revision_number
+            if self.revision:
+                out["revision_lineage"] = self.revision.as_dict()
+        if self.supersedes_revision is not None:
+            out["supersedes_revision"] = self.supersedes_revision
+        if self.shared_dimension:
+            out["shared_dimension"] = self.shared_dimension
+        if self.legacy_ids:
+            out["legacy_ids"] = list(self.legacy_ids)
+        out["interactions"] = question_interactions(self)
         return out
+
+
+@dataclass(frozen=True)
+class StepInteractions:
+    can_flag: bool
+    can_skip: bool
+    flag_reason_disabled: str = ""
+    skip_reason_disabled: str = ""
+
+    def as_dict(self) -> dict[str, bool | str]:
+        return {
+            "can_flag": self.can_flag,
+            "can_skip": self.can_skip,
+            "flag_reason_disabled": self.flag_reason_disabled,
+            "skip_reason_disabled": self.skip_reason_disabled,
+        }
+
+
+IDENTITY_SKIP_DISABLED_REASON = (
+    "At this stage, this is required to continue. If you think this is too "
+    "restrictive, drop us a message."
+)
+
+
+def step_interactions(
+    step: str, *, question: QuestionDefinition | None = None
+) -> StepInteractions:
+    """Return the visible Flag/Skip capability contract for any rendered step."""
+    if question is not None:
+        return StepInteractions(
+            can_flag=bool(question.flaggable),
+            can_skip=bool(question.skippable),
+            flag_reason_disabled="Flagging is not available for this step."
+            if not question.flaggable
+            else "",
+            skip_reason_disabled="This step is required to continue."
+            if not question.skippable
+            else "",
+        )
+    if step == "identity":
+        return StepInteractions(
+            can_flag=True,
+            can_skip=False,
+            skip_reason_disabled=IDENTITY_SKIP_DISABLED_REASON,
+        )
+    if step == "review":
+        return StepInteractions(
+            can_flag=False,
+            can_skip=False,
+            flag_reason_disabled="Return to a step to flag it.",
+            skip_reason_disabled="Review cannot be skipped; submit or return to a step.",
+        )
+    return StepInteractions(
+        can_flag=False,
+        can_skip=False,
+        flag_reason_disabled="Flagging is not available for this step.",
+        skip_reason_disabled="Skipping is not available for this step.",
+    )
+
+
+def question_interactions(question: QuestionDefinition) -> dict[str, bool | str]:
+    """Platform interaction contract for every configured scientific question."""
+    return step_interactions(str(question.step), question=question).as_dict()
 
 
 @dataclass(frozen=True)
@@ -118,16 +205,69 @@ class QuestionSet:
     default_mode: str = "quick"
     show_mode_selection: bool = True
     show_welcome_step: bool = True
+    identity_position: str = "last"
     source_kind: str = "python"
     source_path: str = ""
     source_note: str = ""
     version: str = "1"
     schema_id: str = ""
     legacy_questions: Sequence[QuestionDefinition] = ()
+    revision: int = 1
+    format: int = 2
+    status: str = "active"
+    reviewed_at: str = ""
+    reviewed_by: Sequence[str] = ()
+    change_note: str = ""
+    legacy_questionnaire_ids: Sequence[str] = ()
 
 
 def question_ids(question_set: QuestionSet) -> list[str]:
-    return [question.question_id for question in question_set.questions]
+    return [
+        question.question_id
+        for question in question_set.questions
+        if question.status != "retired"
+    ]
+
+
+def active_questions(question_set: QuestionSet) -> list[QuestionDefinition]:
+    return [question for question in question_set.questions if question.status != "retired"]
+
+
+def questionnaire_is_participant_facing(question_set: QuestionSet) -> bool:
+    return question_set.status == "active"
+
+
+def question_requires_reanswer(
+    previous: QuestionDefinition,
+    current: QuestionDefinition,
+) -> bool:
+    if previous.question_id != current.question_id:
+        return False
+    if current.revision_number <= previous.revision_number:
+        return False
+    if current.supersedes_revision not in {None, previous.revision_number}:
+        return False
+    return bool(current.revision and current.revision.reask_if_answered)
+
+
+def questions_requiring_reanswer(
+    question_set: QuestionSet,
+    stored_provenance: Mapping[str, Any],
+) -> list[QuestionDefinition]:
+    required: list[QuestionDefinition] = []
+    for current in active_questions(question_set):
+        prior = stored_provenance.get(current.question_id)
+        if not isinstance(prior, Mapping):
+            continue
+        prior_revision = int(prior.get("question_revision") or 1)
+        if (
+            current.revision_number > prior_revision
+            and current.supersedes_revision in {None, prior_revision}
+            and current.revision
+            and current.revision.reask_if_answered
+        ):
+            required.append(current)
+    return required
 
 
 def question_by_step(
@@ -135,7 +275,7 @@ def question_by_step(
     step: str,
 ) -> QuestionDefinition | None:
     token = str(step or "").strip()
-    for question in question_set.questions:
+    for question in active_questions(question_set):
         if question.step == token:
             return question
     return None
@@ -146,7 +286,7 @@ def question_by_field(
     field: str,
 ) -> QuestionDefinition | None:
     token = str(field or "").strip()
-    for question in question_set.questions:
+    for question in active_questions(question_set):
         if question.field == token:
             return question
     return None
@@ -163,7 +303,7 @@ def question_by_id(
     if include_legacy:
         questions.extend(question_set.legacy_questions)
     for question in questions:
-        if question.question_id == token:
+        if question.question_id == token or token in question.legacy_ids:
             return question
     return None
 
@@ -233,11 +373,23 @@ def step_copy_dict(question_set: QuestionSet) -> dict[str, dict[str, str]]:
 
 def validate_question_set(question_set: QuestionSet) -> list[str]:
     errors: list[str] = []
+    if question_set.status not in {"draft", "review", "active", "archived"}:
+        errors.append(f"Unknown questionnaire status in {question_set.id}: {question_set.status}")
+    if int(question_set.revision) < 1:
+        errors.append(f"Questionnaire revision must be positive in {question_set.id}")
     seen_ids: set[str] = set()
     seen_steps: set[str] = set()
     step_order = {str(step) for step in question_set.step_order}
     built_in_steps = {"welcome", "identity", "review", "done"}
     for question in question_set.questions:
+        if question.status not in {"active", "retired"}:
+            errors.append(
+                f"Unknown question status in {question_set.id}: {question.status}"
+            )
+        if question.revision_number < 1:
+            errors.append(
+                f"Question revision must be positive in {question_set.id}: {question.question_id}"
+            )
         if question.question_id in seen_ids:
             errors.append(f"Duplicate question id in {question_set.id}: {question.question_id}")
         seen_ids.add(question.question_id)

@@ -23,6 +23,7 @@ CURRENT_SCHEMA_VERSION = 2
 MULTI_INPUT_TYPES = {"multi"}
 TEXT_INPUT_TYPES = {"text"}
 COMPOSITE_INPUT_TYPES = {"geography_context"}
+LOCATION_INPUT_TYPES = {"location"}
 
 
 def _resolve_question_set(question_set: QuestionSet | None = None) -> QuestionSet:
@@ -49,9 +50,16 @@ def _default_draft(question_set: QuestionSet) -> Dict[str, Any]:
         "mode": str(question_set.default_mode or ""),
         "boiler_room_contribution": "",
         "question_flags": {},
+        "question_skips": {},
+        "question_states": {},
+        "updated_question_ids": [],
         "alias": "",
         "identity": "",
         "contact": "",
+        "name": "",
+        "email": "",
+        "institution": "",
+        "base_location": "",
         "deferred_fields": [],
         "identity_reveal_targets": [],
         "access_key": "",
@@ -73,6 +81,8 @@ def _default_draft(question_set: QuestionSet) -> Dict[str, Any]:
                     "coordinates": "",
                 },
             )
+        elif question.input_type in LOCATION_INPUT_TYPES:
+            draft.setdefault(field, {})
         elif question.input_type == "fingerprint":
             draft.setdefault(field, {axis: 0 for axis in question_set.fingerprint_axes})
         elif question.input_type in MULTI_INPUT_TYPES:
@@ -105,13 +115,10 @@ def active_step_sequence(
 ) -> List[str]:
     qset = _resolve_question_set(question_set)
     prefix = ["welcome"] if qset.show_welcome_step else []
-    return [
-        *prefix,
-        *active_question_steps(draft, question_set=qset),
-        "identity",
-        "review",
-        "done",
-    ]
+    questions = active_question_steps(draft, question_set=qset)
+    if qset.identity_position == "first":
+        return [*prefix, "identity", *questions, "review", "done"]
+    return [*prefix, *questions, "identity", "review", "done"]
 
 
 def initial_step(
@@ -122,6 +129,8 @@ def initial_step(
     qset = _resolve_question_set(question_set)
     if qset.show_welcome_step:
         return "welcome"
+    if qset.identity_position == "first":
+        return "identity"
     steps = active_question_steps(draft, question_set=qset)
     if steps:
         return steps[0]
@@ -442,16 +451,32 @@ def build_session_payload(
     profile: Dict[str, Any] = {}
     session: Dict[str, Any] = {
         "depth": str(draft.get("mode") or "").strip(),
+        "questionnaire_id": str(qset.id or "").strip(),
+        "questionnaire_revision": int(qset.revision),
+        "questionnaire_format": int(qset.format),
+        "questionnaire_status": str(qset.status),
         "question_set_id": str(qset.id or "").strip(),
         "schema_id": str(qset.schema_id or "").strip(),
         "questionnaire_version": str(qset.version or "1").strip(),
         "boiler_room_contribution": _normalize_text(draft.get("boiler_room_contribution")),
         "question_flags": normalize_question_flags(draft.get("question_flags")),
+        "question_skips": normalize_question_flags(draft.get("question_skips")),
+        "question_states": deepcopy(dict(draft.get("question_states") or {})),
         "deferred_fields": deferred_fields,
         "identity_reveal_targets": _normalize_values(
             _coerce_values(draft.get("identity_reveal_targets", [])),
             set(_coerce_values(draft.get("identity_reveal_targets", []))),
         ),
+        "question_provenance": {
+            str(question.question_id): {
+                "question_id": str(question.question_id),
+                "question_revision": int(question.revision_number),
+                "status": str(question.status),
+                "shared_dimension": str(question.shared_dimension),
+            }
+            for question in qset.questions
+            if question.status != "retired"
+        },
     }
 
     if any(
@@ -490,6 +515,8 @@ def build_session_payload(
                 target[field] = {axis: 0 for axis in qset.fingerprint_axes}
             elif question.input_type in COMPOSITE_INPUT_TYPES:
                 target[field] = _normalize_geography_context({})
+            elif question.input_type in LOCATION_INPUT_TYPES:
+                target[field] = {}
             elif question.input_type in MULTI_INPUT_TYPES:
                 target[field] = []
             else:
@@ -501,6 +528,10 @@ def build_session_payload(
             target[field] = _normalize_fingerprint(qset, draft.get(field))
         elif question.input_type in COMPOSITE_INPUT_TYPES:
             target[field] = _normalize_geography_context(draft.get(field))
+        elif question.input_type in LOCATION_INPUT_TYPES:
+            target[field] = deepcopy(
+                dict(draft.get(field) or {}) if isinstance(draft.get(field), dict) else {}
+            )
         elif question.input_type in MULTI_INPUT_TYPES:
             allowed = field_value_set(qset, field)
             target[field] = _normalize_values(_coerce_values(draft.get(field, [])), allowed, question.max_select)
@@ -537,6 +568,8 @@ def flatten_payload(
         "scientific_home_institution": str(scientific_home.get("institution") or "").strip(),
         "boiler_room_contribution": str(session.get("boiler_room_contribution") or "").strip(),
         "question_flags": normalize_question_flags(session.get("question_flags", payload.get("question_flags", {}))),
+        "question_skips": normalize_question_flags(session.get("question_skips", payload.get("question_skips", {}))),
+        "question_states": deepcopy(dict(session.get("question_states", payload.get("question_states", {})) or {})),
         "deferred_fields": list(session.get("deferred_fields") or []),
         "identity_reveal_targets": list(session.get("identity_reveal_targets") or []),
     }
@@ -550,6 +583,8 @@ def flatten_payload(
             out[field] = _normalize_fingerprint(qset, value)
         elif question.input_type in COMPOSITE_INPUT_TYPES:
             out[field] = _normalize_geography_context(value)
+        elif question.input_type in LOCATION_INPUT_TYPES:
+            out[field] = deepcopy(dict(value or {}) if isinstance(value, dict) else {})
         elif question.input_type in MULTI_INPUT_TYPES:
             out[field] = list(value or [])
         else:
@@ -586,6 +621,10 @@ def build_identity_metadata(
         "notes": "",
         "contact_label": identity or alias or contact or "anonymous-scientist",
         "anonymous_first": True,
+        "name": _normalize_text(draft.get("name")) or identity,
+        "email": _normalize_text(draft.get("email")) or contact,
+        "institution": _normalize_text(draft.get("institution")),
+        "base_location": deepcopy(draft.get("base_location") or {}),
     }
 
 

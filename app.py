@@ -46,6 +46,21 @@ DALAMBERTIENNES_HOST_PAGE = getattr(
 )
 
 
+def _session_family_pages() -> dict[str, list[st.Page]]:
+    return {
+        f"**{family}**": [
+            st.Page(
+                item.page,
+                title=item.title,
+                icon=item.icon,
+                url_path=item.url_path,
+            )
+            for item in items
+        ]
+        for family, items in conference_events.navigation_families().items()
+    }
+
+
 def render_landing_page() -> None:
     set_page()
     apply_theme()
@@ -146,62 +161,7 @@ def _visible_pages() -> dict[str, list[st.Page]]:
             st.Page("pages/12_Report.py", title="Report", icon=":material/article:"),
             st.Page("pages/09_Player.py", title="Your trajectory", icon=":material/person:"),
         ],
-        "**Complexity**": [
-            st.Page(
-                "pages/15_Pisa_Meeting.py",
-                title="Complexity",
-                icon=":material/groups:",
-                url_path="complexity",
-            ),
-            st.Page(
-                "pages/21_Dalembertiennes.py",
-                title="D'Alembertiennes",
-                icon=":material/science:",
-                url_path="dalembertiennes",
-            ),
-            st.Page(
-                "pages/19_Pisa_Experiment.py",
-                title="Young Experiment (Paused)",
-                icon=":material/history:",
-                url_path="pisa",
-            ),
-            st.Page(
-                YOUNG_OVERVIEW_PAGE,
-                title="Young Overview",
-                icon=":material/travel_explore:",
-                url_path="young-overview",
-            ),
-            st.Page(
-                COMPLEXITY_OVERVIEW_PAGE,
-                title="Complexity Overview",
-                icon=":material/insights:",
-                url_path="complexity-overview",
-            ),
-            st.Page(
-                DALAMBERTIENNES_OVERVIEW_PAGE,
-                title="D'Alembertiennes Overview",
-                icon=":material/insights:",
-                url_path="dalembertiennes-overview",
-            ),
-            st.Page(
-                "pages/18_Pisa_Opening.py",
-                title="Pisa Opening",
-                icon=":material/auto_stories:",
-                url_path="pisa-opening",
-            ),
-            st.Page(
-                "pages/16_Pisa_Meeting_Host.py",
-                title="Complexity Host",
-                icon=":material/insights:",
-                url_path="pisa-meeting-host",
-            ),
-            st.Page(
-                DALAMBERTIENNES_HOST_PAGE,
-                title="D'Alembertiennes Host",
-                icon=":material/insights:",
-                url_path="dalembertiennes-host",
-            ),
-        ],
+        **_session_family_pages(),
         "**Decade**": [
             st.Page("pages/14_Decade_Map.py", title="Decade Map", icon=":material/timeline:"),
         ],

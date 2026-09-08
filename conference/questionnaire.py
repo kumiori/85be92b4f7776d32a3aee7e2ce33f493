@@ -20,6 +20,15 @@ from conference.events import (
     conference_event_context,
     conference_event_options,
     text_ids_for_session_code,
+    event_config_for_session_code,
+)
+from conference.participation import normalize_email
+from conference.location_lookup import opencage_location_options, render_location_lookup
+from conference.question_state import (
+    answer_question,
+    flag_question,
+    question_state,
+    skip_question,
 )
 from conference.flow import (
     active_question_steps,
@@ -59,6 +68,11 @@ from conference.question_sets import (
     field_value_set,
     question_by_field,
     question_by_step,
+    questions_requiring_reanswer,
+    step_interactions,
+)
+from conference.question_sets.platform_controls_fixture import (
+    QUESTION_SET as PLATFORM_CONTROLS_FIXTURE,
 )
 from conference.registry import resolve_question_set_bundle
 from conference.question_flags import (
@@ -235,7 +249,9 @@ def _log_route_event(
 
 
 def _public_route() -> Any | None:
-    return public_route_config()
+    return public_route_config(
+        str(st.session_state.get("conference_public_route_path") or "")
+    )
 
 
 def _public_entry_title(session: Dict[str, Any]) -> str:
@@ -439,6 +455,10 @@ def _mode_start(mode: str) -> None:
 
 
 def _question_prompt_by_id(question_id: str) -> str:
+    if str(question_id).startswith("platform_step_"):
+        step = str(question_id).removeprefix("platform_step_")
+        copy = current_question_set().step_copy.get(step, {})
+        return str(copy.get("title") or step.replace("_", " ").title())
     return flow_question_prompt_by_id(question_id, question_set=current_question_set())
 
 
@@ -446,6 +466,39 @@ def _question_flag_entries() -> Dict[str, Dict[str, Any]]:
     return normalize_question_flags(
         get_draft(question_set=current_question_set()).get("question_flags")
     )
+
+
+def _question_skip_entries() -> Dict[str, Dict[str, Any]]:
+    return normalize_question_flags(
+        get_draft(question_set=current_question_set()).get("question_skips")
+    )
+
+
+def _set_question_skip(question_id: str, *, reasons: List[str], note: str) -> None:
+    entries = _question_skip_entries()
+    token = str(question_id or "").strip()
+    normalized = normalize_question_flags(
+        {token: {"flags": reasons, "note": note}}
+    )
+    if normalized.get(token):
+        entries[token] = normalized[token]
+    update_draft(question_set=current_question_set(), question_skips=entries)
+
+
+def _clear_question_answer(question: QuestionDefinition) -> None:
+    field = str(question.field or "")
+    if question.input_type == "scientific_home":
+        update_draft(
+            question_set=current_question_set(),
+            scientific_home_country="",
+            scientific_home_city="",
+            scientific_home_institution="",
+        )
+        return
+    empty: Any = [] if question.input_type == "multi" else {}
+    if question.input_type not in {"multi", "location", "geography_context", "fingerprint"}:
+        empty = ""
+    update_draft(question_set=current_question_set(), **{field: empty})
 
 
 def _set_question_flag(question_id: str, *, flags: List[str], note: str) -> None:
@@ -459,11 +512,21 @@ def _set_question_flag(question_id: str, *, flags: List[str], note: str) -> None
     else:
         entries.pop(token, None)
     update_draft(question_set=current_question_set(), question_flags=entries)
+    draft = get_draft(question_set=current_question_set())
+    update_draft(
+        question_set=current_question_set(),
+        question_states=flag_question(
+            draft.get("question_states"),
+            token,
+            flagged=bool(normalized.get(token)),
+        ),
+    )
 
 
 def _render_question_flag_control(
     question: QuestionDefinition,
     session: Dict[str, Any],
+    repo: Any | None = None,
 ) -> None:
     question_id = str(question.question_id or "").strip()
     if not question_id:
@@ -498,6 +561,10 @@ def _render_question_flag_control(
         normalized_note = str(comment or "").strip()
         if normalized_flags != flags or normalized_note != note:
             _set_question_flag(question_id, flags=normalized_flags, note=normalized_note)
+            if repo is not None:
+                _persist_participation_checkpoint(
+                    repo, session, next_position=current_step()
+                )
             if normalized_flags or normalized_note:
                 _log_route_event(
                     session,
@@ -507,6 +574,76 @@ def _render_question_flag_control(
                     value_label=", ".join(normalized_flags) or normalized_note,
                     extra={"note": normalized_note},
                 )
+
+
+def _structural_flag_question(step: str) -> QuestionDefinition:
+    copy = current_question_set().step_copy.get(step, {})
+    title = str(copy.get("title") or step.replace("_", " ").title())
+    return QuestionDefinition(
+        step=step,
+        field=f"platform_step_{step}",
+        question_id=f"platform_step_{step}",
+        prompt=title,
+        input_type="text",
+        skippable=False,
+    )
+
+
+def _render_step_flag_action(
+    step: str,
+    question: QuestionDefinition | None,
+    session: Dict[str, Any],
+    repo: Any,
+) -> None:
+    capabilities = step_interactions(step, question=question)
+    if capabilities.can_flag:
+        _render_question_flag_control(
+            question or _structural_flag_question(step), session, repo
+        )
+        return
+    st.button(
+        "Flag",
+        disabled=True,
+        help=capabilities.flag_reason_disabled,
+        use_container_width=True,
+        key=f"conference_disabled_flag_{step}",
+    )
+    if capabilities.flag_reason_disabled:
+        st.caption(capabilities.flag_reason_disabled)
+
+
+def _render_step_skip_action(
+    step: str,
+    question: QuestionDefinition | None,
+    session: Dict[str, Any],
+    repo: Any,
+) -> None:
+    capabilities = step_interactions(step, question=question)
+    if capabilities.can_skip and question is not None:
+        if st.button(
+            "Skip",
+            use_container_width=True,
+            key=f"conference_skip_{step}",
+        ):
+            _open_skip_question_dialog(question, session, repo)
+        return
+    st.button(
+        "Skip",
+        disabled=True,
+        help=capabilities.skip_reason_disabled,
+        use_container_width=True,
+        key=f"conference_disabled_skip_{step}",
+    )
+    disabled_reasons = [
+        reason
+        for reason in (
+            capabilities.flag_reason_disabled if not capabilities.can_flag else "",
+            capabilities.skip_reason_disabled,
+        )
+        if reason
+    ]
+    if disabled_reasons:
+        st.caption(" ".join(disabled_reasons))
 
 
 def _render_question_flag_summary() -> None:
@@ -626,6 +763,8 @@ def _question_answered(question: QuestionDefinition, payload: Dict[str, Any]) ->
             str(value.get(key) or "").strip()
             for key in ("country_region", "institution_location", "coordinates")
         )
+    if input_type == "location" and isinstance(value, dict):
+        return bool(value.get("display_label") and value.get("place_id"))
     if input_type == "multi":
         return bool(value)
     if input_type == "fingerprint" and isinstance(value, dict):
@@ -806,6 +945,19 @@ def _load_submission_for_key(
             access_key_hash=access_key_hash,
             text_ids=allowed_text_ids,
         )
+        if not submission:
+            player = getattr(repo.notion_repo, "get_player_by_access_key", lambda _key: None)(access_key)
+            if player:
+                checkpoint = repo.latest_participation_checkpoint(
+                    session_id=session_id,
+                    player_id=str(player.get("id") or ""),
+                )
+                if checkpoint and isinstance(checkpoint.get("state"), dict):
+                    submission = dict(checkpoint["state"])
+                    submission["_checkpoint_position"] = str(
+                        checkpoint.get("current_position") or ""
+                    )
+                    submission["_checkpoint"] = True
         st.session_state["conference_submission_cache_key"] = cache_key
         st.session_state["conference_submission_cache"] = submission
     return access_key, submission, ""
@@ -819,13 +971,18 @@ def _hydrate_existing_submission(repo: Any, session: Dict[str, Any]) -> None:
         return
     draft = get_draft(question_set=current_question_set())
     raw_key = str(
-        draft.get("access_key") or st.query_params.get("key", "") or ""
+        draft.get("access_key")
+        or st.session_state.pop("conference_recovered_access_key", "")
+        or st.query_params.get("key", "")
+        or ""
     ).strip()
     if not raw_key:
         st.session_state["conference_hydrated"] = True
         return
     access_key, submission, _ = _load_submission_for_key(repo, session, raw_key)
     if access_key and submission:
+        checkpoint_position = str(submission.get("_checkpoint_position") or "")
+        is_checkpoint = bool(submission.get("_checkpoint"))
         submission = _normalize_hydrated_submission(submission)
         hydrated = {
             key: value
@@ -834,7 +991,7 @@ def _hydrate_existing_submission(repo: Any, session: Dict[str, Any]) -> None:
         }
         hydrated["mode"] = str(submission.get("mode") or _infer_mode(submission))
         hydrated["access_key"] = access_key
-        hydrated["submitted"] = True
+        hydrated["submitted"] = not is_checkpoint
         update_draft(question_set=current_question_set(), **hydrated)
         repo.upsert_conference_player(
             session_id=str(session.get("id") or ""),
@@ -848,7 +1005,11 @@ def _hydrate_existing_submission(repo: Any, session: Dict[str, Any]) -> None:
                 question_set=current_question_set(),
             ),
         )
-        _set_entry_mode("dashboard")
+        if is_checkpoint and checkpoint_position:
+            set_step(checkpoint_position, question_set=current_question_set())
+            _set_entry_mode("new")
+        else:
+            _set_entry_mode("dashboard")
     elif access_key:
         update_draft(question_set=current_question_set(), access_key=access_key)
     st.session_state["conference_hydrated"] = True
@@ -858,8 +1019,91 @@ def _advance_step() -> None:
     next_step(question_set=current_question_set())
 
 
+def _next_position() -> str:
+    sequence = active_step_sequence(question_set=current_question_set())
+    step = current_step()
+    if step not in sequence:
+        return sequence[0]
+    index = sequence.index(step)
+    return sequence[min(index + 1, len(sequence) - 1)]
+
+
+def _persist_participation_checkpoint(
+    repo: Any, session: Dict[str, Any], *, next_position: str
+) -> bool:
+    draft = get_draft(question_set=current_question_set())
+    access_key = _ensure_access_key()
+    payload = _payload_for_session(draft, session)
+    config = event_config_for_session_code(str(session.get("session_code") or ""))
+    try:
+        if config and config.identity_policy.identified:
+            profile = {
+                "name": str(draft.get("name") or "").strip(),
+                "email": normalize_email(str(draft.get("email") or "")),
+                "institution": str(draft.get("institution") or "").strip(),
+                "base_location": deepcopy(draft.get("base_location") or {}),
+            }
+            if not profile["name"]:
+                raise ValueError("Name is required.")
+            player = repo.upsert_identified_conference_player(
+                session_id=str(session.get("id") or ""),
+                access_key=access_key,
+                payload=payload,
+                identity_profile=profile,
+            )
+        else:
+            player = repo.upsert_conference_player(
+                session_id=str(session.get("id") or ""),
+                access_key=access_key,
+                payload=payload,
+                identity_metadata=build_identity_metadata(
+                    draft, question_set=current_question_set()
+                ),
+            )
+        if not player or not str(player.get("id") or ""):
+            raise RuntimeError("Participant identity was not stored.")
+        repo.save_participation_checkpoint(
+            session_id=str(session.get("id") or ""),
+            session_code=str(session.get("session_code") or ""),
+            player_id=str(player.get("id") or ""),
+            text_id=str(_event_context(session).get("text_id") or ""),
+            device_id=str(st.session_state.get("conference_device_id") or ""),
+            state=dict(draft),
+            current_position=next_position,
+            completion_state="in_progress",
+            test_mode=bool(_event_context(session).get("test_mode")),
+        )
+    except Exception as exc:
+        st.error(f"Could not save your progress: {exc}")
+        return False
+    return True
+
+
 def _normalize_hydrated_submission(submission: Dict[str, Any]) -> Dict[str, Any]:
     normalized = dict(submission)
+    provenance = normalized.get("question_provenance")
+    if not isinstance(provenance, Mapping):
+        session_block = normalized.get("session")
+        provenance = (
+            session_block.get("question_provenance", {})
+            if isinstance(session_block, Mapping)
+            else {}
+        )
+    reask = questions_requiring_reanswer(current_question_set(), provenance)
+    if reask:
+        states = deepcopy(dict(normalized.get("question_states") or {}))
+        for question in reask:
+            if question.input_type in {"multi"}:
+                normalized[question.field] = []
+            elif question.input_type in {"location", "geography_context", "scientific_home"}:
+                normalized[question.field] = {}
+            else:
+                normalized[question.field] = ""
+            prior_state = dict(states.get(question.question_id) or {})
+            prior_state["answer_state"] = "unanswered"
+            states[question.question_id] = prior_state
+        normalized["question_states"] = states
+        normalized["updated_question_ids"] = [q.question_id for q in reask]
     allowed_roles = field_value_set(current_question_set(), "role")
     role_question = question_by_field(current_question_set(), "role")
     role_extra_field = (
@@ -922,6 +1166,10 @@ def _payload_for_session(
         current_question_set().version or "1"
     )
     session_payload["question_set_id"] = context["question_set_id"]
+    session_payload["questionnaire_id"] = str(current_question_set().id)
+    session_payload["questionnaire_revision"] = int(current_question_set().revision)
+    session_payload["questionnaire_format"] = int(current_question_set().format)
+    session_payload["questionnaire_status"] = str(current_question_set().status)
     session_payload["response_scope"] = context["response_scope"]
     session_payload["test_mode"] = bool(context.get("test_mode"))
     if context.get("test_mode"):
@@ -933,6 +1181,9 @@ def _payload_for_session(
 
 def _render_event_scope_notice(session: Dict[str, Any]) -> None:
     context = _event_context(session)
+    config = event_config_for_session_code(str(session.get("session_code") or ""))
+    if config and config.identity_policy.identified:
+        return
     route = _public_route()
     if str(context.get("event_slug") or "").strip() == "dalembertiennes":
         body = (
@@ -961,19 +1212,19 @@ def _render_test_mode_notice(session: Dict[str, Any]) -> None:
     context = _event_context(session)
     if not context.get("test_mode"):
         return
-    st.warning(
-        "TEST MODE · This run is stored in the separate debug session and is excluded "
-        "from the production WG2 participant list and results."
+    st.caption(
+        "TEST MODE · This run is isolated from production participants and results."
     )
 
 
 def _open_skip_question_dialog(
     question: QuestionDefinition,
     session: Dict[str, Any],
+    repo: Any,
 ) -> None:
     question_id = str(question.question_id or "").strip()
     field = str(question.field or "").strip()
-    existing = _question_flag_entries().get(question_id, {})
+    existing = _question_skip_entries().get(question_id, {})
 
     @st.dialog("Skip question")
     def _skip_dialog() -> None:
@@ -1001,8 +1252,16 @@ def _open_skip_question_dialog(
             if not selected and not str(note or "").strip():
                 st.warning("Tell us why you are skipping this question.")
                 return
-            _set_question_flag(
-                question_id, flags=list(selected), note=str(note or "").strip()
+            _set_question_skip(
+                question_id, reasons=list(selected), note=str(note or "").strip()
+            )
+            _clear_question_answer(question)
+            draft = get_draft(question_set=current_question_set())
+            update_draft(
+                question_set=current_question_set(),
+                question_states=skip_question(
+                    draft.get("question_states"), question_id
+                ),
             )
             if field in set(current_question_set().deferrable_fields):
                 defer_field(field, question_set=current_question_set())
@@ -1014,6 +1273,10 @@ def _open_skip_question_dialog(
                 value_label=", ".join(selected) or str(note or "").strip(),
                 extra={"note": str(note or "").strip()},
             )
+            if not _persist_participation_checkpoint(
+                repo, session, next_position=_next_position()
+            ):
+                return
             _advance_step()
             st.rerun()
 
@@ -1037,13 +1300,31 @@ def _submit(repo: Any, session: Dict[str, Any]) -> None:
     access_key_hash = repo.access_key_hash(access_key)
     access_key_last4 = emoji_suffix(access_key)
     try:
-        player = repo.upsert_conference_player(
-            session_id=session["id"],
-            access_key=access_key,
-            payload=payload,
-            identity_metadata=identity_metadata,
+        config = event_config_for_session_code(str(session.get("session_code") or ""))
+        if config and config.identity_policy.identified:
+            player = repo.upsert_identified_conference_player(
+                session_id=session["id"],
+                access_key=access_key,
+                payload=payload,
+                identity_profile={
+                    "name": draft.get("name"),
+                    "email": draft.get("email"),
+                    "institution": draft.get("institution"),
+                    "base_location": deepcopy(draft.get("base_location") or {}),
+                },
+            )
+        else:
+            player = repo.upsert_conference_player(
+                session_id=session["id"],
+                access_key=access_key,
+                payload=payload,
+                identity_metadata=identity_metadata,
+            )
+        submission_id = str(
+            st.session_state.get("conference_submission_id") or uuid.uuid4()
         )
-        repo.save_session_response_set(
+        st.session_state["conference_submission_id"] = submission_id
+        saved = repo.save_session_response_set(
             session["id"],
             str((player or {}).get("id") or ""),
             _event_context(session)["text_id"],
@@ -1052,6 +1333,20 @@ def _submit(repo: Any, session: Dict[str, Any]) -> None:
             access_key_last4,
             payload,
             identity_metadata,
+            submission_id=submission_id,
+            revision_id=submission_id,
+            write_idempotency_key=submission_id,
+        )
+        repo.save_participation_checkpoint(
+            session_id=str(session.get("id") or ""),
+            session_code=str(session.get("session_code") or ""),
+            player_id=str((player or {}).get("id") or ""),
+            text_id=str(event_context.get("text_id") or ""),
+            device_id=str(st.session_state.get("conference_device_id") or ""),
+            state=dict(draft),
+            current_position="done",
+            completion_state="complete",
+            test_mode=bool(event_context.get("test_mode")),
         )
     except Exception as exc:
         _log_route_event(
@@ -1077,6 +1372,9 @@ def _submit(repo: Any, session: Dict[str, Any]) -> None:
         "actor_key": f"player:{str((player or {}).get('id') or '')}"
         if (player or {}).get("id")
         else f"response:{access_key_hash}",
+        "response_id": str(saved.get("response_id") or ""),
+        "submission_id": str(saved.get("submission_id") or ""),
+        "revision_id": str(saved.get("revision_id") or ""),
     }
     st.session_state["conference_show_success"] = True
     update_draft(
@@ -1138,11 +1436,13 @@ def _open_confirm_send_dialog(repo: Any, session: Dict[str, Any]) -> None:
             """,
             height=64,
         )
-        st.markdown(
-            "### We are making this anonymous first. "
-            "This access key lets you return later to your profile and your pending reflections."
-        )
-        if st.button("Screenshot taken", type="primary", use_container_width=True):
+        config = event_config_for_session_code(str(session.get("session_code") or ""))
+        if config and config.identity_policy.identified:
+            st.markdown("### This key lets you return to your answers later.")
+            st.caption("Your email can also help a host recover access if you lose the key.")
+        else:
+            st.markdown("### Save this key to return to your answers later.")
+        if st.button("I saved a screenshot", type="primary", use_container_width=True):
             _submit(repo, session)
             st.rerun()
 
@@ -1175,7 +1475,7 @@ def _login_with_key(repo: Any, session: Dict[str, Any], raw_key: str) -> None:
         return
     update_draft(question_set=current_question_set(), access_key=access_key)
     if not submission:
-        _set_login_error("No submission was found for this access key yet.")
+        _set_login_error("No submission or saved progress was found for this access key yet.")
         return
     submission = _normalize_hydrated_submission(submission)
     hydrated = {
@@ -1185,7 +1485,7 @@ def _login_with_key(repo: Any, session: Dict[str, Any], raw_key: str) -> None:
     }
     hydrated["mode"] = str(submission.get("mode") or _infer_mode(submission))
     hydrated["access_key"] = access_key
-    hydrated["submitted"] = True
+    hydrated["submitted"] = not bool(submission.get("_checkpoint"))
     update_draft(question_set=current_question_set(), **hydrated)
     repo.upsert_conference_player(
         session_id=str(session.get("id") or ""),
@@ -1200,7 +1500,12 @@ def _login_with_key(repo: Any, session: Dict[str, Any], raw_key: str) -> None:
         ),
     )
     _clear_login_error()
-    _set_entry_mode("dashboard")
+    checkpoint_position = str(submission.get("_checkpoint_position") or "")
+    if checkpoint_position and not hydrated["submitted"]:
+        set_step(checkpoint_position, question_set=current_question_set())
+        _set_entry_mode("new")
+    else:
+        _set_entry_mode("dashboard")
     st.rerun()
 
 
@@ -1498,6 +1803,22 @@ def _lookup_location_coordinates(query: str) -> dict[str, Any]:
     )
     response.raise_for_status()
     return parse_opencage_result(response.json(), token)
+
+
+def _lookup_location_options(query: str):
+    token = str(query or "").strip()
+    if not token:
+        return []
+    api_key = _opencage_api_key()
+    if not api_key:
+        raise RuntimeError("Location lookup is not configured.")
+    response = requests.get(
+        OPENCAGE_ENDPOINT,
+        params={"q": token, "key": api_key, "limit": 5, "language": "en"},
+        timeout=8,
+    )
+    response.raise_for_status()
+    return opencage_location_options(response.json())
 
 
 def _render_geography_context_body(
@@ -1862,6 +2183,8 @@ def _render_question_step(
     draft = get_draft(question_set=current_question_set())
     current_value = draft.get(field)
     input_type = str(question.input_type)
+    if question.question_id in set(draft.get("updated_question_ids") or []):
+        st.info("This question has been updated since your previous response.")
 
     if input_type in {"single", "multi"}:
         _render_pills(question, current_value)
@@ -1892,7 +2215,28 @@ def _render_question_step(
         _render_scale(question, current_value)
         return
 
-    if input_type == "text":
+    if input_type == "location":
+        value = render_location_lookup(
+            str(question.prompt or "Location"),
+            value=current_value,
+            key=f"conference_widget_{field}",
+            lookup=_lookup_location_options,
+            optional=not bool(question.required),
+        )
+        update_draft(question_set=current_question_set(), **{field: value})
+        return
+
+    if input_type == "number":
+        value = st.number_input(
+            str(question.prompt or field or "Value"),
+            value=None if current_value in (None, "") else float(current_value),
+            key=f"conference_widget_{field}",
+            label_visibility="collapsed",
+        )
+        update_draft(question_set=current_question_set(), **{field: value})
+        return
+
+    if input_type in {"text", "textarea"}:
         value = st.text_area(
             str(question.prompt or field or "Response"),
             value=str(current_value or ""),
@@ -1907,15 +2251,43 @@ def _render_question_step(
             clear_deferred_field(field, question_set=current_question_set())
 
 
-def _render_identity() -> None:
+def _render_identity(session: Dict[str, Any]) -> None:
     draft = get_draft(question_set=current_question_set())
-    copy = current_question_set().step_copy.get("identity", {})
-    body = str(copy.get("body") or "").strip()
-    if body:
-        st.markdown(
-            f'<div class="helper-text">{html.escape(body)}</div>',
-            unsafe_allow_html=True,
+    event_config = event_config_for_session_code(str(session.get("session_code") or ""))
+    identified = bool(event_config and event_config.identity_policy.identified)
+    if identified:
+        name = st.text_input(
+            "Name",
+            value=str(draft.get("name") or ""),
+            key="conference_widget_name",
         )
+        email = st.text_input(
+            "Email",
+            value=str(draft.get("email") or ""),
+            key="conference_widget_email",
+        )
+        institution = st.text_input(
+            "Institution (optional)",
+            value=str(draft.get("institution") or ""),
+            key="conference_widget_institution",
+        )
+        base_location = render_location_lookup(
+            "Where are you based? (optional)",
+            value=draft.get("base_location"),
+            key="conference_widget_base_location",
+            lookup=_lookup_location_options,
+        )
+        update_draft(
+            question_set=current_question_set(),
+            name=name,
+            email=email,
+            institution=institution,
+            base_location=base_location,
+            alias=name,
+            identity=name,
+            contact=email,
+        )
+        return
     alias = st.text_input(
         "Alias",
         value=str(draft.get("alias") or ""),
@@ -1979,7 +2351,8 @@ def _review_questions(
             continue
         if str(question.step) not in active_steps:
             continue
-        if _question_answered(question, payload):
+        state = question_state(payload.get("question_states"), question.question_id)
+        if _question_answered(question, payload) or state["answer_state"] == "skipped":
             questions.append(question)
     return questions
 
@@ -2026,7 +2399,12 @@ def _save_answer_revision(
             payload=payload,
             identity_metadata=identity_metadata,
         )
-        repo.save_session_response_set(
+        previous_response_id = str(
+            st.session_state.get("conference_submission_cache", {}).get("response_id")
+            or ""
+        )
+        revision_id = str(uuid.uuid4())
+        saved = repo.save_session_response_set(
             session["id"],
             str((player or {}).get("id") or ""),
             _event_context(session)["text_id"],
@@ -2035,6 +2413,13 @@ def _save_answer_revision(
             access_key_last4,
             payload,
             identity_metadata,
+            submission_id=str(
+                st.session_state.get("conference_submission_cache", {}).get("submission_id")
+                or uuid.uuid4()
+            ),
+            revision_id=revision_id,
+            write_idempotency_key=revision_id,
+            supersedes_response_id=previous_response_id,
         )
     except Exception as exc:
         _log_route_event(
@@ -2057,6 +2442,9 @@ def _save_answer_revision(
         "actor_key": f"player:{str((player or {}).get('id') or '')}"
         if (player or {}).get("id")
         else f"response:{access_key_hash}",
+        "response_id": str(saved.get("response_id") or ""),
+        "submission_id": str(saved.get("submission_id") or ""),
+        "revision_id": str(saved.get("revision_id") or ""),
     }
     _log_route_event(
         session,
@@ -2177,8 +2565,11 @@ def _render_review_answer_card(
                 f'<div class="review-answer-title">{html.escape(str(question.prompt or _question_title(question)))}</div>',
                 unsafe_allow_html=True,
             )
+            state = question_state(payload.get("question_states"), question.question_id)
+            answer = "Skipped" if state["answer_state"] == "skipped" else _question_summary_body(question, payload)
+            flag_label = " · Flagged" if state["flagged"] else ""
             st.markdown(
-                f'<div class="review-answer-body">{_question_summary_body(question, payload)}</div>',
+                f'<div class="review-answer-body">{answer}{html.escape(flag_label)}</div>',
                 unsafe_allow_html=True,
             )
         with edit_col:
@@ -2205,8 +2596,23 @@ def _render_review(repo: Any, session: Dict[str, Any]) -> None:
             question_set=current_question_set(),
         )
     )
-    summary_card("Mode", _labels_for("mode", str(payload.get("mode") or "quick")))
-    summary_card("Profile", "Persistent across events unless you change it.")
+    config = event_config_for_session_code(str(session.get("session_code") or ""))
+    if config and config.identity_policy.identified:
+        st.markdown("### About you")
+        summary_card("Name", html.escape(str(payload.get("name") or "")))
+        if payload.get("institution"):
+            summary_card("Institution", html.escape(str(payload.get("institution") or "")))
+        location = payload.get("base_location")
+        location_label = (
+            str(location.get("display_label") or "")
+            if isinstance(location, dict)
+            else str(location or "")
+        )
+        if location_label:
+            summary_card("Base location", html.escape(location_label))
+        st.markdown("### Your answers")
+        if not current_question_set().questions:
+            st.caption("Scientific questions will appear here when they are available.")
     active_sequence = active_question_steps(
         get_draft(question_set=current_question_set()),
         question_set=current_question_set(),
@@ -2222,11 +2628,6 @@ def _render_review(repo: Any, session: Dict[str, Any]) -> None:
             else 0,
         )
 
-    summary_card(
-        "Session",
-        f"These answers belong to {_event_scope_text(session)} and can change next time.",
-    )
-    summary_card("Event context", _event_scope_text(session))
     for question in _review_questions(
         payload, section="session", active_steps=active_steps
     ):
@@ -2254,15 +2655,16 @@ def _render_review(repo: Any, session: Dict[str, Any]) -> None:
             " · ".join(_field_label(field) for field in pending),
         )
 
-    identity_parts = [
-        str(payload.get("alias") or "").strip(),
-        str(payload.get("identity") or "").strip(),
-        str(payload.get("contact") or "").strip(),
-    ]
-    identity_text = (
-        " · ".join(part for part in identity_parts if part) or "Remain anonymous"
-    )
-    summary_card("Alias or identity", identity_text)
+    if not (config and config.identity_policy.identified):
+        identity_parts = [
+            str(payload.get("alias") or "").strip(),
+            str(payload.get("identity") or "").strip(),
+            str(payload.get("contact") or "").strip(),
+        ]
+        identity_text = (
+            " · ".join(part for part in identity_parts if part) or "Remain anonymous"
+        )
+        summary_card("Alias or identity", identity_text)
     context = st.session_state.get(EDIT_CONTEXT_KEY)
     if isinstance(context, dict) and str(context.get("question_id") or ""):
         question = next(
@@ -2403,8 +2805,12 @@ def _render_personal_dashboard(repo: Any, session: Dict[str, Any]) -> None:
         )
     )
     conference_header(str(event_context["event_label"]), "", step="")
-    st.markdown("### Your profile is loaded.")
-    summary_card("Mode", _labels_for("mode", str(payload.get("mode") or "quick")))
+    config = event_config_for_session_code(str(session.get("session_code") or ""))
+    if config and config.identity_policy.identified:
+        st.markdown("### Your saved answers")
+    else:
+        st.markdown("### Your profile is loaded.")
+        summary_card("Mode", _labels_for("mode", str(payload.get("mode") or "quick")))
     for title, body in _question_summary_entries(
         payload, section="profile", active_steps=active_steps
     ):
@@ -2525,8 +2931,9 @@ def _render_done(session: Dict[str, Any]) -> None:
     draft = get_draft(question_set=current_question_set())
     if st.session_state.pop("conference_show_success", False):
         st.balloons()
+    context = _event_context(session)
     st.markdown(
-        f'<div class="helper-text">Integrated into {html.escape(_event_scope_text(session))}.</div>',
+        '<div class="helper-text">Your responses were recorded. Save this access key so you can return later.</div>',
         unsafe_allow_html=True,
     )
     access_key = str(draft.get("access_key") or "")
@@ -2534,27 +2941,12 @@ def _render_done(session: Dict[str, Any]) -> None:
     access_key_hash = (
         hashlib.sha256(access_key.encode("utf-8")).hexdigest() if access_key else ""
     )
-    summary_card(
-        "Short key",
-        "".join(split_emoji_symbols(emoji_key)[-4:]) if emoji_key else "Unavailable",
-    )
-    summary_card(
-        "Hash prefix", access_key_hash[:12] if access_key_hash else "Unavailable"
-    )
-    with st.expander("Full emoji key", expanded=False):
-        st.markdown(
-            f"<div style='font-size:2rem; line-height:1.4; text-align:center; padding:.6rem 0;'>{emoji_key or 'Unavailable'}</div>",
-            unsafe_allow_html=True,
-        )
-    with st.expander("ASCII access key", expanded=False):
-        st.code(access_key or "Unavailable")
-    st.button(
-        "Open my dashboard",
-        type="primary",
-        use_container_width=True,
-        disabled=True,
-        help="Disabled for now while the overview page takes over this material.",
-    )
+    summary_card("Your access key", emoji_key or "Unavailable")
+    if context.get("test_mode"):
+        with st.expander("Test diagnostics", expanded=False):
+            st.write(f"Session code: {context.get('session_code') or 'Unavailable'}")
+            st.write(f"Hash prefix: {access_key_hash[:12] if access_key_hash else 'Unavailable'}")
+            st.code(access_key or "Unavailable")
     if st.button(
         f"Open the {_event_context(session)['event_label']} overview",
         use_container_width=True,
@@ -2587,6 +2979,11 @@ def _render_navigation(repo: Any, session: Dict[str, Any]) -> None:
     step = current_step()
     question = question_by_step(current_question_set(), step)
     if step in {"welcome", "done"}:
+        _, flag_col, skip_col = st.columns([1.6, 0.45, 0.35])
+        with flag_col:
+            _render_step_flag_action(step, None, session, repo)
+        with skip_col:
+            _render_step_skip_action(step, None, session, repo)
         return
     if step == "review":
         submitted = bool(
@@ -2608,15 +3005,21 @@ def _render_navigation(repo: Any, session: Dict[str, Any]) -> None:
                 f"This event is "
                 f"{str(_event_context(session).get('event_status') or 'closed')}."
             )
-        if st.button(
-            current_question_set().step_copy["review"]["cta"],
-            type="primary",
-            use_container_width=True,
-            disabled=_event_is_read_only(session),
-            help=review_help,
-            key="conference-review-submit",
-        ):
-            _open_confirm_send_dialog(repo, session)
+        primary, flag_col, skip_col = st.columns([1.6, 0.45, 0.35])
+        with primary:
+            if st.button(
+                current_question_set().step_copy["review"]["cta"],
+                type="primary",
+                use_container_width=True,
+                disabled=_event_is_read_only(session),
+                help=review_help,
+                key="conference-review-submit",
+            ):
+                _open_confirm_send_dialog(repo, session)
+        with flag_col:
+            _render_step_flag_action(step, None, session, repo)
+        with skip_col:
+            _render_step_skip_action(step, None, session, repo)
         return
 
     if question:
@@ -2650,6 +3053,12 @@ def _render_navigation(repo: Any, session: Dict[str, Any]) -> None:
                     return
                 _set_question_validation(step, "")
                 if answered:
+                    update_draft(
+                        question_set=current_question_set(),
+                        question_states=answer_question(
+                            draft.get("question_states"), question.question_id
+                        ),
+                    )
                     _log_route_event(
                         session,
                         event_type="question_answered",
@@ -2660,27 +3069,48 @@ def _render_navigation(repo: Any, session: Dict[str, Any]) -> None:
                             _question_value(question, payload),
                         )[:240],
                     )
+                if not _persist_participation_checkpoint(
+                    repo, session, next_position=_next_position()
+                ):
+                    return
                 _advance_step()
                 st.rerun()
         with flag_col:
-            _render_question_flag_control(question, session)
+            _render_step_flag_action(step, question, session, repo)
         with skip_col:
-            if st.button("Skip", use_container_width=True):
-                _open_skip_question_dialog(question, session)
+            _render_step_skip_action(step, question, session, repo)
         return
 
-    action, side = st.columns([1, 0.55])
+    action, flag_col, skip_col = st.columns([1.6, 0.45, 0.35])
     with action:
         if st.button("Continue", type="primary", use_container_width=True):
             draft = get_draft(question_set=current_question_set())
+            if step == IDENTITY_STEP:
+                config = event_config_for_session_code(
+                    str(session.get("session_code") or "")
+                )
+                if config and config.identity_policy.identified:
+                    if not str(draft.get("name") or "").strip():
+                        st.warning("Enter your name before continuing.")
+                        return
+                    try:
+                        normalize_email(str(draft.get("email") or ""))
+                    except ValueError as exc:
+                        st.warning(str(exc))
+                        return
             if not step_is_complete(step, draft, question_set=current_question_set()):
                 st.warning("Complete this step before continuing.")
                 return
+            if not _persist_participation_checkpoint(
+                repo, session, next_position=_next_position()
+            ):
+                return
             _advance_step()
             st.rerun()
-    with side:
-        if question:
-            _render_question_flag_control(question, session)
+    with flag_col:
+        _render_step_flag_action(step, None, session, repo)
+    with skip_col:
+        _render_step_skip_action(step, None, session, repo)
 
 
 def _render_questionnaire(repo: Any, session: Dict[str, Any]) -> None:
@@ -2732,7 +3162,7 @@ def _render_questionnaire(repo: Any, session: Dict[str, Any]) -> None:
     if step == "welcome":
         _render_welcome()
     elif step == IDENTITY_STEP:
-        _render_identity()
+        _render_identity(session)
     elif step == "review":
         _render_review(repo, session)
     elif step == "done":
@@ -2750,6 +3180,7 @@ def run_conference_questionnaire_page(
 ) -> None:
     set_page()
     apply_conference_styles()
+    st.session_state["conference_public_route_path"] = str(public_route_path or "")
 
     repo = get_conference_repo()
     if not repo or not repo.is_ready():
@@ -2770,9 +3201,25 @@ def run_conference_questionnaire_page(
         return
 
     bundle_spec = resolve_question_set_bundle(session=session)
-    question_set = _question_set_for_public_route(
-        bundle_spec.question_set, public_route_path
+    use_controls_fixture = bool(
+        _event_context(session).get("test_mode")
+        and str(st.query_params.get("fixture") or "").strip().lower() == "controls"
     )
+    base_question_set = (
+        PLATFORM_CONTROLS_FIXTURE if use_controls_fixture else bundle_spec.question_set
+    )
+    if (
+        base_question_set.status != "active"
+        and not bool(_event_context(session).get("test_mode"))
+    ):
+        conference_header(
+            str(_event_context(session).get("event_label") or "Questionnaire"),
+            "",
+            step=base_question_set.status,
+        )
+        st.info("This questionnaire is being reviewed and is not open yet.")
+        return
+    question_set = _question_set_for_public_route(base_question_set, public_route_path)
     _ensure_session_scope_state(session, question_set)
     _ensure_local_state(question_set)
     _render_test_mode_notice(session)

@@ -2,9 +2,94 @@
 
 ## Goal
 
-Refactor Ice Ice Baby so that every questionnaire belongs to a clearly isolated event, then add the next event questionnaire for the D’Alembert laboratory, codename `dalembertiennes`.
+Operate Ice Ice Baby as a multi-event questionnaire engine with explicit,
+isolated participation and response scope. The current event is the CISM course
+in Udine, codename `prediction`.
 
-The immediate objective is not to create another ad hoc questionnaire. The objective is to make `dalembertiennes` the first clean test of an event-scoped architecture that still respects the current `session`-based implementation.
+## 2026-09-08 checkpoint — CISM / PREDICTION infrastructure
+
+- Added declarative `prediction` and `prediction_debug` event definitions backed by distinct persisted session codes.
+- Added a generic `/event?event=<slug>` entry surface plus generic overview and host recovery surfaces.
+- Added an identified-event policy with required name/email and optional institution/base location.
+- Made player session membership union-preserving so joining another event cannot remove earlier relations.
+- Added an explicit participation contract and durable checkpoints in the shared interaction-response store.
+- Added normalised-email collision detection and host-only, signed, one-time recovery links.
+- Added submission, revision, supersession, and write-idempotency metadata while preserving append-only writes.
+- Added an infrastructure-only `prediction_v0` question-set shell; scientific questions remain intentionally absent.
+- Added an explicit bootstrap script for production/debug sessions and additive player-profile properties. Page rendering never creates sessions.
+- Verification: `139 passed` under `./.venv/bin/pytest -q tests`; repository-wide collection still includes two pre-existing Streamlit page-test collection failures outside `tests/`.
+
+The explicit Notion bootstrap and generic production/debug route verification
+are complete. Stop at the infrastructure boundary until the CISM scientific
+questionnaire content is supplied.
+
+The immediate objective is to preserve the verified PREDICTION vertical slice
+while adding its scientific question schema/content in the next pass. The
+existing `session`-based persistence boundary remains authoritative.
+
+## 2026-09-08 checkpoint — platform cleanup before scientific questions
+
+- Replaced CISM implementation-language copy with concise participant language.
+- Made Flag and Skip default capabilities of the shared scientific-question
+  contract, with explicit answered/unanswered/skipped/flagged checkpoint state.
+- Made `?event=prediction&test=1` resolve the debug event/session before reads
+  and writes; added repository rejection for mixed PREDICTION scopes.
+- Replaced the identified-profile base-location text field with the shared
+  semantic location lookup and structured place value.
+- Split missing-email guidance from malformed-email feedback without implying
+  communication consent.
+- Rebuilt displayed event navigation from declarative family metadata:
+  Complexity, Young, Prediction, and D'Alembertiennes.
+- Simplified the identified-event review/dashboard language and retained the
+  access-key screenshot dialog at submission.
+- Scientific PREDICTION questions remain intentionally absent.
+
+## 2026-09-08 checkpoint — pre-questionnaire blocker closure
+
+- Diagnosed the missing Flag/Skip display: the generic renderer already owned
+  both controls, but the intentionally empty `prediction_v0` set never entered
+  a scientific question step; no CISM-specific wrapper was bypassing them.
+- Added a temporary debug-only controls fixture with single-choice, scale, and
+  free-text questions. It is selected only by
+  `/event?event=prediction&test=1&fixture=controls` and is not production or
+  scientific questionnaire content.
+- Canonicalised generic event URLs to `event`, `test`, `recovery`, `key`, and
+  the explicit QA-only `fixture` parameter. `public_route` remains a readable
+  compatibility alias; `campaign` remains metadata only. Neither is emitted by
+  the generic route.
+- Removed duplicate identified-profile introduction copy and changed the
+  participant label to `Where are you based? (optional)` without changing the
+  durable `base_location` field.
+- Reworded the access-key modal around return and assisted recovery, and made
+  its confirmation action `I saved a screenshot`.
+- Made completion participant-facing: it shows the full access key and hides
+  implementation hashes/identifiers in production. Test-only diagnostics remain
+  available in a collapsed debug section.
+- Fixed the generic event host page to construct its authenticator with the
+  configured repository; unauthenticated access now reaches the normal login
+  boundary instead of raising a constructor error.
+- Browser QA exercised answer, flag, skip, review, submission, and completion
+  against the persisted debug session only. Scientific PREDICTION questions
+  remain intentionally absent.
+
+## 2026-09-08 checkpoint — universal Flag / Skip grammar
+
+- Added one shared `StepInteractions` capability contract exposing
+  `can_flag`, `can_skip`, and disabled-reason copy for every rendered step.
+- Moved identity, profile, scientific-question, review, welcome, and completion
+  action rendering through the same Flag/Skip helpers; neither control is
+  conditionally omitted.
+- Required identity keeps Flag active and Skip disabled with the required
+  restriction message. Optional profile and scientific fixture steps enable
+  both. Review keeps both visible and disabled with guidance to return to an
+  editable step.
+- Added an optional-profile step to the existing debug-only controls fixture so
+  all capability states can be verified without creating CISM questionnaire
+  content.
+- Browser QA verified stable native-button order, enabled/disabled semantics,
+  visible disabled-state help, and the four required visual states in the
+  isolated PREDICTION debug session.
+- Scientific PREDICTION questions remain intentionally absent.
 
 ## Current architectural decision
 
@@ -30,6 +115,28 @@ Everything must still become scoped, explicitly, to one real gathering:
 
 Responses from UNESCO, Dalembertiennes, or any future workshop must never be mixed or double-counted unless a cross-event comparison explicitly requests it.
 
+## 2026-09-08 checkpoint — YAML-first questionnaires
+
+- Added the simplified questionnaire metadata model: stable `id`, integer
+  `revision`, optional grammar `format`, lifecycle `status`, and lightweight
+  review provenance.
+- Added stable question IDs, integer question revisions, optional revision
+  lineage, explicit retirement, shared dimensions, and legacy-ID aliases.
+- Added declarative shared-question references backed by
+  `shared_questions.yaml`, with controlled presentation overrides and justified
+  option overrides.
+- Migrated Complexity to canonical `complexity.yaml`; the existing
+  `complexity_v2.py` remains as an equivalence oracle and is no longer the
+  runtime registry definition.
+- Added the review-state `prediction.yaml` skeleton without scientific
+  questions.
+- Added clean response provenance alongside legacy `question_set_id`,
+  `questionnaire_version`, `schema_id`, and `text_id` compatibility fields.
+- Added generic revision/re-ask recognition and retired-question filtering.
+  Earlier answers remain in append-only response rows.
+- Documented the final grammar, compatibility map, cross-session dimensions,
+  and migration risks in `docs/questionnaire_yaml.md`.
+
 ## Participant flow practice
 
 - A participant must not advance past a normal question step accidentally.
@@ -50,35 +157,39 @@ Responses from UNESCO, Dalembertiennes, or any future workshop must never be mix
 - `infra/event_logger.py` provides logging, timing, and event infrastructure.
 - A Notion `ice_Events` database exists.
 - The current codebase still uses `session` as the durable boundary in repositories and query paths.
-- Static routes are declared in `app.py`; there is no generic `/event/:slug` router.
+- Static routes are declared in `app.py`; generic event pages resolve
+  `?event=<slug>` without creating a dynamic `/event/:slug` router.
 - Player schema already has concrete columns such as `access_key`, `role`, `last_seen`, `phrase`, `emoji_suffix_4`, and `emoji_suffix_6`.
-- Next event line is `dalembertiennes`.
+- Current event line is `prediction`; production and debug use distinct
+  persisted sessions.
 
-## Next event
+## Current event
 
 ### Codename
 
-`dalembertiennes`
+`prediction`
 
 ### Working title
 
-D’Alembertiennes Lab Questionnaire
+CISM-EUROMECH Advanced Course — PREDICTION
 
 ### Purpose
 
-Internal laboratory questionnaire / participatory session connected to the D’Alembert lab days.
+Identified scientific-event questionnaire for “Damage and Fracture Mechanics
+of Fluid-Infiltrated Geomaterials”, Udine, 7–11 September 2026.
 
-The event should be treated as a new event instance with its own question set, own responses, own overview, and own exports.
+The event has its own production/debug session pair, participation checkpoints,
+responses, overview, host recovery surface, and aggregate scope.
 
 ### Primary risk to avoid
 
-Data mingling with UNESCO or previous `GLOBAL-SESSION` data.
+Data mingling with IceIceBaby production records or with PREDICTION debug data.
 
 ## Next action
 
-Implement a `dalembertiennes` session or event resolver scaffold without breaking the current session-based write paths.
-
-This must be done before finalising the question wording.
+Add the supplied CISM scientific questionnaire schema/content to
+`prediction_v0` (or create its explicit next version), preserving the verified
+identity, participation, recovery, idempotency, and session-isolation contracts.
 
 ## Sprint 0 — Event architecture hardening
 
