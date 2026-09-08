@@ -204,11 +204,6 @@ def _lab_pages() -> list[st.Page]:
             icon=":material/database:",
         ),
         st.Page(
-            "pages/test_typography.py",
-            title="Test · Typography",
-            icon=":material/text_fields:",
-        ),
-        st.Page(
             "pages/test_typography_native.py",
             title="Test · Typography native",
             icon=":material/view_quilt:",
@@ -222,16 +217,6 @@ def _lab_pages() -> list[st.Page]:
             "pages/test_typewolf_reference.py",
             title="Test · Typewolf reference",
             icon=":material/format_shapes:",
-        ),
-        st.Page(
-            "pages/test_git_pulse.py",
-            title="Test · Git pulse",
-            icon=":material/show_chart:",
-        ),
-        st.Page(
-            "pages/test_highlight_playground.py",
-            title="Test · Highlight playground",
-            icon=":material/draw:",
         ),
         st.Page(
             "pages/test_geo.py",
@@ -252,21 +237,6 @@ def _lab_pages() -> list[st.Page]:
             "pages/test_pixelated_transition.py",
             title="Test · Pixelated transition",
             icon=":material/blur_on:",
-        ),
-        st.Page(
-            "pages/test_wh_questions.py",
-            title="Test · WH questions",
-            icon=":material/help_clinic:",
-        ),
-        st.Page(
-            "pages/test_copy.py",
-            title="Test · Copy",
-            icon=":material/content_copy:",
-        ),
-        st.Page(
-            "pages/test_decade_trajectory.py",
-            title="Test · Decade trajectory",
-            icon=":material/route:",
         ),
         st.Page(
             "pages/test_app_v00.py",

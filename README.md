@@ -101,6 +101,11 @@ auditable record.
 
 ## Development
 
+The Streamlit deployment has no required system-level apt packages. Credential
+PDF rendering uses fonts already available in the runtime and degrades through
+the fallback chain in `infra/credentials_pdf.py`; do not add `packages.txt`
+solely for optional emoji typography.
+
 Run the deployable regression suite with:
 
 ```bash
