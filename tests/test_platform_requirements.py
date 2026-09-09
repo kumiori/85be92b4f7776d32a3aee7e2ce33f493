@@ -252,10 +252,9 @@ def test_navigation_uses_current_conceptual_families():
         "D'Alembertiennes",
     )
     assert [item.title for item in families["Prediction"]] == [
-        "Questionnaire",
-        "Results",
-        "Host",
+        "Prediction",
     ]
+    assert families["Prediction"][0].url_path == "prediction"
     assert all(item.title != "Scientific Event" for items in families.values() for item in items)
 
 

@@ -87,6 +87,7 @@ class ConferenceEventConfig:
     questionnaire_page: str
     overview_page: str
     host_page: str
+    canonical_path: str = ""
     response_scope: str = "event_specific"
     aliases: tuple[str, ...] = ()
     test_mode: bool = False
@@ -145,6 +146,7 @@ _EVENT_CONFIGS = (
         questionnaire_page="pages/33_Event.py",
         overview_page="pages/34_Event_Overview.py",
         host_page="pages/35_Event_Host.py",
+        canonical_path="prediction",
         response_scope="event_session",
         aliases=("prediction", PREDICTION_SESSION_CODE),
         test_session_code=PREDICTION_DEBUG_SESSION_CODE,
@@ -178,6 +180,7 @@ _EVENT_CONFIGS = (
         questionnaire_page="pages/33_Event.py",
         overview_page="pages/34_Event_Overview.py",
         host_page="pages/35_Event_Host.py",
+        canonical_path="prediction",
         response_scope="debug_session",
         aliases=("prediction_debug", PREDICTION_DEBUG_SESSION_CODE),
         test_mode=True,
@@ -211,6 +214,7 @@ _EVENT_CONFIGS = (
         questionnaire_page=COMPLEXITY_ENTRY_PAGE,
         overview_page=COMPLEXITY_OVERVIEW_PAGE,
         host_page=COMPLEXITY_HOST_PAGE,
+        canonical_path="complexity",
         aliases=("complexity", "petnica", COMPLEXITY_SESSION_CODE),
     ),
     ConferenceEventConfig(
@@ -225,6 +229,7 @@ _EVENT_CONFIGS = (
         questionnaire_page=DALAMBERTIENNES_ENTRY_PAGE,
         overview_page=DALAMBERTIENNES_OVERVIEW_PAGE,
         host_page=DALAMBERTIENNES_HOST_PAGE,
+        canonical_path="dalembertiennes",
         aliases=("dalembertiennes", DALAMBERTIENNES_SESSION_CODE),
     ),
     ConferenceEventConfig(
@@ -239,6 +244,7 @@ _EVENT_CONFIGS = (
         questionnaire_page=UN_WG2_ENTRY_PAGE,
         overview_page=UN_WG2_OVERVIEW_PAGE,
         host_page=UN_WG2_HOST_PAGE,
+        canonical_path="un-wg2-icebreaker",
         response_scope="event_session",
         aliases=(
             "un_wg2_visibility",
@@ -321,6 +327,15 @@ def event_config_for_request(
     return event_config_for_session_code(config.test_session_code)
 
 
+def public_event_configs() -> tuple[ConferenceEventConfig, ...]:
+    """Production session entries for the canonical sessions index."""
+    return tuple(
+        config
+        for config in _EVENT_CONFIGS
+        if not config.test_mode and str(config.canonical_path or "").strip()
+    )
+
+
 def navigation_families() -> dict[str, tuple[NavigationItem, ...]]:
     """Current participant-facing session families, ready for a future index."""
     return {
@@ -335,9 +350,7 @@ def navigation_families() -> dict[str, tuple[NavigationItem, ...]]:
             NavigationItem("Opening", "pages/18_Pisa_Opening.py", "pisa-opening", ":material/auto_stories:"),
         ),
         "Prediction": (
-            NavigationItem("Questionnaire", "pages/33_Event.py", "event", ":material/science:"),
-            NavigationItem("Results", "pages/34_Event_Overview.py", "event-overview", ":material/insights:"),
-            NavigationItem("Host", "pages/35_Event_Host.py", "event-host", ":material/admin_panel_settings:"),
+            NavigationItem("Prediction", "pages/36_Prediction.py", "prediction", ":material/science:"),
         ),
         "D'Alembertiennes": (
             NavigationItem("Climate", DALAMBERTIENNES_ENTRY_PAGE, "dalembertiennes", ":material/science:"),

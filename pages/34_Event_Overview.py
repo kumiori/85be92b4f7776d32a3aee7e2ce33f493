@@ -90,10 +90,10 @@ def _render_question(signal, prompt: str, index: int) -> None:
     )
 
 
-def main() -> None:
+def main(*, event_slug_override: str = "") -> None:
     set_page()
     apply_editorial_results_theme()
-    slug = str(st.query_params.get("event") or "prediction").strip().lower()
+    slug = str(event_slug_override or st.query_params.get("event") or "prediction").strip().lower()
     config = event_config_for_request(slug, test=st.query_params.get("test", ""))
     if not config or not str(config.slug).startswith("prediction"):
         st.error("Unknown Prediction event.")

@@ -19,7 +19,7 @@ from ui import set_page
 from infra.event_logger import log_event
 
 
-def main() -> None:
+def main(*, event_slug_override: str = "") -> None:
     set_page()
     apply_conference_styles()
     ensure_session_state()
@@ -29,7 +29,7 @@ def main() -> None:
     if not host_role_allowed(str(st.session_state.get("player_role") or "")):
         st.error("Host or admin access only.")
         return
-    slug = str(st.query_params.get("event") or "prediction").strip().lower()
+    slug = str(event_slug_override or st.query_params.get("event") or "prediction").strip().lower()
     config = event_config_for_request(slug, test=st.query_params.get("test", ""))
     repo = get_conference_repo()
     bundle = get_conference_bundle(session_code=config.session_code if config else "")
@@ -82,7 +82,8 @@ def main() -> None:
         if not recorded:
             st.error("The recovery link could not be audited, so it was not exposed.")
             return
-        route = f"/event?event={quote(config.slug)}&recovery={quote(token)}"
+        test_query = "&test=1" if config.test_mode else ""
+        route = f"/prediction?recovery={quote(token)}{test_query}"
         subject, body = recovery_message(config.title, str(player.get("nickname") or "Participant"), route)
         st.text_input("Subject", value=subject)
         st.text_area("Message", value=body, height=220)

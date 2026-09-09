@@ -300,15 +300,18 @@ Current top-level routes/pages:
 - `pages/18_Pisa_Opening.py` with `url_path="pisa-opening"`
 - `pages/19_Pisa_Experiment.py` with `url_path="pisa"`
 - `pages/20_Complexity_Overview.py` via `COMPLEXITY_OVERVIEW_PAGE` with `url_path="complexity-overview"`
-- `pages/33_Event.py` with `url_path="event"` and `?event=<slug>`
-- `pages/34_Event_Overview.py` with `url_path="event-overview"` and `?event=<slug>`
-- `pages/35_Event_Host.py` with `url_path="event-host"` and `?event=<slug>`
+- `pages/36_Prediction.py` with canonical `url_path="prediction"`; `view=results`
+  and `view=host` select subviews, while `test=1` selects the debug session.
+- `pages/37_Sessions.py` with canonical `url_path="sessions"`.
+- `pages/33_Event.py`, `pages/34_Event_Overview.py`, and `pages/35_Event_Host.py`
+  remain hidden compatibility aliases at `event`, `event-overview`, and
+  `event-host`.
 - `pages/14_Decade_Map.py`
 - `pages/07_Admin.py`
 
-The generic event entry point is query-param based (`/event?event=<slug>`), not
-a dynamic path such as `/event/dalembertiennes`. Event resolution must not
-create persisted sessions while rendering a page.
+Prediction's stable public entry is `/prediction`; the current subview uses the
+explicit `view=` vocabulary. Event resolution must not create persisted sessions
+while rendering a page.
 
 Preferred implementation choices:
 

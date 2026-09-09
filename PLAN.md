@@ -689,6 +689,14 @@ In particular:
 
 ## Immediate next step for coding agent
 
+## Checkpoint — 2026-09-09 · Canonical Prediction and sessions routing
+
+- Files changed: `app.py`, `conference/events.py`, `conference/public_routes.py`, `conference/session_routes.py`, `conference/questionnaire.py`, `pages/33_Event.py`, `pages/34_Event_Overview.py`, `pages/35_Event_Host.py`, `pages/36_Prediction.py`, `pages/37_Sessions.py`, `tests/test_session_routes.py`, `tests/test_platform_requirements.py`, `README.md`, `AGENTS.md`, `PLAN.md`.
+- Result: `/prediction` is the canonical Prediction dispatcher. The explicit `view=results` and `view=host` values select subviews; absent or unknown values safely render Join. `test=1` composes with all views. The public top navigation contains only Join and Results; Host and Test are developer-sidebar links and are not rendered in the deployed production interface. Recovery links return to the canonical route, and `/sessions` lists production session entry points without test flags.
+- Compatibility: `/event`, `/event-overview`, and `/event-host` remain registered as hidden aliases. Canonical UI links do not emit the legacy `event=prediction` parameter or bare query flags.
+- Verification: pure route-contract tests cover direct URL generation, unknown-view fallback, production/test composition, test preservation across subviews, and the production sessions index. No browser or screenshot testing was used, per deployment instruction.
+- Next action: deploy the canonical route and generate the public QR from `/prediction` only.
+
 ## Checkpoint — 2026-09-09 · Prediction editorial results portrait
 
 - Files changed: `conference/events.py`, `conference/editorial_results_ui.py`, `conference/prediction_results.py`, `conference/repo.py`, `pages/34_Event_Overview.py`, `tests/test_prediction_results.py`, `tests/test_conference_repo.py`, `tests/test_platform_requirements.py`, `PLAN.md`.

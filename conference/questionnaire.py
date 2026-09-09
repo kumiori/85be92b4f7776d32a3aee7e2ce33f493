@@ -367,6 +367,14 @@ def _sync_event_query(event_slug: str) -> None:
 
 
 def _switch_to_event_overview(session: Dict[str, Any]) -> None:
+    if str(st.session_state.get("conference_public_route_path") or "") == "prediction":
+        next_params = public_query_params()
+        next_params.pop("event", None)
+        next_params["view"] = "results"
+        st.query_params.clear()
+        st.query_params.update(next_params)
+        st.rerun()
+        return
     context = _event_context(session)
     _sync_event_query(str(context["event_slug"]))
     st.switch_page(str(context["overview_page"]))

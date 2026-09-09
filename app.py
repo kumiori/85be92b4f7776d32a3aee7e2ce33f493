@@ -100,6 +100,12 @@ def _visible_pages() -> dict[str, list[st.Page]]:
             st.Page("pages/Splash.py", title="Access", icon=":material/key:"),
             st.Page("pages/011_Intro.py", title="Intro", icon=":material/auto_stories:"),
             st.Page("pages/01_Login.py", title="Login", icon=":material/login:"),
+            st.Page(
+                "pages/37_Sessions.py",
+                title="Sessions",
+                icon=":material/event_list:",
+                url_path="sessions",
+            ),
         ],
         "**Session**": [
             st.Page("pages/02_Home.py", title="Lobby", icon=":material/home:"),
@@ -284,6 +290,24 @@ def _lab_pages() -> list[st.Page]:
 def _hidden_pages() -> list[st.Page]:
     return [
         st.Page("pages/Splash_old.py", visibility="hidden"),
+        st.Page(
+            "pages/33_Event.py",
+            title="Prediction legacy entry",
+            url_path="event",
+            visibility="hidden",
+        ),
+        st.Page(
+            "pages/34_Event_Overview.py",
+            title="Prediction legacy results",
+            url_path="event-overview",
+            visibility="hidden",
+        ),
+        st.Page(
+            "pages/35_Event_Host.py",
+            title="Prediction legacy host",
+            url_path="event-host",
+            visibility="hidden",
+        ),
         st.Page(
             "pages/24_Climate.py",
             title="Climate questionnaire",
