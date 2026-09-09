@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional, Sequence
 from conference.registry import conference_question_ids, resolve_question_set_bundle
 from conference.participation import normalize_email, participation_id_for
 from conference.question_flags import normalize_question_flags
+from conference.question_skips import normalize_question_skips
 from conference.settings import ConferenceSettings
 from infra.key_codec import hex_to_emoji, normalize_access_key, split_emoji_symbols
 from infra.event_logger import get_module_logger, log_event
@@ -299,6 +300,17 @@ def _normalize_bundle(bundle: Dict[str, Any]) -> Dict[str, Any]:
     question_flags = normalize_question_flags(
         session.get("question_flags", bundle.get("question_flags", {}))
     )
+    question_skips = normalize_question_skips(
+        session.get("question_skips", bundle.get("question_skips", {}))
+    )
+    raw_question_states = session.get(
+        "question_states", bundle.get("question_states", {})
+    )
+    question_states = {
+        str(key): dict(value)
+        for key, value in raw_question_states.items()
+        if isinstance(value, dict)
+    } if isinstance(raw_question_states, dict) else {}
     deferred_fields = _as_list(
         session.get("deferred_fields", bundle.get("deferred_fields", []))
     )
@@ -384,6 +396,8 @@ def _normalize_bundle(bundle: Dict[str, Any]) -> Dict[str, Any]:
         "open_question": open_question,
         "boiler_room_contribution": boiler_room_contribution,
         "question_flags": question_flags,
+        "question_skips": question_skips,
+        "question_states": question_states,
         "deferred_fields": deferred_fields,
         "identity_reveal_targets": identity_reveal_targets,
         "event_slug": event_slug,
@@ -461,6 +475,8 @@ def _normalize_bundle(bundle: Dict[str, Any]) -> Dict[str, Any]:
         "open_question": open_question,
         "boiler_room_contribution": boiler_room_contribution,
         "question_flags": question_flags,
+        "question_skips": question_skips,
+        "question_states": question_states,
         "open_text": open_question,
         "deferred_fields": deferred_fields,
         "identity_reveal_targets": identity_reveal_targets,
@@ -724,13 +740,6 @@ class ConferenceRepo:
             checkpoint_id = hashlib.sha256(
                 f"{participation_id}:{current_position}:{safe_state!r}".encode("utf-8")
             ).hexdigest()
-        existing = self.interaction_repo().get_responses_by_item(
-            session_id, PARTICIPATION_CHECKPOINT
-        )
-        for row in existing:
-            value = row.get("value_json")
-            if isinstance(value, dict) and value.get("checkpoint_id") == checkpoint_id:
-                return {"created": False, **dict(value), "response_id": row.get("response_id")}
         value = {
             "field": "participation_checkpoint",
             "participation_id": participation_id,

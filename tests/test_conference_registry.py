@@ -57,6 +57,33 @@ def test_registry_resolves_un_wg2_yaml_bundle():
     assert resolved.question_set_source_path.endswith("conference/question_sets/un_wg2_v1.yaml")
 
 
+def test_registry_exposes_active_prediction_yaml_questions():
+    resolved = resolve_question_set_bundle(session_code="prediction_2026")
+
+    assert resolved.question_set_source_kind == "yaml"
+    assert resolved.question_set_source_path.endswith(
+        "conference/question_sets/prediction.yaml"
+    )
+    assert resolved.questionnaire_id == "prediction"
+    assert resolved.questionnaire_status == "active"
+    assert len(resolved.question_ids) == 13
+    assert tuple(resolved.question_set.flow_modes["standard"]["steps"]) == (
+        "role",
+        "systems",
+        "expectations",
+        "formulation",
+        "approaches",
+        "limitations",
+        "explore",
+        "confidence",
+        "motivations",
+        "obstacle",
+        "needs",
+        "contribution",
+        "challenge",
+    )
+
+
 def test_registry_reuses_wg2_question_set_in_isolated_debug_session():
     resolved = resolve_question_set_bundle(
         session={

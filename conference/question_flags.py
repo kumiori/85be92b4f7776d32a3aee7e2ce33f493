@@ -4,14 +4,21 @@ from typing import Any, Dict, Iterable, List
 
 
 QUESTION_FLAG_OPTIONS: List[Dict[str, str]] = [
-    {"value": "interesting_question", "label": "Interesting question"},
-    {"value": "useful_for_coordination", "label": "Useful for coordination"},
+    {"value": "interesting_question", "label": "Interesting"},
+    {"value": "useful_for_coordination", "label": "Useful"},
+    {"value": "thought_provoking", "label": "Thought-provoking"},
+    {"value": "well_framed", "label": "Well framed"},
     {"value": "incomplete", "label": "Incomplete"},
     {"value": "misleading", "label": "Misleading"},
     {"value": "too_narrow", "label": "Too narrow"},
     {"value": "unclear", "label": "Unclear"},
     {"value": "missing_option", "label": "Missing option"},
 ]
+
+QUESTION_FLAG_INTRO = (
+    "Flag this question positively or negatively. "
+    "Tell us what works, what does not, or what deserves attention."
+)
 
 QUESTION_FLAG_LABELS = {
     str(item["value"]): str(item["label"]) for item in QUESTION_FLAG_OPTIONS

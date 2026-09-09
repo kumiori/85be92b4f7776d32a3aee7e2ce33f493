@@ -101,6 +101,7 @@ def _merge_shared_question(
         "flaggable",
         "status",
         "options",
+        "free_text",
         "override_reason",
     }
     unsupported = set(overrides) - allowed_overrides
@@ -108,9 +109,11 @@ def _merge_shared_question(
         raise ValueError(
             f"Shared question `{reference}` cannot override: {', '.join(sorted(unsupported))}."
         )
-    if "options" in overrides and not str(overrides.get("override_reason") or "").strip():
+    if ({"options", "free_text"} & set(overrides)) and not str(
+        overrides.get("override_reason") or ""
+    ).strip():
         raise ValueError(
-            f"Shared question `{reference}` option overrides require `override_reason`."
+            f"Shared question `{reference}` option/free-text overrides require `override_reason`."
         )
     overrides.pop("override_reason", None)
     base.update(overrides)

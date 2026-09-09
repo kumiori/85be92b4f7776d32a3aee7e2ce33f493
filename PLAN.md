@@ -689,6 +689,39 @@ In particular:
 
 ## Immediate next step for coding agent
 
+## Checkpoint — 2026-09-09 · Prediction editorial results portrait
+
+- Files changed: `conference/events.py`, `conference/editorial_results_ui.py`, `conference/prediction_results.py`, `conference/repo.py`, `pages/34_Event_Overview.py`, `tests/test_prediction_results.py`, `tests/test_conference_repo.py`, `tests/test_platform_requirements.py`, `PLAN.md`.
+- Result: `/event-overview?event=prediction` now renders a long-form scientific portrait using the UNESCO Opening visual language. Opening copy and interpretation prompts live in the event result configuration; all 13 question titles, contexts, option labels, types, and order resolve from `prediction.yaml`. Reusable renderers cover categorical bars with explicit answered denominators and restrained anonymous text excerpts.
+- Event scope: the page resolves the same persisted production/debug session pair as the questionnaire. `?event=prediction&test=1` reads only `prediction_debug_2026`, while the production URL reads only `prediction_2026`. Flag and Skip metadata are counted separately and excluded from scientific distributions.
+- Verification: focused aggregation, repository-normalisation, event-resolution, and navigation tests pass. Live browser QA against the debug route verified the opening, first and middle categorical sections, contribution text section, final challenge section, all 13 YAML-derived questions, alternating editorial rhythm, and debug-only signal totals.
+- Next action: deploy and perform a hosted read-only smoke check of the debug results URL; defer authored interpretation and cross-question analysis until real CISM data is available.
+
+## Checkpoint — 2026-09-09 · Prediction flag/skip semantics and live debug QA
+
+- Files changed: `conference/question_sets/prediction.yaml`, `conference/question_sets/yaml_loader.py`, `conference/question_flags.py`, `conference/question_skips.py`, `conference/flow.py`, `conference/questionnaire.py`, `pages/19_Pisa_Experiment.py`, `tests/test_question_interaction_semantics.py`, `tests/test_yaml_first_questionnaires.py`, `tests/test_questionnaire_performance.py`, `PLAN.md`.
+- Result: Flag is now independent question feedback with positive and critical reasons; Skip is an optional response-state reason with its own taxonomy. Both states coexist, Other-detail reveal is generic, and the shared-question override grammar accepts an explicitly justified `free_text` override without changing `shared.role` globally. Prediction uses the revised identity and Q1–Q13 copy.
+- Event scope: browser QA created one synthetic participant and one submission only in `prediction_debug_2026`. A fresh browser session recovered the debug-scoped saved record by access key; production was not opened or written.
+- Verification: live `event=prediction&test=1` QA covered Q1/Q2/Q3 Other reveal, positive and critical flags, skip with and without a reason, answered+flagged, skipped+flagged, skip after choosing an answer, revised Q8/Q10/Q11 wording, review, submission, and fresh-browser recovery. The complete suite passes with `180 passed`.
+- Next action: deploy this bounded change and repeat only a read-only smoke check on the hosted debug URL before authoring further scientific content.
+
+## Checkpoint — 2026-09-09 · Questionnaire transition performance
+
+- Files changed: `conference/questionnaire.py`, `conference/repo.py`, `repositories/interaction_repo.py`, `infra/event_logger.py`, `tests/test_questionnaire_performance.py`, `tests/test_platform_requirements.py`, `tests/test_event_logger_data_source.py`, `PLAN.md`.
+- Result: ordinary `Continue` transitions now reuse the participant resolved by the first durable identity checkpoint, append the next recovery checkpoint without a redundant read of all prior checkpoints, skip irrelevant scientific-question lookup for checkpoint records, and keep `page_view` / `question_answered` / blocked-navigation telemetry in application logs without synchronous Notion event writes. The required durable checkpoint write remains synchronous before advancing.
+- Event scope: cached participant bindings include the persisted session id and an access-key hash and are cleared whenever the production/debug session scope changes.
+- Observability: application logs now report `perf.checkpoint_player_resolve_ms` and `perf.checkpoint_write_ms`, including whether the participant binding was reused.
+- Verification: performance regression tests constrain repeat navigation to one participant upsert per browser scope, one checkpoint write per completed step, zero checkpoint-history reads, and zero Questions-database lookups for checkpoint records. Full-suite verification passed with 174 tests.
+- Next action: deploy and compare Cloud logs for the first identity transition versus later scientific-question transitions; later transitions should be dominated by the single `checkpoint_write` measurement.
+
+## Checkpoint — 2026-09-09 · Activate PREDICTION YAML questionnaire
+
+- Files changed: `conference/question_sets/prediction.yaml`, `tests/test_conference_registry.py`, `tests/test_yaml_first_questionnaires.py`, `README.md`, `PLAN.md`.
+- Result: the production PREDICTION route now accepts the reviewed YAML questionnaire as active and resolves all 13 scientific questions in the configured standard flow. The durable `prediction_v0` identifier remains unchanged for compatibility with existing sessions and stored responses.
+- Event scope: both `prediction_2026` and `prediction_debug_2026` reuse the same YAML question catalogue while retaining their separate persisted session boundaries.
+- Verification: the focused activation regression test passed and the complete repository suite passed with 170 tests.
+- Next action: deploy the change and confirm the production `/event?event=prediction` identity step advances to the first scientific question against the persisted `prediction_2026` session.
+
 Bounded step:
 
 Run the live checkpoint: open Dalembertiennes, submit one placeholder answer, confirm it appears only in Dalembertiennes overview/export, then add explicit lifecycle controls in admin for draft/open/closed/archived.

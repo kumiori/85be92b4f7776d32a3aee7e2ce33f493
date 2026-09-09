@@ -44,8 +44,10 @@ must run the explicit bootstrap first:
 ./.venv/bin/python scripts/bootstrap_prediction_sessions.py
 ```
 
-PREDICTION currently uses the infrastructure-only `prediction_v0` question-set
-shell. Its scientific questions are intentionally not yet defined.
+PREDICTION loads its active scientific questionnaire from
+`conference/question_sets/prediction.yaml`. The persisted `prediction_v0`
+text/question-set identifier remains as a compatibility boundary for existing
+session and response records.
 
 For platform QA only, append `&fixture=controls` to the test URL. This loads a
 temporary, debug-only single-choice/scale/free-text fixture used to verify the
