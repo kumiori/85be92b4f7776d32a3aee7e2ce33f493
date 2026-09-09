@@ -66,9 +66,11 @@ def test_registry_exposes_active_prediction_yaml_questions():
     )
     assert resolved.questionnaire_id == "prediction"
     assert resolved.questionnaire_status == "active"
-    assert len(resolved.question_ids) == 13
+    assert len(resolved.question_ids) == 14
+    assert "career_stage" in resolved.question_ids
     assert tuple(resolved.question_set.flow_modes["standard"]["steps"]) == (
         "role",
+        "career_stage",
         "systems",
         "expectations",
         "formulation",
