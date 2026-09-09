@@ -123,11 +123,28 @@ def _execute_with_retry(func, *args, **kwargs):
             status = getattr(err, "status", None)
             if status != 429 or attempt == 2:
                 break
-            wait_for = 0.5 * (2**attempt)
+            backoff = 0.5 * (2**attempt)
+            headers = getattr(err, "headers", {}) or {}
+            retry_after = headers.get("retry-after") or headers.get("Retry-After")
+            try:
+                requested_wait = float(retry_after)
+            except (TypeError, ValueError):
+                requested_wait = 0.0
+            # Notion tells clients how long to pause after a 429. Honour that
+            # instruction while keeping a single Streamlit rerun bounded.
+            wait_for = min(30.0, max(backoff, requested_wait))
             time.sleep(wait_for)
     if last_error:
         raise last_error
     raise RuntimeError("Request failed without APIResponseError.")
+
+
+def is_notion_rate_limited(error: Exception) -> bool:
+    """Return whether an exception represents Notion's temporary HTTP 429."""
+    return getattr(error, "status", None) == 429 or (
+        "rate limited" in str(error).lower()
+        and error.__class__.__module__.startswith("notion_client")
+    )
 
 
 @lru_cache(maxsize=128)

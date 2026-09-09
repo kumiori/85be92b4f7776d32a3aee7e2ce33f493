@@ -28,6 +28,7 @@ def test_prediction_event_has_distinct_production_and_debug_sessions():
     assert event.test_session_code == "prediction_debug_2026"
     assert event.session_code != event.test_session_code
     assert event.identity_policy.required_fields == ("name", "email")
+    assert event.persistence_policy == "integration_only"
 
 
 def test_existing_participant_joins_prediction_without_losing_membership():

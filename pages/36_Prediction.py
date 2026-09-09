@@ -9,9 +9,14 @@ from conference.session_routes import (
     query_requests_test,
     render_prediction_navigation,
 )
+from ui import set_page
 
 
 def main() -> None:
+    # Establish Streamlit's layout before the shared route navigation emits UI.
+    # Each delegated page may refine the shell, but no element should render
+    # against Streamlit's default spacing first.
+    set_page()
     if st.query_params.get("event"):
         st.query_params.pop("event")
     view = normalize_prediction_view(st.query_params.get("view", ""))

@@ -103,6 +103,7 @@ from conference.wg2_ux import (
 )
 from infra.event_logger import log_event, log_perf
 from infra.key_codec import generate_hex_key, hex_to_emoji, split_emoji_symbols
+from infra.notion_repo import is_notion_rate_limited
 from ui import set_page, sidebar_debug_state
 
 
@@ -114,6 +115,7 @@ EDIT_CONTEXT_KEY = "conference_edit_context"
 EDIT_DRAFT_KEY = "conference_edit_draft"
 SESSION_SCOPE_KEY = "conference_runtime_session_scope"
 PLAYER_BINDING_KEY = "conference_checkpoint_player_binding"
+SESSION_BUNDLE_CACHE_KEY = "conference_session_bundle_cache"
 OPENCAGE_ENDPOINT = "https://api.opencagedata.com/geocode/v1/json"
 
 
@@ -126,6 +128,22 @@ def _ensure_local_state(question_set: QuestionSet) -> None:
     st.session_state.setdefault(ENTRY_KEY, "")
     st.session_state.setdefault(LOGIN_ERROR_KEY, "")
     st.session_state.setdefault("conference_hide_migration_prompt", False)
+
+
+def _session_bundle_for_flow(session_code: str) -> Dict[str, Any]:
+    """Resolve a persisted session once per open browser flow."""
+    cache = st.session_state.setdefault(SESSION_BUNDLE_CACHE_KEY, {})
+    if isinstance(cache, dict):
+        existing = cache.get(session_code)
+        if isinstance(existing, dict) and existing.get("session"):
+            return existing
+    bundle = get_conference_bundle(session_code=session_code)
+    if bundle.get("session"):
+        if not isinstance(cache, dict):
+            cache = {}
+            st.session_state[SESSION_BUNDLE_CACHE_KEY] = cache
+        cache[session_code] = bundle
+    return bundle
 
 
 def _ensure_session_scope_state(
@@ -245,6 +263,14 @@ def _log_route_event(
         "question_answered",
         "question_continue_blocked",
     }
+    config = event_config_for_session_code(str(session.get("session_code") or ""))
+    if config and getattr(config, "persistence_policy", "checkpointed") == "integration_only":
+        persist = event_type in {
+            "route_submitted",
+            "answer_revision_appended",
+            "answer_revision_failed",
+            "write_failed",
+        }
     log_event(
         module="iceicebaby.conference",
         event_type=event_type,
@@ -1087,10 +1113,12 @@ def _bind_checkpoint_player(
 def _persist_participation_checkpoint(
     repo: Any, session: Dict[str, Any], *, next_position: str
 ) -> bool:
+    config = event_config_for_session_code(str(session.get("session_code") or ""))
+    if config and getattr(config, "persistence_policy", "checkpointed") == "integration_only":
+        return True
     draft = get_draft(question_set=current_question_set())
     access_key = _ensure_access_key()
     payload = _payload_for_session(draft, session)
-    config = event_config_for_session_code(str(session.get("session_code") or ""))
     try:
         player_id = _bound_checkpoint_player_id(session, access_key)
         reused_player = bool(player_id)
@@ -1150,6 +1178,13 @@ def _persist_participation_checkpoint(
             next_position=next_position,
         )
     except Exception as exc:
+        if is_notion_rate_limited(exc):
+            st.warning(
+                "The saving service is busy right now. Your answers are still "
+                "available in this open browser tab. Please wait a few seconds, "
+                "then press Continue again."
+            )
+            return False
         st.error(f"Could not save your progress: {exc}")
         return False
     return True
@@ -1432,6 +1467,13 @@ def _submit(repo: Any, session: Dict[str, Any]) -> None:
             level="ERROR",
             extra={"error": str(exc)},
         )
+        if is_notion_rate_limited(exc):
+            st.warning(
+                "The saving service is busy right now. Your completed answers "
+                "are still available on this Review page. Please wait a few "
+                "seconds, then press Integrate again."
+            )
+            return
         st.error(f"Could not save this WG2 submission: {exc}")
         return
     st.session_state["conference_submission_cache_key"] = (
@@ -3269,7 +3311,20 @@ def run_conference_questionnaire_page(
         return
 
     session_code = str(session_code_resolver(repo) or "").strip()
-    bundle = get_conference_bundle(session_code=session_code)
+    try:
+        bundle = _session_bundle_for_flow(session_code)
+    except Exception as exc:
+        if not is_notion_rate_limited(exc):
+            raise
+        st.warning(
+            "The saving service is busy right now. Your answers are still "
+            "available in this open browser tab. Please wait a few seconds, "
+            "then try again."
+        )
+        if st.button("Try again", type="primary", key="conference_backend_retry"):
+            get_conference_bundle.clear()
+            st.rerun()
+        return
     session = bundle.get("session")
     if not session:
         st.error(

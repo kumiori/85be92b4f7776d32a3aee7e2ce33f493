@@ -101,6 +101,7 @@ class ConferenceEventConfig:
     intro_body: str = ""
     closing_title: str = ""
     closing_body: str = ""
+    persistence_policy: str = "checkpointed"
     identity_policy: EventIdentityPolicy = EventIdentityPolicy()
     result_config: EventResultConfig = EventResultConfig()
 
@@ -159,6 +160,7 @@ _EVENT_CONFIGS = (
         intro_body="Share your perspective as the course develops.",
         closing_title="Responses recorded",
         closing_body="Keep your access key so you can return to your answers.",
+        persistence_policy="integration_only",
         identity_policy=EventIdentityPolicy(
             identified=True,
             required_fields=("name", "email"),
@@ -193,6 +195,7 @@ _EVENT_CONFIGS = (
         intro_body="Share your perspective as the course develops.",
         closing_title="Test responses recorded",
         closing_body="This test remains separate from course responses.",
+        persistence_policy="integration_only",
         identity_policy=EventIdentityPolicy(
             identified=True,
             required_fields=("name", "email"),

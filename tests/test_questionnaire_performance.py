@@ -52,6 +52,60 @@ def test_repeated_question_checkpoints_reuse_resolved_participant(monkeypatch):
     assert repo.checkpoints == 2
 
 
+def test_prediction_integration_only_policy_does_not_write_mid_flow(monkeypatch):
+    repo = _CheckpointRepo()
+    question_set = SimpleNamespace(id="prediction")
+    session = {"id": "session-1", "session_code": "prediction_2026"}
+    event_config = SimpleNamespace(
+        persistence_policy="integration_only",
+        identity_policy=SimpleNamespace(identified=True),
+    )
+
+    monkeypatch.setattr(questionnaire, "current_question_set", lambda: question_set)
+    monkeypatch.setattr(
+        questionnaire, "event_config_for_session_code", lambda _code: event_config
+    )
+
+    assert questionnaire._persist_participation_checkpoint(
+        repo, session, next_position="systems"
+    )
+    assert repo.upserts == 0
+    assert repo.checkpoints == 0
+
+
+def test_prediction_integration_only_policy_keeps_mid_flow_events_local(monkeypatch):
+    calls = []
+    config = SimpleNamespace(persistence_policy="integration_only")
+    monkeypatch.setattr(
+        questionnaire, "event_config_for_session_code", lambda _code: config
+    )
+    monkeypatch.setattr(questionnaire, "log_event", lambda **kwargs: calls.append(kwargs))
+    monkeypatch.setattr(questionnaire.st, "session_state", {})
+
+    questionnaire._log_route_event(
+        {"id": "session-1", "session_code": "prediction_2026"},
+        event_type="question_flagged",
+        step="systems",
+    )
+
+    assert calls[0]["persist"] is False
+
+
+def test_event_session_bundle_is_reused_for_open_browser_flow(monkeypatch):
+    calls = []
+    bundle = {"session": {"id": "session-1", "session_code": "prediction_2026"}}
+    monkeypatch.setattr(questionnaire.st, "session_state", {})
+    monkeypatch.setattr(
+        questionnaire,
+        "get_conference_bundle",
+        lambda **kwargs: calls.append(kwargs) or bundle,
+    )
+
+    assert questionnaire._session_bundle_for_flow("prediction_2026") is bundle
+    assert questionnaire._session_bundle_for_flow("prediction_2026") is bundle
+    assert calls == [{"session_code": "prediction_2026"}]
+
+
 def test_checkpoint_write_skips_scientific_question_lookup():
     interaction_repo = object.__new__(NotionInteractionRepository)
     interaction_repo._question_page_by_item_id = {}

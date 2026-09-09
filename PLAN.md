@@ -722,6 +722,31 @@ In particular:
 - Verification: performance regression tests constrain repeat navigation to one participant upsert per browser scope, one checkpoint write per completed step, zero checkpoint-history reads, and zero Questions-database lookups for checkpoint records. Full-suite verification passed with 174 tests.
 - Next action: deploy and compare Cloud logs for the first identity transition versus later scientific-question transitions; later transitions should be dominated by the single `checkpoint_write` measurement.
 
+## Checkpoint — 2026-09-09 · Graceful Notion throttling
+
+- Files changed: `infra/notion_repo.py`, `conference/questionnaire.py`, `tests/test_notion_rate_limit_handling.py`, `PLAN.md`.
+- Result: Notion 429 retries now honour `Retry-After`; public session-resolution and checkpoint throttling show a calm retry message rather than exposing a Streamlit traceback. The current per-tab draft is retained for retry, while durable recovery continues from the last successful checkpoint.
+- Event scope: shared questionnaire infrastructure; no event data, response schema, or questionnaire content changed.
+- Verification: focused retry, checkpoint, platform, and Prediction tests pass (`36 passed`); compile check passes. Full suite reports `194 passed` and the same two unrelated failures from the existing dirty questionnaire YAML/revision work.
+- Next action: deploy and confirm a forced/transient Notion 429 presents the retry state without losing the open-tab draft.
+
+## Checkpoint — 2026-09-09 · Prediction one-go persistence
+
+- Files changed: `conference/events.py`, `conference/questionnaire.py`, `tests/test_questionnaire_performance.py`, `tests/test_prediction_vertical_slice.py`, `PLAN.md`.
+- Result: Prediction production and test sessions now declare `integration_only` persistence. Their event session is resolved once per open browser flow; answer, flag, skip, and structural-step navigation remain in browser session state without Notion checkpoint or telemetry writes. Final Integration remains idempotent and writes the completed response; a temporary throttle leaves the participant on Review for retry.
+- Event scope: only `prediction` and `prediction_debug`; checkpointed persistence remains the default for every other event.
+- Verification: focused questionnaire, rate-limit, interaction, and Prediction tests pass (`43 passed`). Full suite reports `197 passed` with the same two unrelated failures from existing dirty questionnaire YAML/revision work.
+- Operational limitation: one-go drafts survive Streamlit reruns in the open tab, but deliberately do not promise recovery after tab closure or server restart before Integration.
+- Next action: deploy and complete one test-mode Prediction run, verifying no Notion writes occur between About You and Review and Integration can be retried idempotently.
+
+## Checkpoint — 2026-09-09 · Stabilise Prediction results layout
+
+- Files changed: `pages/36_Prediction.py`, `tests/test_prediction_route_page.py`, `PLAN.md`.
+- Result: the canonical `/prediction` dispatcher now establishes the Streamlit page shell before rendering shared route navigation, preventing the Results navigation from inheriting the oversized default top inset and appearing clipped.
+- Event scope: presentation-only; no questionnaire, response, session, or aggregate data changed.
+- Verification: focused Prediction route/results tests pass (`9 passed`). The full suite has `191 passed`, with two pre-existing failures caused by the unrelated dirty questionnaire YAML/revision edits.
+- Next action: refresh the running local `/prediction?view=results` page; Streamlit hot reload should show the corrected top spacing.
+
 ## Checkpoint — 2026-09-09 · Activate PREDICTION YAML questionnaire
 
 - Files changed: `conference/question_sets/prediction.yaml`, `tests/test_conference_registry.py`, `tests/test_yaml_first_questionnaires.py`, `README.md`, `PLAN.md`.
