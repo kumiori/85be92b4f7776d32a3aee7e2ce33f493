@@ -246,6 +246,42 @@ def test_group_rows_by_submission_keeps_question_flags_from_flat_legacy_bundle()
     }
 
 
+def test_group_rows_by_submission_keeps_skip_and_answer_state_metadata():
+    repo = ConferenceRepo(_FakeNotionRepo({}), _settings())
+
+    grouped = repo.group_rows_by_submission(
+        [
+            {
+                "item_id": "PREDICTION_BUNDLE",
+                "player_id": "player-1",
+                "response_id": "response-prediction",
+                "timestamp": "2026-09-09T10:00:00Z",
+                "text_id": "prediction_v0",
+                "value_json": {
+                    "field": "session_bundle",
+                    "access_key_hash": "hash-prediction",
+                    "bundle": {
+                        "schema_version": "2",
+                        "profile": {"role": []},
+                        "session": {
+                            "questionnaire_id": "prediction_v0",
+                            "question_skips": {
+                                "systems": {"reasons": ["not_relevant"], "note": ""}
+                            },
+                            "question_states": {
+                                "systems": {"answer_state": "skipped", "flagged": True}
+                            },
+                        },
+                    },
+                },
+            }
+        ]
+    )
+
+    assert grouped[0]["question_skips"]["systems"]["reasons"] == ["not_relevant"]
+    assert grouped[0]["question_states"]["systems"]["answer_state"] == "skipped"
+
+
 def test_resolve_session_with_explicit_code_does_not_fallback_to_default():
     repo = ConferenceRepo(
         _FakeNotionRepo(

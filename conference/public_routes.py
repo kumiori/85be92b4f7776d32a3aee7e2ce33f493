@@ -26,6 +26,20 @@ class PublicRouteConfig:
 
 _PUBLIC_ROUTES = (
     PublicRouteConfig(
+        path="prediction",
+        campaign_slug="scientific-events",
+        default_event_slug="prediction",
+        default_session_code=PREDICTION_SESSION_CODE,
+        default_question_set_id="prediction_v0",
+        welcome_title="Prediction",
+        welcome_body="CISM-EUROMECH Advanced Course · Udine · 7–11 September 2026",
+        welcome_context="What grants predictive power? A conversation starting "
+        "in Udine, at the course on Damage and Fracture Mechanics of Fluid-Infiltrated Geomaterials",
+        welcome_note="How do we approach? What do we question? How did we get here? "
+        "This is the place to reflect you thoughts, asynchronously. "
+        "You will receive an access key with which you can keep on participating.",
+    ),
+    PublicRouteConfig(
         path="event",
         campaign_slug="scientific-events",
         default_event_slug="prediction",
@@ -33,7 +47,8 @@ _PUBLIC_ROUTES = (
         default_question_set_id="prediction_v0",
         welcome_title="Prediction",
         welcome_body="CISM-EUROMECH Advanced Course · Udine · 7–11 September 2026",
-        welcome_context="Damage and Fracture Mechanics of Fluid-Infiltrated Geomaterials",
+        welcome_context="What grants predictive _power_? A conversation starting "
+        "in Udine, at the course on Damage and Fracture Mechanics of Fluid-Infiltrated Geomaterials",
         welcome_note="You can save your progress and return with your access key.",
     ),
     PublicRouteConfig(

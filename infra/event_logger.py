@@ -160,6 +160,7 @@ def log_event(
     status: str = "ok",
     metadata: Optional[Dict[str, Any]] = None,
     level: str = "INFO",
+    persist: bool = True,
 ) -> bool:
     logger = get_module_logger(module)
     payload = {
@@ -180,6 +181,9 @@ def log_event(
         logger.warning(json.dumps(payload, ensure_ascii=False))
     else:
         logger.info(json.dumps(payload, ensure_ascii=False))
+
+    if not persist:
+        return False
 
     info = _event_repo_info()
     if not info.get("enabled"):

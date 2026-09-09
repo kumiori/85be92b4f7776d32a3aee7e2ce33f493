@@ -82,6 +82,21 @@ def test_shared_option_override_requires_an_explicit_reason(tmp_path):
         )
 
 
+def test_shared_reference_can_override_options_and_free_text_with_reason():
+    prediction = load_question_set_yaml(
+        ROOT / "prediction.yaml",
+        source_module="conference.question_sets.prediction",
+    )
+    role = question_by_id(prediction, "role")
+
+    assert role is not None
+    assert role.origin == "shared"
+    assert role.shared_dimension == "scientific_role"
+    assert role.options[-1] == {"value": "other", "label": "Other"}
+    assert role.free_text_field == "role_detail"
+    assert role.free_text_label == "Other / detail"
+
+
 def test_question_revision_controls_reask_without_erasing_previous_revision():
     base = {
         "step": "power",
@@ -163,8 +178,16 @@ def test_retired_question_is_historical_but_not_active():
 
 
 def test_questionnaire_lifecycle_is_independent_from_revision():
-    review = load_question_set_yaml(
-        ROOT / "prediction.yaml", source_module="conference.question_sets.prediction"
+    review = question_set_from_yaml(
+        {
+            "questionnaire": {
+                "id": "prediction",
+                "revision": 1,
+                "status": "review",
+                "legacy_ids": ["prediction_v0"],
+            }
+        },
+        source_module="tests.review",
     )
     active = question_set_from_yaml(
         {"questionnaire": {"id": "prediction", "revision": 1, "status": "active"}},

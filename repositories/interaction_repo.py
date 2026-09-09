@@ -204,6 +204,8 @@ class NotionInteractionRepository(InteractionRepository):
         return None
 
     def _resolve_question_page_id(self, question_id: str) -> Optional[str]:
+        if question_id == "CONFERENCE_PARTICIPATION_CHECKPOINT":
+            return None
         cached = self._question_page_by_item_id.get(question_id)
         if cached:
             return cached

@@ -1,39 +1,637 @@
 questionnaire:
-  id: prediction
-  revision: 1
-  status: review
-  legacy_ids: [prediction_v0]
-  default_mode: standard
-  show_mode_selection: false
-  show_welcome_step: false
-  identity_position: first
-  review:
-    change_note: Infrastructure skeleton; scientific questions intentionally absent.
-
-step_order: []
+    id: prediction
+    revision: 2
+    status: active
+    legacy_ids:
+        - prediction_v0
+    default_mode: standard
+    show_mode_selection: false
+    show_welcome_step: false
+    identity_position: first
+    review:
+        change_note: Added career stage to the participant fingerprint.
+step_order:
+    - identity
+    - role
+    - career_stage
+    - systems
+    - expectations
+    - formulation
+    - approaches
+    - limitations
+    - explore
+    - confidence
+    - motivations
+    - obstacle
+    - needs
+    - contribution
+    - challenge
+    - review
+    - done
 flow_modes:
-  standard:
-    title: Prediction
-    detail: ""
-    accent: ""
-    steps: []
+    standard:
+        title: Prediction
+        detail: ~5–7 minutes
+        accent: ''
+        steps:
+            - role
+            - career_stage
+            - systems
+            - expectations
+            - formulation
+            - approaches
+            - limitations
+            - explore
+            - confidence
+            - motivations
+            - obstacle
+            - needs
+            - contribution
+            - challenge
 step_copy:
-  identity:
-    title: About you
-    body: A few details so you can return to your answers later.
-  review:
-    title: Review your answers
-    body: Scientific questions will appear here when they are available.
-    cta: Submit responses
-  done:
-    title: Responses recorded
-    body: Save your key so you can return later.
-    cta: Finish
-questions: []
-profile_fields: []
-session_fields: []
-deferrable_fields: []
-fingerprint_axes: []
-fingerprint_labels: {}
+    identity:
+        title: About you
+        body:
+            Your responses will be presented and discussed anonymously. We ask for a few details for organisational
+            purposes and so that you can return to your answers later.
+    role:
+        title: What is your point of view?
+        body: Problems looks different depending on the perspective.
+        cta: Continue
+    career_stage:
+        title: Where are you in your scientific path?
+        body: A rough career-stage coordinate helps us read the collective picture.
+        cta: Continue
+    systems:
+        title: What systems do you study?
+        body: From static structures to evolving, dynamic, multiphysics, or stochastic systems.
+        cta: Continue
+    expectations:
+        title: What kind of solutions do you expect?
+        body: When parameters or loading change, do solutions evolve smoothly or through transitions?
+        cta: Continue
+    formulation:
+        title: How are you comfortable formulating problems?
+        body: Different mathematical languages reveal different aspects of the same phenomenon.
+        cta: Continue
+    approaches:
+        title: What approaches do you use?
+        body: Select the methods, models, or experimental approaches that are part of your usual toolbox.
+        cta: Continue
+    limitations:
+        title: Where do your approaches reach their limits?
+        body: Think about the approaches you selected. What limits their use or purpose, in practice?
+        cta: Continue
+    explore:
+        title: What other playgrounds would you like to explore?
+        body:
+            Which approaches outside your usual toolbox would you be interested in learning, testing, or combining
+            with your own?
+        cta: Continue
+    confidence:
+        title: What makes a model predictive?
+        body:
+            What gives you confidence that a model or approach can predict beyond what it was built or calibrated
+            on?
+        cta: Continue
+    motivations:
+        title: What drives your work?
+        body: Pick what motivates you.
+        cta: Continue
+    obstacle:
+        title: What feels like a bottleneck at this stage?
+        body: What obstructs progress in your work?
+        cta: Continue
+    needs:
+        title: What do you need to overcome the bottleneck?
+        body: What helps you move beyond or around it?
+        cta: Continue
+    contribution:
+        title: What do you put on the table to contribute in the discussion?
+        body: A method, dataset, experiment, code, theory, question, connection, or other capacity you could contribute.
+        cta: Continue
+    challenge:
+        title: What challenge would you join?
+        body: If enough people shared your interest, what would you fancy to explore together?
+        cta: Continue
+    review:
+        title: Review your answers
+        body: Check your details and responses before integrating them in a bigger picture.
+        cta: Submit responses
+    done:
+        title: Responses recorded
+        body: Save your key so you can return later.
+        cta: Finish
+questions:
+    - use: shared.role
+      id: role
+      revision: 1
+      prompt: What is your point of view?
+      context: Every problem looks different from theory, models, computation, experiments, or data.
+      required: false
+      options:
+          - value: theory
+            label: Theory
+          - value: models
+            label: Models
+          - value: computation
+            label: Computation
+          - value: experiments
+            label: Experiments
+          - value: data_ai
+            label: Data / AI
+          - value: community
+            label: Community / convening
+          - value: other
+            label: Other
+      override_reason: Prediction needs an open Other option so participants can extend the point-of-view taxonomy.
+      free_text:
+          field: role_detail
+          label: Other / detail
+          placeholder: Describe another point of view.
+    - use: shared.career_stage
+      id: career_stage
+      revision: 2
+      prompt: Where are you in your scientific journey?
+      context: Select the description or descriptions that best match your current position.
+      required: false
+    - step: systems
+      field: systems
+      id: systems
+      revision: 1
+      prompt: What systems do you study?
+      context: Select the descriptions that best match the systems you usually investigate.
+      input_type: multi
+      required: false
+      max_select: 3
+      shared_dimension: system_type
+      legacy_ids:
+          - PISA_SYSTEMS
+      options:
+          - value: static
+            label: Static
+          - value: evolutionary
+            label: Evolutionary
+          - value: dynamic
+            label: Dynamic
+          - value: multiphysics
+            label: Multiphysics
+          - value: stochastic
+            label: Stochastic
+          - value: other
+            label: Other
+      free_text:
+          field: systems_detail
+          label: Other / detail
+          placeholder: Describe another kind of system.
+    - step: expectations
+      field: expectations
+      id: expectations
+      revision: 1
+      prompt: What kind of solutions do you expect?
+      context: When parameters or loading change, how do you expect the response to evolve?
+      input_type: multi
+      required: false
+      max_select: 2
+      shared_dimension: solution_regularity
+      legacy_ids:
+          - PISA_EXPECTATIONS
+      options:
+          - value: smooth_evolutions
+            label: Smooth evolutions
+          - value: occasional_transitions
+            label: Occasional transitions
+          - value: discontinuous_evolutions
+            label: Discontinuous evolutions
+          - value: scale_dependent
+            label: It depends on scale / observation
+          - value: other
+            label: Other
+      free_text:
+          field: expectations_detail
+          label: Other / detail
+          placeholder: Describe another kind of solution behaviour.
+    - step: formulation
+      field: formulation
+      id: formulation
+      revision: 1
+      prompt: How do you formulate the problem?
+      context: Select the languages you most comfortably work with.
+      input_type: multi
+      required: false
+      max_select: 3
+      shared_dimension: problem_formulation
+      legacy_ids:
+          - PISA_FORMULATION
+      options:
+          - value: strong_form_pdes
+            label: Strong form PDEs
+          - value: weak_formulations
+            label: Weak formulations
+          - value: variational_principles
+            label: Variational principles
+          - value: energetic_formulations
+            label: Energetic formulations
+          - value: mixed_approaches
+            label: Mixed approaches
+          - value: other
+            label: Other
+      free_text:
+          field: formulation_detail
+          label: Other / detail
+          placeholder: Add a formulation or language that matters to your work.
+    - step: approaches
+      field: approaches
+      id: approaches
+      revision: 1
+      prompt: What approaches do you use?
+      context: Select the methods, models, or approaches that are part of your usual toolbox.
+      input_type: multi
+      required: false
+      max_select: 5
+      shared_dimension: scientific_approach
+      options:
+          - value: classical_fracture_mechanics
+            label: Classical fracture mechanics
+          - value: continuum_damage
+            label: Continuum damage
+          - value: phase_field_variational
+            label: Phase-field / variational fracture
+          - value: discrete_lattice_particle
+            label: Discrete / lattice / particle models
+          - value: micromechanics
+            label: Micromechanics
+          - value: analytical_models
+            label: Analytical models
+          - value: numerical_simulation
+            label: Numerical simulation
+          - value: experiments
+            label: Experiments
+          - value: imaging_tomography
+            label: Imaging / tomography
+          - value: data_driven_ml
+            label: Data-driven / machine learning
+          - value: probabilistic_stochastic
+            label: Probabilistic / stochastic methods
+          - value: other
+            label: Other
+      free_text:
+          field: approaches_detail
+          label: Other / detail
+          placeholder: Add an approach or method not listed above.
+    - step: limitations
+      field: limitations
+      id: limitations
+      revision: 1
+      prompt: Where do your approaches reach their limits?
+      context:
+          Think about the approaches you selected above. Choose the limitations that matter, then add your own
+          words if useful.
+      input_type: multi
+      required: false
+      max_select: 4
+      shared_dimension: approach_limitations
+      options:
+          - value: physical_assumptions
+            label: Physical assumptions
+          - value: material_description
+            label: Material description
+          - value: heterogeneity_disorder
+            label: Heterogeneity / disorder
+          - value: scale_separation
+            label: Scale separation
+          - value: initial_boundary_conditions
+            label: Initial / boundary conditions
+          - value: parameter_identification
+            label: Parameter identification
+          - value: observability
+            label: Experimental observability
+          - value: validation
+            label: Validation
+          - value: computational_cost
+            label: Computational cost
+          - value: mathematical_numerical_tractability
+            label: Mathematical / numerical tractability
+          - value: uncertainty
+            label: Uncertainty
+          - value: transfer_real_systems
+            label: Transfer to real systems
+          - value: other
+            label: Other
+      free_text:
+          field: limitations_detail
+          label: In your own words
+          placeholder: Where does your current approach stop being convincing, useful, or predictive?
+    - step: explore
+      field: explore
+      id: explore
+      revision: 1
+      prompt: What would you like to explore?
+      context:
+          Which approaches outside your usual toolbox would you be interested in learning, testing, or combining
+          with your own?
+      input_type: multi
+      required: false
+      max_select: 5
+      shared_dimension: scientific_approach_interest
+      options:
+          - value: classical_fracture_mechanics
+            label: Classical fracture mechanics
+          - value: continuum_damage
+            label: Continuum damage
+          - value: phase_field_variational
+            label: Phase-field / variational fracture
+          - value: discrete_lattice_particle
+            label: Discrete / lattice / particle models
+          - value: micromechanics
+            label: Micromechanics
+          - value: analytical_models
+            label: Analytical models
+          - value: numerical_simulation
+            label: Numerical simulation
+          - value: experiments
+            label: Experiments
+          - value: imaging_tomography
+            label: Imaging / tomography
+          - value: data_driven_ml
+            label: Data-driven / machine learning
+          - value: probabilistic_stochastic
+            label: Probabilistic / stochastic methods
+          - value: other
+            label: Other
+      free_text:
+          field: explore_detail
+          label: Other / detail
+          placeholder: What would you like to bring into your toolbox?
+    - step: confidence
+      field: confidence
+      id: confidence
+      revision: 1
+      prompt: What makes a model predictive?
+      context:
+          What gives you confidence that a model or approach can predict beyond what it was built or calibrated
+          on?
+      input_type: multi
+      required: false
+      max_select: 3
+      shared_dimension: predictive_confidence
+      options:
+          - value: theoretical_structure
+            label: Mathematical / theoretical structure
+          - value: physical_mechanisms
+            label: Physical mechanisms
+          - value: experimental_validation
+            label: Experimental validation
+          - value: observational_data
+            label: Observational data
+          - value: known_phenomena
+            label: Reproduction of known phenomena
+          - value: unseen_outcomes
+            label: Prediction of previously unseen outcomes
+          - value: robustness
+            label: Robustness across parameters / scales
+          - value: competing_models
+            label: Comparison with competing models
+          - value: quantified_uncertainty
+            label: Quantified uncertainty
+          - value: simplicity_interpretability
+            label: Simplicity / interpretability
+          - value: other
+            label: Other
+      free_text:
+          field: confidence_detail
+          label: Other / detail
+          placeholder: What else gives a model or approach predictive power?
+    - step: motivations
+      field: motivations
+      id: motivations
+      revision: 1
+      prompt: What drives your work?
+      context: Choose up to three motivations.
+      input_type: multi
+      required: false
+      max_select: 3
+      shared_dimension: scientific_motivation
+      legacy_ids:
+          - PISA_MOTIVATIONS
+      options:
+          - value: fundamental_understanding
+            label: Fundamental understanding
+          - value: mathematical_theory
+            label: Mathematical theory
+          - value: numerical_methods
+            label: Numerical methods
+          - value: industrial_applications
+            label: Industrial applications
+          - value: environmental_challenges
+            label: Environmental challenges
+          - value: natural_systems
+            label: Natural systems
+          - value: experimental_discovery
+            label: Experimental discovery
+          - value: scientific_curiosity
+            label: Scientific curiosity
+          - value: other
+            label: Other
+      free_text:
+          field: motivations_detail
+          label: Other / detail
+          placeholder: Add another motivation.
+    - step: obstacle
+      field: obstacle
+      id: obstacle
+      revision: 1
+      prompt: What is your bottleneck?
+      context: What obstructs progress in your work?
+      input_type: multi
+      required: false
+      max_select: 3
+      shared_dimension: scientific_obstacle
+      legacy_ids:
+          - PISA_OBSTACLE
+      options:
+          - value: models
+            label: Models
+          - value: data
+            label: Data
+          - value: computation
+            label: Computation
+          - value: validation
+            label: Validation
+          - value: theory
+            label: Theory
+          - value: experiments
+            label: Experiments / measurements
+          - value: funding
+            label: Funding
+          - value: collaboration
+            label: Collaboration
+          - value: time
+            label: Time
+          - value: other
+            label: Other
+      free_text:
+          field: obstacle_detail
+          label: Other / detail
+          placeholder: Describe the bottleneck in your own words.
+    - step: needs
+      field: needs
+      id: needs
+      revision: 1
+      prompt: What would you need to overcome the bottleneck?
+      context: What would help you move beyond it?
+      input_type: multi
+      required: false
+      max_select: 4
+      shared_dimension: scientific_needs
+      options:
+          - value: better_models
+            label: Better models
+          - value: theory
+            label: Theory / analysis
+          - value: data
+            label: Data
+          - value: experiments
+            label: Experiments / measurements
+          - value: imaging
+            label: Imaging / observation
+          - value: computation
+            label: Computation
+          - value: software
+            label: Software / tools
+          - value: benchmarks
+            label: Benchmarks
+          - value: validation
+            label: Validation
+          - value: collaborators
+            label: Collaborators
+          - value: time
+            label: Time
+          - value: funding
+            label: Funding
+          - value: other
+            label: Other
+      free_text:
+          field: needs_detail
+          label: In your own words
+          placeholder: What would help you overcome the bottleneck?
+    - step: contribution
+      field: contribution
+      id: contribution
+      revision: 1
+      prompt: What do you put on the table?
+      context: A method, dataset, experiment, code, theory, question, connection, or other capacity you could contribute.
+      input_type: text
+      required: false
+      shared_dimension: scientific_contribution
+      placeholder: What can others potentially build with you?
+    - step: challenge
+      field: challenge
+      id: challenge
+      revision: 1
+      prompt: What challenge would you join?
+      context: If enough people shared your interest, what would you be excited to explore together?
+      input_type: multi
+      required: false
+      max_select: 3
+      shared_dimension: collaborative_challenge
+      legacy_ids:
+          - PISA_CHALLENGE
+      options:
+          - value: benchmark_problems
+            label: Benchmark problems
+          - value: shared_datasets
+            label: Shared datasets
+          - value: shared_code_comparison
+            label: Shared code comparison
+          - value: experimental_campaign
+            label: Experimental campaign
+          - value: theory_working_group
+            label: Theory working group
+          - value: open_source_tools
+            label: Open-source tools
+          - value: educational_initiative
+            label: Educational initiative
+          - value: cross_method_comparison
+            label: Cross-method comparison
+          - value: other
+            label: Other
+      free_text:
+          field: challenge_detail
+          label: Other / detail
+          placeholder: Describe a challenge you would actually join.
+profile_fields:
+    - role
+    - career_stage
+    - career_stage_detail
+session_fields:
+    - systems
+    - expectations
+    - formulation
+    - formulation_detail
+    - approaches
+    - approaches_detail
+    - limitations
+    - limitations_detail
+    - explore
+    - explore_detail
+    - confidence
+    - confidence_detail
+    - motivations
+    - motivations_detail
+    - obstacle
+    - obstacle_detail
+    - needs
+    - needs_detail
+    - contribution
+    - challenge
+    - challenge_detail
+    - question_flags
+    - role_detail
+    - systems_detail
+    - expectations_detail
+deferrable_fields:
+    - contribution
+fingerprint_axes:
+    - field: role
+      label: Point of view
+    - field: career_stage
+      label: Career stage
+    - field: systems
+      label: Systems
+    - field: expectations
+      label: Expected solutions
+    - field: formulation
+      label: Formulation
+    - field: approaches
+      label: Approaches
+    - field: limitations
+      label: Limits
+    - field: explore
+      label: Approaches to explore
+    - field: confidence
+      label: Predictive confidence
+    - field: motivations
+      label: Motivations
+    - field: obstacle
+      label: Obstacles
+    - field: needs
+      label: Needs
+    - field: challenge
+      label: Challenges
+fingerprint_labels:
+    role: Point of view
+    career_stage: Career stage
+    systems: Systems studied
+    expectations: Expected solution behaviour
+    formulation: Problem formulation
+    approaches: Current approaches
+    limitations: Approach limitations
+    explore: Approaches to explore
+    confidence: Predictive power
+    motivations: Motivations
+    obstacle: Bottleneck
+    needs: Needs to overcome bottleneck
+    challenge: Collaborative challenges
 follow_up_contact_values: []
 migration_profile_fields: []

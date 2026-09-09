@@ -57,6 +57,13 @@ class EventIdentityPolicy:
 class EventResultConfig:
     kind: str = "generic"
     visible_when: str = "submitted"
+    kicker: str = ""
+    headline: str = ""
+    introduction: tuple[str, ...] = ()
+    interpretation_prompts: tuple[tuple[str, str], ...] = ()
+
+    def interpretation_for(self, question_id: str) -> str:
+        return dict(self.interpretation_prompts).get(str(question_id or "").strip(), "")
 
 
 @dataclass(frozen=True)
@@ -80,6 +87,7 @@ class ConferenceEventConfig:
     questionnaire_page: str
     overview_page: str
     host_page: str
+    canonical_path: str = ""
     response_scope: str = "event_specific"
     aliases: tuple[str, ...] = ()
     test_mode: bool = False
@@ -97,6 +105,34 @@ class ConferenceEventConfig:
     result_config: EventResultConfig = EventResultConfig()
 
 
+PREDICTION_RESULT_CONFIG = EventResultConfig(
+    kind="editorial_scientific_portrait",
+    visible_when="submitted",
+    kicker="PREDICTION",
+    headline="What gives a model its predictive power?",
+    introduction=(
+        "This questionnaire maps how the room approaches scientific problems: the systems we study, the formulations and methods we use, where those approaches reach their limits, and what gives us confidence in a prediction.",
+        "It also asks where the bottlenecks are, what we need, what we can contribute, and which challenges we would be willing to explore together.",
+        "What emerges is not a ranking of methods, but a map of the scientific landscape present in the room.",
+    ),
+    interpretation_prompts=(
+        ("role", "Which scientific perspectives dominate the room? Which are scarce or absent?"),
+        ("systems", "What kinds of systems define the collective field of study?"),
+        ("expectations", "Does the room expect smooth behaviour, transitions, or discontinuity?"),
+        ("formulation", "Which mathematical languages coexist here?"),
+        ("approaches", "What is already inside the room's collective toolbox?"),
+        ("limitations", "Where does that toolbox cease to convince us?"),
+        ("explore", "Which methods attract interest beyond people's current practice?"),
+        ("confidence", "What kinds of evidence make prediction convincing to this room?"),
+        ("motivations", "What brings people to these problems?"),
+        ("obstacle", "Where does scientific progress currently meet resistance?"),
+        ("needs", "What could help overcome those bottlenecks?"),
+        ("contribution", "What capacities are already present in the room?"),
+        ("challenge", "Where might collective work actually begin?"),
+    ),
+)
+
+
 _EVENT_CONFIGS = (
     ConferenceEventConfig(
         slug="prediction",
@@ -110,6 +146,7 @@ _EVENT_CONFIGS = (
         questionnaire_page="pages/33_Event.py",
         overview_page="pages/34_Event_Overview.py",
         host_page="pages/35_Event_Host.py",
+        canonical_path="prediction",
         response_scope="event_session",
         aliases=("prediction", PREDICTION_SESSION_CODE),
         test_session_code=PREDICTION_DEBUG_SESSION_CODE,
@@ -129,7 +166,7 @@ _EVENT_CONFIGS = (
             recovery_mode="host_assisted",
             semantic_fields=(("base_location", "location"),),
         ),
-        result_config=EventResultConfig(kind="generic", visible_when="submitted"),
+        result_config=PREDICTION_RESULT_CONFIG,
     ),
     ConferenceEventConfig(
         slug="prediction_debug",
@@ -143,6 +180,7 @@ _EVENT_CONFIGS = (
         questionnaire_page="pages/33_Event.py",
         overview_page="pages/34_Event_Overview.py",
         host_page="pages/35_Event_Host.py",
+        canonical_path="prediction",
         response_scope="debug_session",
         aliases=("prediction_debug", PREDICTION_DEBUG_SESSION_CODE),
         test_mode=True,
@@ -162,7 +200,7 @@ _EVENT_CONFIGS = (
             recovery_mode="host_assisted",
             semantic_fields=(("base_location", "location"),),
         ),
-        result_config=EventResultConfig(kind="generic", visible_when="submitted"),
+        result_config=PREDICTION_RESULT_CONFIG,
     ),
     ConferenceEventConfig(
         slug="complexity",
@@ -176,6 +214,7 @@ _EVENT_CONFIGS = (
         questionnaire_page=COMPLEXITY_ENTRY_PAGE,
         overview_page=COMPLEXITY_OVERVIEW_PAGE,
         host_page=COMPLEXITY_HOST_PAGE,
+        canonical_path="complexity",
         aliases=("complexity", "petnica", COMPLEXITY_SESSION_CODE),
     ),
     ConferenceEventConfig(
@@ -190,6 +229,7 @@ _EVENT_CONFIGS = (
         questionnaire_page=DALAMBERTIENNES_ENTRY_PAGE,
         overview_page=DALAMBERTIENNES_OVERVIEW_PAGE,
         host_page=DALAMBERTIENNES_HOST_PAGE,
+        canonical_path="dalembertiennes",
         aliases=("dalembertiennes", DALAMBERTIENNES_SESSION_CODE),
     ),
     ConferenceEventConfig(
@@ -204,6 +244,7 @@ _EVENT_CONFIGS = (
         questionnaire_page=UN_WG2_ENTRY_PAGE,
         overview_page=UN_WG2_OVERVIEW_PAGE,
         host_page=UN_WG2_HOST_PAGE,
+        canonical_path="un-wg2-icebreaker",
         response_scope="event_session",
         aliases=(
             "un_wg2_visibility",
@@ -286,6 +327,15 @@ def event_config_for_request(
     return event_config_for_session_code(config.test_session_code)
 
 
+def public_event_configs() -> tuple[ConferenceEventConfig, ...]:
+    """Production session entries for the canonical sessions index."""
+    return tuple(
+        config
+        for config in _EVENT_CONFIGS
+        if not config.test_mode and str(config.canonical_path or "").strip()
+    )
+
+
 def navigation_families() -> dict[str, tuple[NavigationItem, ...]]:
     """Current participant-facing session families, ready for a future index."""
     return {
@@ -300,9 +350,7 @@ def navigation_families() -> dict[str, tuple[NavigationItem, ...]]:
             NavigationItem("Opening", "pages/18_Pisa_Opening.py", "pisa-opening", ":material/auto_stories:"),
         ),
         "Prediction": (
-            NavigationItem("CISM Udine 2026", "pages/33_Event.py", "event", ":material/science:"),
-            NavigationItem("Prediction Overview", "pages/34_Event_Overview.py", "event-overview", ":material/insights:"),
-            NavigationItem("Prediction Host", "pages/35_Event_Host.py", "event-host", ":material/admin_panel_settings:"),
+            NavigationItem("Prediction", "pages/36_Prediction.py", "prediction", ":material/science:"),
         ),
         "D'Alembertiennes": (
             NavigationItem("Climate", DALAMBERTIENNES_ENTRY_PAGE, "dalembertiennes", ":material/science:"),

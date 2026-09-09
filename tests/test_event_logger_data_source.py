@@ -139,3 +139,27 @@ def test_event_writer_reports_persistence_failure(monkeypatch):
     )
 
     assert event_logger.log_event(module="test", event_type="not-saved") is False
+
+
+def test_event_writer_can_log_without_remote_persistence(monkeypatch):
+    pages = _Pages()
+    repo = SimpleNamespace(client=SimpleNamespace(pages=pages))
+    monkeypatch.setattr(
+        event_logger,
+        "_event_repo_info",
+        lambda: {
+            "enabled": True,
+            "repo": repo,
+            "db_id": "configured-database-id",
+            "data_source_id": "resolved-data-source-id",
+            "props": {},
+        },
+    )
+
+    assert (
+        event_logger.log_event(
+            module="test", event_type="page-view", persist=False
+        )
+        is False
+    )
+    assert pages.created == []

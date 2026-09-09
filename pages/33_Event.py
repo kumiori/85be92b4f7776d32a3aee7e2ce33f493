@@ -11,8 +11,8 @@ from conference.recovery import recovery_token_fingerprint, recovery_token_state
 from infra.event_logger import list_logged_events, log_event
 
 
-def _event_config():
-    slug = str(st.query_params.get("event") or "prediction").strip().lower()
+def _event_config(event_slug_override: str = ""):
+    slug = str(event_slug_override or st.query_params.get("event") or "prediction").strip().lower()
     return event_config_for_request(slug, test=st.query_params.get("test", ""))
 
 
@@ -20,14 +20,14 @@ def _requested_event_slug() -> str:
     return str(st.query_params.get("event") or "prediction").strip().lower()
 
 
-def _session_code(_repo) -> str:
-    config = _event_config()
+def _session_code(_repo, event_slug_override: str = "") -> str:
+    config = _event_config(event_slug_override)
     return str(config.session_code if config else "")
 
 
-def _consume_recovery() -> None:
+def _consume_recovery(event_slug_override: str = "") -> None:
     token = str(st.query_params.get("recovery") or "").strip()
-    config = _event_config()
+    config = _event_config(event_slug_override)
     if not token or not config:
         return
     repo = get_conference_repo()
@@ -70,16 +70,25 @@ def _consume_recovery() -> None:
         st.error(f"Recovery link unavailable: {exc}")
 
 
-def main() -> None:
-    config = _event_config()
+def main(
+    *,
+    event_slug_override: str = "",
+    public_route_path: str = "event",
+    canonical: bool = False,
+) -> None:
+    config = _event_config(event_slug_override)
     if not config:
         st.error("Unknown event.")
         return
-    ensure_public_route_query("event", event_slug_override=_requested_event_slug())
-    _consume_recovery()
+    if not canonical:
+        ensure_public_route_query(
+            public_route_path,
+            event_slug_override=event_slug_override or _requested_event_slug(),
+        )
+    _consume_recovery(event_slug_override)
     run_conference_questionnaire_page(
-        session_code_resolver=_session_code,
-        public_route_path="event",
+        session_code_resolver=lambda repo: _session_code(repo, event_slug_override),
+        public_route_path=public_route_path,
     )
 
 

@@ -27,6 +27,7 @@ from conference.pisa_legacy_flow import (
 )
 from conference.pisa_legacy_models import STEP_COPY, field_option_label_map, mode_card_rows, question_by_step
 from conference.question_flags import (
+    QUESTION_FLAG_INTRO,
     QUESTION_FLAG_LABELS,
     QUESTION_FLAG_OPTIONS,
     normalize_question_flags,
@@ -90,9 +91,9 @@ def _render_question_flag_control(question: Dict[str, Any]) -> None:
     count = len(flags) + (1 if note else 0)
     label = f"Flag ({count})" if count else "Flag"
     with st.popover(label):
-        st.caption("Mark if the question feels incomplete, misleading, narrow, or otherwise off.")
+        st.caption(QUESTION_FLAG_INTRO)
         selected = st.pills(
-            "Question issue",
+            "Question feedback",
             [str(item["value"]) for item in QUESTION_FLAG_OPTIONS],
             default=flags,
             selection_mode="multi",

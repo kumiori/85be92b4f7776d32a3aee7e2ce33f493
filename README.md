@@ -27,25 +27,27 @@ The current second-session vertical slice is the CISM-EUROMECH Advanced Course
 
 | Purpose | Event slug | Session code | Entry URL |
 | --- | --- | --- | --- |
-| Production | `prediction` | `prediction_2026` | `/event?event=prediction` |
-| Test/debug | `prediction_debug` | `prediction_debug_2026` | `/event?event=prediction&test=1` |
+| Production | `prediction` | `prediction_2026` | `/prediction` |
+| Test/debug | `prediction_debug` | `prediction_debug_2026` | `/prediction?test=1` |
 
 The test entry resolves `prediction_debug_2026` before any read or write. The
-explicit `prediction_debug` slug remains a compatibility alias. Public URLs are
-canonicalised to the minimum routing contract (`event`, plus `test=1` for a
-debug run); legacy `public_route` and `campaign` parameters are accepted where
-older links require them but are not emitted by the generic event flow.
+explicit `prediction_debug` slug remains a compatibility alias. The canonical
+subviews are `/prediction`, `/prediction?view=results`, and
+`/prediction?view=host`; `test=1` composes orthogonally with each view. Legacy
+`/event`, `/event-overview`, and `/event-host` links remain hidden compatibility
+routes and are not emitted by the canonical flow.
 
-The generic companion routes are `/event-overview?event=<slug>` and
-`/event-host?event=<slug>`. Loading a page never creates a session; operators
-must run the explicit bootstrap first:
+The production sessions index is `/sessions`. Loading a page never creates a
+session; operators must run the explicit bootstrap first:
 
 ```bash
 ./.venv/bin/python scripts/bootstrap_prediction_sessions.py
 ```
 
-PREDICTION currently uses the infrastructure-only `prediction_v0` question-set
-shell. Its scientific questions are intentionally not yet defined.
+PREDICTION loads its active scientific questionnaire from
+`conference/question_sets/prediction.yaml`. The persisted `prediction_v0`
+text/question-set identifier remains as a compatibility boundary for existing
+session and response records.
 
 For platform QA only, append `&fixture=controls` to the test URL. This loads a
 temporary, debug-only single-choice/scale/free-text fixture used to verify the

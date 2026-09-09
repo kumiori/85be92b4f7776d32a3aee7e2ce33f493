@@ -252,18 +252,19 @@ def test_navigation_uses_current_conceptual_families():
         "D'Alembertiennes",
     )
     assert [item.title for item in families["Prediction"]] == [
-        "CISM Udine 2026",
-        "Prediction Overview",
-        "Prediction Host",
+        "Prediction",
     ]
+    assert families["Prediction"][0].url_path == "prediction"
     assert all(item.title != "Scientific Event" for items in families.values() for item in items)
 
 
 class _InteractionCapture:
     def __init__(self):
         self.calls = []
+        self.read_calls = 0
 
     def get_responses_by_item(self, *_args):
+        self.read_calls += 1
         return []
 
     def save_response(self, **kwargs):
@@ -325,3 +326,21 @@ def test_prediction_checkpoint_writer_rejects_test_write_to_production_code():
             test_mode=True,
         )
     assert repo._interaction_repo.calls == []
+
+
+def test_checkpoint_append_does_not_read_prior_checkpoints_first():
+    repo = _conference_repo()
+
+    repo.save_participation_checkpoint(
+        session_id="production-id",
+        session_code="prediction_2026",
+        player_id="player",
+        text_id="prediction_v0",
+        device_id="device",
+        state={"role": ["theory"]},
+        current_position="systems",
+        test_mode=False,
+    )
+
+    assert repo._interaction_repo.read_calls == 0
+    assert len(repo._interaction_repo.calls) == 1

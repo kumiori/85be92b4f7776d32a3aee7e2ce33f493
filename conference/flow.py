@@ -6,6 +6,7 @@ from typing import Any, Dict, Iterable, List
 import streamlit as st
 
 from conference.question_flags import normalize_question_flags
+from conference.question_skips import normalize_question_skips
 from conference.question_sets import (
     QuestionSet,
     active_steps_for_mode as question_set_active_steps_for_mode,
@@ -460,7 +461,7 @@ def build_session_payload(
         "questionnaire_version": str(qset.version or "1").strip(),
         "boiler_room_contribution": _normalize_text(draft.get("boiler_room_contribution")),
         "question_flags": normalize_question_flags(draft.get("question_flags")),
-        "question_skips": normalize_question_flags(draft.get("question_skips")),
+        "question_skips": normalize_question_skips(draft.get("question_skips")),
         "question_states": deepcopy(dict(draft.get("question_states") or {})),
         "deferred_fields": deferred_fields,
         "identity_reveal_targets": _normalize_values(
@@ -568,7 +569,7 @@ def flatten_payload(
         "scientific_home_institution": str(scientific_home.get("institution") or "").strip(),
         "boiler_room_contribution": str(session.get("boiler_room_contribution") or "").strip(),
         "question_flags": normalize_question_flags(session.get("question_flags", payload.get("question_flags", {}))),
-        "question_skips": normalize_question_flags(session.get("question_skips", payload.get("question_skips", {}))),
+        "question_skips": normalize_question_skips(session.get("question_skips", payload.get("question_skips", {}))),
         "question_states": deepcopy(dict(session.get("question_states", payload.get("question_states", {})) or {})),
         "deferred_fields": list(session.get("deferred_fields") or []),
         "identity_reveal_targets": list(session.get("identity_reveal_targets") or []),
