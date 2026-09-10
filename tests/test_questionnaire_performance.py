@@ -91,6 +91,36 @@ def test_prediction_integration_only_policy_keeps_mid_flow_events_local(monkeypa
     assert calls[0]["persist"] is False
 
 
+def test_prediction_integration_pre_persist_diagnostic_is_presence_only(monkeypatch):
+    calls = []
+    profile = {
+        "name": "Test Person",
+        "email": "test.person@example.org",
+        "institution": "Example Institute",
+        "base_location": {
+            "display_label": "Udine, Italy",
+            "place_id": "test:udine",
+            "latitude": 46.071,
+            "longitude": 13.234,
+        },
+    }
+    monkeypatch.setattr(questionnaire, "log_event", lambda **kwargs: calls.append(kwargs))
+
+    questionnaire._log_integration_pre_persist_presence(
+        {"id": "prediction-debug"}, profile
+    )
+
+    assert calls[0]["persist"] is False
+    assert calls[0]["metadata"] == {
+        "integration.pre_persist.name_present": True,
+        "integration.pre_persist.email_present": True,
+        "integration.pre_persist.institution_present": True,
+        "integration.pre_persist.base_location_present": True,
+    }
+    assert "test.person@example.org" not in str(calls[0])
+    assert "test:udine" not in str(calls[0])
+
+
 def test_event_session_bundle_is_reused_for_open_browser_flow(monkeypatch):
     calls = []
     bundle = {"session": {"id": "session-1", "session_code": "prediction_2026"}}

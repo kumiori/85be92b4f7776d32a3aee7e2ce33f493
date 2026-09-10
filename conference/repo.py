@@ -706,11 +706,12 @@ class ConferenceRepo:
             str(player.get("id") or ""),
             nickname=name,
             email=email,
-            institution=str(identity_profile.get("institution") or "").strip(),
+            institution=str(identity_profile.get("institution") or "").strip() or None,
             base_location=(
-                str(identity_profile.get("base_location", {}).get("display_label") or "").strip()
+                dict(identity_profile["base_location"])
                 if isinstance(identity_profile.get("base_location"), dict)
-                else str(identity_profile.get("base_location") or "").strip()
+                and identity_profile.get("base_location")
+                else None
             ),
         )
         return dict(updated or player)

@@ -157,12 +157,6 @@ def _visible_pages() -> dict[str, list[st.Page]]:
                 icon=":material/insights:",
                 url_path="un-wg2-overview",
             ),
-            st.Page(
-                UN_WG2_HOST_PAGE,
-                title="UN WG2 Host",
-                icon=":material/tune:",
-                url_path="un-wg2-host",
-            ),
             st.Page("pages/08_Overview.py", title="Overview", icon=":material/travel_explore:"),
             st.Page("pages/12_Report.py", title="Report", icon=":material/article:"),
             st.Page("pages/09_Player.py", title="Your trajectory", icon=":material/person:"),
@@ -172,6 +166,12 @@ def _visible_pages() -> dict[str, list[st.Page]]:
             st.Page("pages/14_Decade_Map.py", title="Decade Map", icon=":material/timeline:"),
         ],
         "**Ops**": [
+            st.Page(
+                "pages/38_Host.py",
+                title="Host",
+                icon=":material/admin_panel_settings:",
+                url_path="host",
+            ),
             st.Page("pages/07_Admin.py", title="Admin", icon=":material/tune:"),
         ],
     }
@@ -278,6 +278,9 @@ def _hidden_pages() -> list[st.Page]:
             url_path="event-host",
             visibility="hidden",
         ),
+        st.Page("pages/16_Pisa_Meeting_Host.py", title="Complexity legacy host", url_path="pisa-meeting-host", visibility="hidden"),
+        st.Page("pages/23_Dalembertiennes_Host.py", title="D'Alembertiennes legacy host", url_path="dalembertiennes-host", visibility="hidden"),
+        st.Page("pages/27_UN_WG2_Host.py", title="WG2 legacy host", url_path="un-wg2-host", visibility="hidden"),
         st.Page(
             "pages/24_Climate.py",
             title="Climate questionnaire",
