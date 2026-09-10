@@ -426,7 +426,7 @@ def test_recovery_token_resolves_existing_player_and_is_session_scoped():
         )
 
 
-def test_member_and_host_routes_expose_refinement_and_protected_recovery_actions():
+def test_member_route_keeps_refinement_and_wg2_host_is_generic_compatibility_entry():
     member_source = (ROOT / "pages" / "32_UN_WG2_Member.py").read_text()
     host_source = (ROOT / "pages" / "27_UN_WG2_Host.py").read_text()
     app_source = (ROOT / "app.py").read_text()
@@ -437,17 +437,11 @@ def test_member_and_host_routes_expose_refinement_and_protected_recovery_actions
     assert "Your previous answer" in member_source
     assert "Reason for change" in member_source
     assert "build_refinement_bundle" in member_source
-    assert "approve_identity_claim" in host_source
-    assert "Prepare one-time recovery link" in host_source
-    assert "Revoke and allow retry" in host_source
-    assert "Allow public claiming" in host_source
-    assert "Create WG2 test session" in host_source
-    assert "Open WG2 test questionnaire" in host_source
     assert "public_claiming_enabled(events)" in member_source
-    assert '"/un-wg2-icebreaker?test=1"' in host_source
     assert "Open WG2 Host approval" in member_source
-    assert "_render_member_recovery_support(" in host_source
-    assert "_render_credential_support(" not in host_source.split("with tabs[1]:", 1)[1]
+    assert "from conference.host_ui import main" in host_source
+    assert "session_code_override=UN_WG2_SESSION_CODE" in host_source
+    assert 'url_path="host"' in app_source
 
 
 def test_expired_or_tampered_recovery_token_is_rejected():

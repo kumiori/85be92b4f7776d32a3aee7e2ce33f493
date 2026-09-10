@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import inspect
+import json
 import re
 import time
+from collections.abc import Mapping
 from datetime import datetime, timezone
 from functools import lru_cache
 from typing import Any, Dict, List, Optional
@@ -33,6 +35,16 @@ if isinstance(Client, type):
 
 SESSIONS_DB_ID = ""
 PLAYERS_DB_ID = ""
+PLAYER_PROPERTY_ALIASES: Dict[str, tuple[str, ...]] = {
+    "session_membership": ("session", "events"),
+    "email": ("email",),
+    "institution": ("institution",),
+    "base_location": ("base_location",),
+    "base_location_label": ("base_location_label",),
+    "base_location_place_id": ("base_location_place_id",),
+    "base_location_lat": ("base_location_lat",),
+    "base_location_lon": ("base_location_lon",),
+}
 
 DEBUG_NOTION = str(st.secrets.get("notion", {}).get("debug", "")).lower() in {
     "1",
@@ -299,6 +311,26 @@ class NotionRepo:
 
     def _prop_exists(self, database_id: str, name: str) -> bool:
         return name in self._db_props(database_id)
+
+    def _player_prop_name(self, database_id: str, canonical: str) -> Optional[str]:
+        props = self._db_props(database_id)
+        if canonical == "session_membership":
+            sessions_db_id = _clean_notion_id(self._sessions_db_id(None))
+            for name in PLAYER_PROPERTY_ALIASES[canonical]:
+                meta = props.get(name) or {}
+                relation = meta.get("relation") if isinstance(meta, dict) else {}
+                target = _clean_notion_id(
+                    (relation or {}).get("database_id")
+                    or (relation or {}).get("data_source_id")
+                    or ""
+                )
+                if target and target == sessions_db_id:
+                    return name
+            return None
+        return next(
+            (name for name in PLAYER_PROPERTY_ALIASES.get(canonical, (canonical,)) if name in props),
+            None,
+        )
 
     def _build_title(self, name: str, value: str) -> Dict[str, Any]:
         return {name: {"title": [{"type": "text", "text": {"content": value}}]}}
@@ -791,8 +823,8 @@ class NotionRepo:
 
         # A player is a global participant. Joining another event must extend,
         # never replace, their persisted session membership.
-        if player and self._prop_exists(db_id, "session"):
-            session_prop = self._prop_name(db_id, "session", "relation")
+        session_prop = self._player_prop_name(db_id, "session_membership")
+        if player and session_prop:
             existing_session_ids = [
                 str(item) for item in player.get("session_ids", []) if str(item)
             ]
@@ -870,8 +902,8 @@ class NotionRepo:
     ) -> Dict[str, Any]:
         db_id = self._players_db_id(players_db_id)
         props: Dict[str, Any] = {}
-        if self._prop_exists(db_id, "session"):
-            session_prop = self._prop_name(db_id, "session", "relation")
+        session_prop = self._player_prop_name(db_id, "session_membership")
+        if session_prop:
             props.update(self._build_relation(session_prop, [session_id]))
 
         if self._prop_exists(db_id, "access_key"):
@@ -923,7 +955,12 @@ class NotionRepo:
         self, session_id: str, players_db_id: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         db_id = self._players_db_id(players_db_id)
-        session_prop = self._prop_name(db_id, "session", "relation")
+        session_prop = self._player_prop_name(db_id, "session_membership")
+        if not session_prop:
+            raise RuntimeError(
+                "Players schema has no configured session-membership relation "
+                "(`session` or `events`)."
+            )
         response = _cached_query(
             self.client,
             db_id,
@@ -1041,7 +1078,7 @@ class NotionRepo:
 
         pid_prop = _pick_prop_name(["access_key", "player_id"], "rich_text")
         role_prop = _pick_prop_name(["role"], "select")
-        session_prop = _pick_prop_name(["session"], "relation")
+        session_prop = self._player_prop_name(db_id, "session_membership")
 
         nickname_val = ""
         if self._prop_exists(db_id, "nickname"):
@@ -1059,7 +1096,7 @@ class NotionRepo:
             or self._normalize_select(props, role_prop)
             or "None",
             "session_ids": self._normalize_relation_ids(props, session_prop)
-            if self._prop_exists(db_id, "session")
+            if session_prop
             else [],
             "consent_play": False,
             "consent_research": False,
@@ -1100,6 +1137,30 @@ class NotionRepo:
                 player["email"] = self._normalize_email(props, "email")
             else:
                 player["email"] = self._normalize_rich_text(props, "email")
+        if self._prop_exists(db_id, "institution"):
+            player["institution"] = self._normalize_rich_text(props, "institution")
+        location_label = self._normalize_rich_text(props, "base_location_label")
+        location_place_id = self._normalize_rich_text(props, "base_location_place_id")
+        location_lat = self._normalize_number(props, "base_location_lat")
+        location_lon = self._normalize_number(props, "base_location_lon")
+        if location_label or location_place_id or location_lat is not None or location_lon is not None:
+            player["base_location"] = {
+                key: value
+                for key, value in {
+                    "display_label": location_label,
+                    "place_id": location_place_id,
+                    "latitude": location_lat,
+                    "longitude": location_lon,
+                }.items()
+                if value not in (None, "")
+            }
+        elif self._prop_exists(db_id, "base_location"):
+            raw_location = self._normalize_rich_text(props, "base_location")
+            try:
+                parsed_location = json.loads(raw_location) if raw_location else {}
+            except (TypeError, ValueError):
+                parsed_location = {"display_label": raw_location} if raw_location else {}
+            player["base_location"] = parsed_location if isinstance(parsed_location, dict) else {}
         if self._prop_exists(db_id, "intent"):
             player["intent"] = self._normalize_rich_text(props, "intent")
         elif self._prop_exists(db_id, "motivation"):
@@ -1195,7 +1256,7 @@ class NotionRepo:
         consent_play: Optional[bool] = None,
         consent_research: Optional[bool] = None,
         institution: Optional[str] = None,
-        base_location: Optional[str] = None,
+        base_location: Optional[Mapping[str, Any] | str] = None,
         players_db_id: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
         player = self.get_player_by_id(player_id, players_db_id=players_db_id)
@@ -1215,7 +1276,11 @@ class NotionRepo:
                 props.update(self._build_rich_text("intent", intent))
             elif self._prop_exists(db_id, "motivation"):
                 props.update(self._build_rich_text("motivation", intent))
-        if email is not None and self._prop_exists(db_id, "email"):
+        if email is not None and not self._player_prop_name(db_id, "email"):
+            raise RuntimeError(
+                "Players schema cannot persist supplied canonical field `email`."
+            )
+        if email is not None:
             email_meta = self._db_props(db_id).get("email") or {}
             if email_meta.get("type") == "email":
                 props["email"] = {"email": email}
@@ -1226,10 +1291,44 @@ class NotionRepo:
                 props.update(self._build_checkbox("consented", consent_play))
         if consent_research is not None and self._prop_exists(db_id, "consent_research"):
             props.update(self._build_checkbox("consent_research", consent_research))
-        if institution is not None and self._prop_exists(db_id, "institution"):
+        if institution is not None and not self._player_prop_name(db_id, "institution"):
+            raise RuntimeError(
+                "Players schema cannot persist supplied canonical field `institution`."
+            )
+        if institution is not None:
             props.update(self._build_rich_text("institution", institution))
-        if base_location is not None and self._prop_exists(db_id, "base_location"):
-            props.update(self._build_rich_text("base_location", base_location))
+        if base_location is not None:
+            location = (
+                dict(base_location)
+                if isinstance(base_location, Mapping)
+                else {"display_label": str(base_location)}
+            )
+            location_props = {
+                canonical: self._player_prop_name(db_id, canonical)
+                for canonical in (
+                    "base_location",
+                    "base_location_label",
+                    "base_location_place_id",
+                    "base_location_lat",
+                    "base_location_lon",
+                )
+            }
+            if not location_props["base_location"] and not location_props["base_location_label"]:
+                raise RuntimeError(
+                    "Players schema cannot persist supplied canonical field `base_location`."
+                )
+            if location_props["base_location"]:
+                props[location_props["base_location"]] = {
+                    "rich_text": [{"type": "text", "text": {"content": json.dumps(location, ensure_ascii=False, sort_keys=True)}}]
+                }
+            if location_props["base_location_label"]:
+                props.update(self._build_rich_text(location_props["base_location_label"], str(location.get("display_label") or "")))
+            if location_props["base_location_place_id"]:
+                props.update(self._build_rich_text(location_props["base_location_place_id"], str(location.get("place_id") or "")))
+            if location_props["base_location_lat"]:
+                props[location_props["base_location_lat"]] = {"number": location.get("latitude")}
+            if location_props["base_location_lon"]:
+                props[location_props["base_location_lon"]] = {"number": location.get("longitude")}
         if not props:
             return player
         page = _execute_with_retry(

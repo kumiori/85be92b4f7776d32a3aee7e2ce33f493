@@ -1391,6 +1391,38 @@ def _open_skip_question_dialog(
     _skip_dialog()
 
 
+def _integration_pre_persist_presence(
+    identity_profile: Mapping[str, Any],
+) -> Dict[str, bool]:
+    return {
+        "name_present": bool(str(identity_profile.get("name") or "").strip()),
+        "email_present": bool(str(identity_profile.get("email") or "").strip()),
+        "institution_present": bool(
+            str(identity_profile.get("institution") or "").strip()
+        ),
+        "base_location_present": bool(identity_profile.get("base_location")),
+    }
+
+
+def _log_integration_pre_persist_presence(
+    session: Dict[str, Any], identity_profile: Mapping[str, Any]
+) -> None:
+    log_event(
+        module="iceicebaby.conference",
+        event_type="integration_pre_persist",
+        page="conference",
+        session_id=str(session.get("id") or ""),
+        status="ok",
+        metadata={
+            f"integration.pre_persist.{key}": value
+            for key, value in _integration_pre_persist_presence(
+                identity_profile
+            ).items()
+        },
+        persist=False,
+    )
+
+
 def _submit(repo: Any, session: Dict[str, Any]) -> None:
     if _event_is_read_only(session):
         st.error(
@@ -1410,16 +1442,18 @@ def _submit(repo: Any, session: Dict[str, Any]) -> None:
     try:
         config = event_config_for_session_code(str(session.get("session_code") or ""))
         if config and config.identity_policy.identified:
+            identity_profile = {
+                "name": draft.get("name"),
+                "email": draft.get("email"),
+                "institution": draft.get("institution"),
+                "base_location": deepcopy(draft.get("base_location") or {}),
+            }
+            _log_integration_pre_persist_presence(session, identity_profile)
             player = repo.upsert_identified_conference_player(
                 session_id=session["id"],
                 access_key=access_key,
                 payload=payload,
-                identity_profile={
-                    "name": draft.get("name"),
-                    "email": draft.get("email"),
-                    "institution": draft.get("institution"),
-                    "base_location": deepcopy(draft.get("base_location") or {}),
-                },
+                identity_profile=identity_profile,
             )
         else:
             player = repo.upsert_conference_player(

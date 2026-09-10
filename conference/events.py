@@ -31,14 +31,15 @@ UN_WG2_DEBUG_EVENT_SLUG = "un_wg2_visibility_debug"
 
 YOUNG_OVERVIEW_PAGE = "pages/17_Young_Overview.py"
 COMPLEXITY_ENTRY_PAGE = "pages/15_Pisa_Meeting.py"
-COMPLEXITY_HOST_PAGE = "pages/16_Pisa_Meeting_Host.py"
+GENERIC_HOST_PAGE = "pages/38_Host.py"
+COMPLEXITY_HOST_PAGE = GENERIC_HOST_PAGE
 COMPLEXITY_OVERVIEW_PAGE = "pages/20_Complexity_Overview.py"
 DALAMBERTIENNES_ENTRY_PAGE = "pages/21_Dalembertiennes.py"
-DALAMBERTIENNES_HOST_PAGE = "pages/23_Dalembertiennes_Host.py"
+DALAMBERTIENNES_HOST_PAGE = GENERIC_HOST_PAGE
 DALAMBERTIENNES_OVERVIEW_PAGE = "pages/22_Dalembertiennes_Overview.py"
 UN_WG2_ENTRY_PAGE = "pages/25_UN_WG2_Icebreaker.py"
 UN_WG2_OVERVIEW_PAGE = "pages/26_UN_WG2_Overview.py"
-UN_WG2_HOST_PAGE = "pages/27_UN_WG2_Host.py"
+UN_WG2_HOST_PAGE = GENERIC_HOST_PAGE
 
 
 @dataclass(frozen=True)
@@ -146,7 +147,7 @@ _EVENT_CONFIGS = (
         schema_id="questionnaire_v2",
         questionnaire_page="pages/33_Event.py",
         overview_page="pages/34_Event_Overview.py",
-        host_page="pages/35_Event_Host.py",
+        host_page=GENERIC_HOST_PAGE,
         canonical_path="prediction",
         response_scope="event_session",
         aliases=("prediction", PREDICTION_SESSION_CODE),
@@ -181,7 +182,7 @@ _EVENT_CONFIGS = (
         schema_id="questionnaire_v2",
         questionnaire_page="pages/33_Event.py",
         overview_page="pages/34_Event_Overview.py",
-        host_page="pages/35_Event_Host.py",
+        host_page=GENERIC_HOST_PAGE,
         canonical_path="prediction",
         response_scope="debug_session",
         aliases=("prediction_debug", PREDICTION_DEBUG_SESSION_CODE),
@@ -345,7 +346,6 @@ def navigation_families() -> dict[str, tuple[NavigationItem, ...]]:
         "Complexity": (
             NavigationItem("B-Complex 2026", COMPLEXITY_ENTRY_PAGE, "complexity", ":material/groups:"),
             NavigationItem("Overview", COMPLEXITY_OVERVIEW_PAGE, "complexity-overview", ":material/insights:"),
-            NavigationItem("Host", COMPLEXITY_HOST_PAGE, "pisa-meeting-host", ":material/admin_panel_settings:"),
         ),
         "Young": (
             NavigationItem("Pisa 2026", "pages/19_Pisa_Experiment.py", "pisa", ":material/history:"),
@@ -358,7 +358,6 @@ def navigation_families() -> dict[str, tuple[NavigationItem, ...]]:
         "D'Alembertiennes": (
             NavigationItem("Climate", DALAMBERTIENNES_ENTRY_PAGE, "dalembertiennes", ":material/science:"),
             NavigationItem("Overview", DALAMBERTIENNES_OVERVIEW_PAGE, "dalembertiennes-overview", ":material/insights:"),
-            NavigationItem("Host", DALAMBERTIENNES_HOST_PAGE, "dalembertiennes-host", ":material/admin_panel_settings:"),
         ),
     }
 

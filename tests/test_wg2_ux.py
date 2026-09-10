@@ -297,24 +297,10 @@ def test_email_reminder_status_uses_latest_event():
     assert status["player-1"] == "sent"
 
 
-def test_credential_event_logging_keeps_wg2_scope(monkeypatch):
-    module = _load_wg2_host_module()
-    captured = []
-    monkeypatch.setattr(module, "log_event", lambda **kwargs: captured.append(kwargs))
-
-    module._log_credential_event(
-        event_type="credential_revealed",
-        session={"id": "session-wg2"},
-        context={
-            "event_slug": "un_wg2_visibility",
-            "session_code": "un_wg2_core_2026",
-        },
-        player_id="player-1",
-    )
-
-    assert captured[0]["event_type"] == "credential_revealed"
-    assert captured[0]["session_id"] == "session-wg2"
-    assert captured[0]["metadata"]["event_slug"] == "un_wg2_visibility"
+def test_wg2_host_uses_generic_session_scoped_entry():
+    source = (ROOT / "pages" / "27_UN_WG2_Host.py").read_text()
+    assert "from conference.host_ui import main" in source
+    assert "session_code_override=UN_WG2_SESSION_CODE" in source
 
 
 def test_public_wg2_information_page_is_registered():

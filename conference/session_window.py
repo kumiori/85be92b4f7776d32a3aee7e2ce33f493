@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 
@@ -9,7 +9,10 @@ def _parse_iso(value: Any) -> Optional[datetime]:
     if not token:
         return None
     try:
-        return datetime.fromisoformat(token.replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(token.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            return parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc)
     except Exception:
         return None
 

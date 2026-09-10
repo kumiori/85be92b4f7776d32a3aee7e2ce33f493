@@ -755,7 +755,26 @@ In particular:
 - Verification: the focused activation regression test passed and the complete repository suite passed with 170 tests.
 - Next action: deploy the change and confirm the production `/event?event=prediction` identity step advances to the first scientific question against the persisted `prediction_2026` session.
 
+## Checkpoint — 2026-09-10 · Generic session Host cockpit
+
+- Files changed: `app.py`, `conference/events.py`, `conference/host.py`, `conference/host_ui.py`, `pages/16_Pisa_Meeting_Host.py`, `pages/23_Dalembertiennes_Host.py`, `pages/27_UN_WG2_Host.py`, `pages/35_Event_Host.py`, `pages/38_Host.py`, `tests/test_generic_host.py`, `tests/test_wg2_member_recovery.py`, `tests/test_wg2_ux.py`, `PLAN.md`.
+- Result: `/host` is the single visible session-operator cockpit. It selects questionnaire-backed production/debug sessions from the existing registry, acquires one normalized `HostSnapshot`, and derives summary metrics, masked participant rows, Response Field, cumulative Response Timeline, spatial context, question-set inspection, submissions, and event-log views locally. Results pages remain separate scientific portraits.
+- Compatibility: `pisa-meeting-host`, `dalembertiennes-host`, `un-wg2-host`, and `event-host` remain hidden thin wrappers that preselect the corresponding session; `test=1` resolves the paired debug session before loading data.
+- Remote-read budget: one snapshot acquisition performs one session resolution, one scoped response read, one scoped participant read, and one scoped event-log read. Session choices and questionnaire definitions are local. Tab, sort, and filter reruns reuse the session-state snapshot until the operator selects Refresh data.
+- Verification: generic host tests pass (`8 passed`), compile and diff checks pass. The repository test directory reports `205 passed`, with two unrelated failures from pre-existing dirty Prediction revision metadata and Complexity YAML/Python content drift. No browser or screenshots were used.
+- Next action: resolve the separate Prediction questionnaire revision-validation edits, then deploy and perform an operator-led read-only smoke check of `/host`.
+
 Bounded step:
+
+## Checkpoint — 2026-09-10 · Prediction profile persistence and Host join repair
+
+- Files changed: `conference/questionnaire.py`, `conference/repo.py`, `conference/host.py`, `infra/notion_repo.py`, `scripts/bootstrap_prediction_sessions.py`, `scripts/migrate_player_profile_schema.py`, `tests/test_questionnaire_performance.py`, `tests/test_generic_host.py`, `tests/test_player_profile_schema.py`, `PLAN.md`.
+- Result: Integration emits presence-only `integration.pre_persist.*` diagnostics immediately before identified-player persistence. Supplied canonical profile fields now fail loudly when unmapped. Structured base location survives as label, place id, latitude, and longitude; Host joins the selected session's Players in one batch and includes participant base locations independently of questionnaire geography.
+- Live schema: added `email`, `institution`, `base_location`, `base_location_label`, `base_location_place_id`, `base_location_lat`, `base_location_lon`, and the canonical `session` relation. The existing `events` relation was preserved after direct inspection showed that it targets the event-log database, not Sessions.
+- Isolated debug acceptance: a fresh post-migration Prediction debug Integration created Player `3d754516-e9e1-8158-b964-d626d8eef94a` and response `3d754516-e9e1-81e8-a26d-fd3b21b23c8b`. All four pre-persist flags were true; email, institution, structured Udine location, automatic session membership, batch retrieval, masked Host email, and spatial point were verified. No production or legacy profile values were backfilled.
+- Remote-read budget: Host participant acquisition remains one filtered Players query for the selected session; there is no per-participant lookup loop.
+- Verification: focused profile/Host/Prediction/platform suite passes (`68 passed`); full repository tests report `213 passed` and the same two unrelated dirty questionnaire failures. Compile and diff checks pass. No browser or screenshots were used.
+- Next action: refresh the Host snapshot explicitly after deployment; existing lost profile values remain absent until their participant submits an update.
 
 Run the live checkpoint: open Dalembertiennes, submit one placeholder answer, confirm it appears only in Dalembertiennes overview/export, then add explicit lifecycle controls in admin for draft/open/closed/archived.
 
